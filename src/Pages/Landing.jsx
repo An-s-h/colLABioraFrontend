@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import AnimatedBackground from "../components/ui/AnimatedBackground";
 import TabletMockup from "../components/ui/TabletMockup";
-import HowItWorks from "../Components/ui/HowItWorks";
+import HowItWorks from "../components/ui/HowItWorks";
 import HowItWorksMobile from "../components/ui/how-it-works-mobile";
 import Footer from "../components/Footer";
 import { AuroraText } from "@/components/ui/aurora-text";

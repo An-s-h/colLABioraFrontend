@@ -20,7 +20,7 @@ import EditProfile from "./Pages/EditProfile.jsx";
 import AdminLogin from "./Pages/AdminLogin.jsx";
 import AdminDashboard from "./Pages/AdminDashboard.jsx";
 import "./App.css";
-import Navbar from "./Components/Navbar.jsx";
+import Navbar from "./components/Navbar.jsx";
 import { ProfileProvider } from "./contexts/ProfileContext.jsx";
 
 const App = () => {
