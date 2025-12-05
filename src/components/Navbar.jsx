@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 
 import { motion, AnimatePresence } from "framer-motion";
-
+// import GlobalSearch from "./GlobalSearch";
 export default function Navbar() {
   const [user, setUser] = useState(null);
   const [isMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -227,16 +227,16 @@ export default function Navbar() {
             : {}
         }
       >
-        {/* Logo with Collabiora Text */}
-        <Link to="/" className="group relative flex items-center gap-3">
+        {/* Logo */}
+        <Link to="/" className="group relative flex items-center">
           {/* Logo Image */}
           <motion.img
             src={"/logo.png"}
             alt="Collabiora Logo"
             className="w-auto relative z-10"
             animate={{
-              height: isAtTop ? "2.5rem" : "2rem",
-              maxWidth: isAtTop ? 48 : 40,
+              height: isAtTop ? "3.5rem" : "3rem",
+              maxWidth: isAtTop ? 64 : 56,
             }}
             style={{
               filter: isAtTop
@@ -249,24 +249,6 @@ export default function Navbar() {
               damping: 30,
             }}
           />
-
-          {/* Collabiora Text */}
-          <motion.span
-            className="lobster-two-regular font-bold transition-colors group-hover:opacity-80"
-            animate={{
-              fontSize: isAtTop ? "1.75rem" : "1.5rem",
-            }}
-            style={{
-              color: "#2F3C96",
-            }}
-            transition={{
-              type: "spring",
-              stiffness: 300,
-              damping: 30,
-            }}
-          >
-            Collabiora
-          </motion.span>
         </Link>
 
         {/* Desktop Nav */}
@@ -293,6 +275,9 @@ export default function Navbar() {
               ></span>
             </Link>
           ))}
+
+          {/* Global Search */}
+          {/* <GlobalSearch /> */}
 
           <div className="flex items-center gap-3 ml-2">
             {/* Notification Bell */}
@@ -564,7 +549,7 @@ export default function Navbar() {
             ref={mobileMenuButtonRef}
             onClick={(e) => {
               e.stopPropagation();
-              setIsMobileMenuOpen(prev => !prev);
+              setIsMobileMenuOpen((prev) => !prev);
             }}
             className="w-10 h-10 rounded-full transition-all duration-300 flex items-center justify-center shadow-md hover:shadow-lg border-2"
             style={{
@@ -642,6 +627,11 @@ export default function Navbar() {
               borderColor: "#D0C4E2",
             }}
           >
+            {/* Global Search - Mobile */}
+            {/* <div className="pb-4 border-b" style={{ borderColor: "#D0C4E2" }}>
+              <GlobalSearch />
+            </div> */}
+
             {/* Navigation Links Section */}
             <div
               className="space-y-2 pb-4 border-b"

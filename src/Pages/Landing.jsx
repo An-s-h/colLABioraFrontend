@@ -1,50 +1,42 @@
-import React, { useEffect, useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
+"use client";
+
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 import {
   Users,
   FlaskConical,
   LayoutDashboard,
+  ArrowRight,
+  CheckCircle2,
   Search,
+  Sparkles,
   BookOpen,
-  User,
   Beaker,
-  ChevronDown,
-  Grid3x3,
+  User,
+  LogIn,
+  Star,
 } from "lucide-react";
 import AnimatedBackground from "../components/ui/AnimatedBackground";
-import TabletMockup from "../components/ui/TabletMockup";
+import TrustedNetworksMarquee from "../components/TrustedNetworksMarquee";
+import StatsSection from "../components/StatsSection";
+import GetStartedSection from "../components/GetStartedSection";
 import HowItWorks from "../components/ui/HowItWorks";
 import HowItWorksMobile from "../components/ui/how-it-works-mobile";
 import Footer from "../components/Footer";
 import { AuroraText } from "@/components/ui/aurora-text";
 import { ShinyButton } from "@/components/ui/shiny-button";
-import { NumberTicker } from "@/components/ui/number-ticker";
+import GlobalSearch from "../components/GlobalSearch";
+import { ChevronDown } from "lucide-react";
 
 export default function Landing() {
   const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState(null);
   const [isMobile, setIsMobile] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchCategory, setSearchCategory] = useState("all");
-  const [isCategoryOpen, setIsCategoryOpen] = useState(false);
+  const [credits, setCredits] = useState(Math.floor(Math.random() * 50) + 1); // Random number between 1-50
+  const [isBulletsExpanded, setIsBulletsExpanded] = useState(false);
+  const [selectedRole, setSelectedRole] = useState("patient"); // For segmented toggle
   const navigate = useNavigate();
-
-  const categoryOptions = [
-    { value: "all", label: "All", icon: Grid3x3, color: "#2F3C96" },
-    { value: "trials", label: "Trials", icon: Beaker, color: "#2F3C96" },
-    {
-      value: "publications",
-      label: "Publications",
-      icon: BookOpen,
-      color: "#2F3C96",
-    },
-    { value: "experts", label: "Experts", icon: User, color: "#2F3C96" },
-  ];
-
-  const selectedCategory =
-    categoryOptions.find((opt) => opt.value === searchCategory) ||
-    categoryOptions[0];
 
   useEffect(() => {
     setMounted(true);
@@ -86,23 +78,6 @@ export default function Landing() {
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (isCategoryOpen && !event.target.closest(".category-dropdown")) {
-        setIsCategoryOpen(false);
-      }
-    };
-
-    if (isCategoryOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [isCategoryOpen]);
-
   const getDashboardPath = () => {
     if (!user) return "/dashboard/patient";
     return `/dashboard/${user.role || "patient"}`;
@@ -110,377 +85,505 @@ export default function Landing() {
 
   const handleDashboardClick = () => navigate(getDashboardPath());
 
-  const handleSearch = (e) => {
-    e.preventDefault();
-    if (!searchQuery.trim()) return;
-
-    const query = searchQuery.trim();
-
-    if (searchCategory === "all") {
-      // Navigate to trials page with search query (default)
-      navigate(`/trials?q=${encodeURIComponent(query)}`);
-    } else {
-      // Navigate to specific category page
-      const categoryMap = {
-        trials: "/trials",
-        publications: "/publications",
-        experts: "/experts",
-      };
-      navigate(`${categoryMap[searchCategory]}?q=${encodeURIComponent(query)}`);
-    }
-  };
-
   return (
     <div className="relative min-h-screen">
       {/* Animated Background */}
-      <AnimatedBackground />
+      <AnimatedBackground isMobile={isMobile} />
 
       {/* Hero Section */}
-      <section className="relative flex flex-col items-center justify-center px-4 sm:px-6 pt-25 sm:pt-24 pb-12 sm:pb-16 overflow-hidden">
-        <div className="max-w-5xl pt-4 sm:pt-2 relative z-10 w-full">
-          {/* Heading */}
-          <motion.h1
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.2 }}
-            className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold leading-tight sm:leading-none tracking-tight text-center mb-6 sm:mb-4"
-            style={{ color: "#2F3C96" }}
-          >
-            Empowering{" "}
-            <AuroraText
-              speed={2.5}
-              colors={["#D0C4E2", "#2F3C96", "#B8A5D5", "#474F97", "#E8E0EF"]}
-            >
-              Healthcare
-            </AuroraText>{" "}
-            Through Connection
-          </motion.h1>
-          {/* Trust Badge */}
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-            className="flex justify-center mb-8 sm:mb-6 pt-6 sm:pt-5"
-          >
-            <div
-              className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full border-2"
-              style={{ backgroundColor: "#F5F2F8", borderColor: "#D0C4E2" }}
-            >
-              <div className="flex -space-x-2">
-                {[1, 2, 3].map((i) => (
-                  <div
-                    key={i}
-                    className="w-5 h-5 sm:w-6 sm:h-6 rounded-full border-2 border-white"
-                    style={{
-                      background: `linear-gradient(to bottom right, ${
-                        i === 1 ? "#D0C4E2" : i === 2 ? "#2F3C96" : "#B8A5D5"
-                      })`,
-                    }}
-                  />
-                ))}
-              </div>
-              <span
-                className="text-xs sm:text-sm font-medium"
-                style={{ color: "#2F3C96" }}
-              >
-                Trusted by{" "}
-                <NumberTicker
-                  value={100}
-                  className="text-xs sm:text-sm font-medium"
-                  style={{ color: "#2F3C96" }}
-                />
-                K+ users
-              </span>
-            </div>
-          </motion.div>
-          {/* Subheading */}
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.4 }}
-            className="text-lg sm:text-xl md:text-2xl max-w-3xl mx-auto text-center leading-relaxed sm:leading-tight mb-8 sm:mb-6 tracking-normal px-2"
-            style={{ color: "#787878" }}
-          >
-            Health Research Made Simple.
-          </motion.p>
-
-          {/* Welcome Message for Signed-in Users */}
-          {user && (
+      <section className="relative flex flex-col items-center justify-center px-4 sm:px-6 pt-16 sm:pt-20 md:pt-35 pb-12 sm:pb-10 md:pb-18 overflow-hidden">
+        <div className="max-w-6xl relative z-10 w-full">
+          {/* Hero Layout */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 lg:gap-10 items-center">
+            {/* Left Section - Main Message */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.5 }}
-              className="text-center mb-6 sm:mb-4"
+              transition={{ duration: 0.8 }}
+              className="relative"
             >
-              <h2
-                className="text-xl sm:text-2xl md:text-3xl font-bold mb-0 leading-tight"
-                style={{ color: "#2F3C96" }}
+              {/* Next-Generation Badge - Hidden on mobile */}
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.1 }}
+                className="mb-3 sm:mb-4 hidden sm:block"
               >
-                Welcome Back,{" "}
-                <AuroraText
-                  colors={[
-                    "#D0C4E2",
-                    "#2F3C96",
-                    "#B8A5D5",
-                    "#474F97",
-                    "#E8E0EF",
-                  ]}
+                <div
+                  className="inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full border-2 shadow-md"
+                  style={{
+                    backgroundColor: "#F5F2F8",
+                    borderColor: "#D0C4E2",
+                  }}
                 >
-                  {user?.name || user?.username || "User"}!
-                </AuroraText>
-              </h2>
-            </motion.div>
-          )}
-
-          {/* Global Search Bar */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.5 }}
-            className="w-full max-w-3xl mx-auto mb-8 sm:mb-6"
-          >
-            <form onSubmit={handleSearch} className="relative">
-              <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
-                {/* Category Selector - Custom Dropdown */}
-                <div className="relative category-dropdown">
-                  <motion.button
-                    type="button"
-                    onClick={() => setIsCategoryOpen(!isCategoryOpen)}
-                    className="flex items-center gap-2 bg-white/90 backdrop-blur-sm rounded-full px-4 py-3 border-2 shadow-lg hover:shadow-xl transition-all duration-200 min-w-[140px] justify-between"
-                    style={{ borderColor: "#D0C4E2" }}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
+                  <motion.div
+                    animate={{
+                      rotate: [0, 10, -10, 0],
+                      scale: [1, 1.1, 1],
+                    }}
+                    transition={{
+                      duration: 2,
+                      repeat: Infinity,
+                      repeatDelay: 2,
+                    }}
                   >
-                    <div className="flex items-center gap-2">
-                      {selectedCategory.icon && (
-                        <selectedCategory.icon
-                          className="w-4 h-4 shrink-0"
-                          style={{ color: selectedCategory.color }}
-                        />
-                      )}
-                      <span
-                        className="text-sm font-semibold"
-                        style={{ color: "#2F3C96" }}
-                      >
-                        {selectedCategory.label}
-                      </span>
-                    </div>
-                    <ChevronDown
-                      className={`w-4 h-4 transition-transform duration-200 ${
-                        isCategoryOpen ? "rotate-180" : ""
-                      }`}
+                    <Star
+                      className="w-3.5 h-3.5 sm:w-4 sm:h-4"
                       style={{ color: "#2F3C96" }}
+                      fill="#2F3C96"
                     />
-                  </motion.button>
+                  </motion.div>
+                  <span
+                    className="text-[10px] sm:text-xs font-semibold"
+                    style={{ color: "#2F3C96" }}
+                  >
+                    Next-Generation Healthcare Platform
+                  </span>
+                </div>
+              </motion.div>
 
-                  {/* Dropdown Menu */}
-                  <AnimatePresence>
-                    {isCategoryOpen && (
+              {/* Main Heading */}
+              <motion.h1
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8, delay: 0.2 }}
+                className="text-3xl sm:text-5xl md:text-6xl lg:text-6xl font-extrabold leading-[1.15] mb-4 sm:mb-6 tracking-tight sm:pt-0 pt-10"
+              >
+                <div className="mb-1 sm:mb-2">
+                  <AuroraText speed={2.5} colors={["#2F3C96"]}>
+                    Health Research
+                  </AuroraText>
+                </div>
+                <div>
+                  <AuroraText
+                    speed={2}
+                    colors={["#D0C4E2", "#474F97", "#B8A5D5", "#E8E0EF"]}
+                  >
+                    Made Simple
+                  </AuroraText>
+                </div>
+              </motion.h1>
+
+              {/* Simplified Value Props - Collapsible on Mobile */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8, delay: 0.3 }}
+                className="mb-4 sm:mb-6"
+              >
+                {isMobile ? (
+                  <>
+                    <button
+                      onClick={() => setIsBulletsExpanded(!isBulletsExpanded)}
+                      className="flex items-center justify-between w-full mb-2"
+                      style={{ color: "#2F3C96" }}
+                    >
+                      <span className="text-sm font-semibold">
+                        Key Features
+                      </span>
+                      <ChevronDown
+                        className={`w-4 h-4 transition-transform ${
+                          isBulletsExpanded ? "rotate-180" : ""
+                        }`}
+                      />
+                    </button>
+                    {isBulletsExpanded && (
                       <motion.div
-                        initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                        transition={{ duration: 0.2 }}
-                        className="absolute top-full left-0 mt-2 w-full bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl border-2 overflow-hidden z-50"
-                        style={{ borderColor: "#D0C4E2" }}
-                        onClick={(e) => e.stopPropagation()}
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="space-y-2"
                       >
-                        {categoryOptions.map((option) => {
-                          const Icon = option.icon;
-                          const isSelected = option.value === searchCategory;
-                          return (
-                            <motion.button
-                              key={option.value}
-                              type="button"
-                              onClick={() => {
-                                setSearchCategory(option.value);
-                                setIsCategoryOpen(false);
-                              }}
-                              className="w-full flex items-center gap-3 px-4 py-3 text-left transition-all duration-200"
-                              whileHover={{ x: 4 }}
-                              style={{
-                                backgroundColor: isSelected
-                                  ? "rgba(232, 224, 239, 0.6)"
-                                  : "transparent",
-                              }}
+                        {[
+                          "Find clinical trials tailored to your needs",
+                          "Connect with researchers and experts",
+                          "Connect and collaborate in well-moderated forums",
+                        ].map((text, idx) => (
+                          <motion.div
+                            key={idx}
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ duration: 0.3, delay: idx * 0.1 }}
+                            className="flex items-center gap-2"
+                          >
+                            <div
+                              className="w-4 h-4 rounded-full flex items-center justify-center shrink-0"
+                              style={{ backgroundColor: "#E8E0EF" }}
                             >
-                              <Icon
-                                className="w-5 h-5 shrink-0"
-                                style={{
-                                  color: isSelected ? "#2F3C96" : "#787878",
-                                }}
+                              <CheckCircle2
+                                className="w-3 h-3"
+                                style={{ color: "#2F3C96" }}
                               />
-                              <span
-                                className={`text-sm font-medium ${
-                                  isSelected ? "font-semibold" : ""
-                                }`}
-                                style={{
-                                  color: isSelected ? "#2F3C96" : "#787878",
-                                }}
-                              >
-                                {option.label}
-                              </span>
-                              {isSelected && (
-                                <motion.div
-                                  initial={{ scale: 0 }}
-                                  animate={{ scale: 1 }}
-                                  className="ml-auto w-2 h-2 rounded-full"
-                                  style={{ backgroundColor: "#2F3C96" }}
-                                />
-                              )}
-                            </motion.button>
-                          );
-                        })}
+                            </div>
+                            <span
+                              className="text-xs font-medium leading-tight"
+                              style={{ color: "#2F3C96" }}
+                            >
+                              {text}
+                            </span>
+                          </motion.div>
+                        ))}
                       </motion.div>
                     )}
-                  </AnimatePresence>
-                </div>
+                  </>
+                ) : (
+                  <div className="space-y-2.5">
+                    {[
+                      "Find clinical trials tailored to your needs",
+                      "Connect with researchers and experts",
+                      "Connect and collaborate in well-moderated forums",
+                    ].map((text, idx) => (
+                      <motion.div
+                        key={idx}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ duration: 0.6, delay: 0.4 + idx * 0.1 }}
+                        className="flex items-center gap-2.5"
+                      >
+                        <div
+                          className="w-5 h-5 rounded-full flex items-center justify-center shrink-0"
+                          style={{ backgroundColor: "#E8E0EF" }}
+                        >
+                          <CheckCircle2
+                            className="w-3.5 h-3.5"
+                            style={{ color: "#2F3C96" }}
+                          />
+                        </div>
+                        <span
+                          className="text-sm font-medium leading-tight"
+                          style={{ color: "#2F3C96" }}
+                        >
+                          {text}
+                        </span>
+                      </motion.div>
+                    ))}
+                  </div>
+                )}
+              </motion.div>
 
-                {/* Search Input */}
-                <div className="flex-1 relative">
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search trials, publications, or experts..."
-                    className="w-full px-6 py-4 pr-14 rounded-full border-2 bg-white/90 backdrop-blur-sm shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 transition-all text-base"
-                    style={{
-                      borderColor: "#D0C4E2",
-                      color: "#2F3C96",
-                    }}
-                    onFocus={(e) => {
-                      e.target.style.borderColor = "#2F3C96";
-                      e.target.style.boxShadow =
-                        "0 0 0 2px rgba(47, 60, 150, 0.1)";
-                    }}
-                    onBlur={(e) => {
-                      e.target.style.borderColor = "#D0C4E2";
-                      e.target.style.boxShadow = "";
-                    }}
-                  />
-                  <motion.button
-                    type="submit"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center transition-all"
-                    style={{ backgroundColor: "#2F3C96" }}
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.95 }}
+              {/* Welcome for signed-in users */}
+              {user && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.8, delay: 0.5 }}
+                  className="p-4 rounded-xl border-2"
+                  style={{
+                    backgroundColor: "rgba(245, 242, 248, 0.6)",
+                    borderColor: "#D0C4E2",
+                  }}
+                >
+                  <p
+                    className="text-base font-semibold"
+                    style={{ color: "#2F3C96" }}
                   >
-                    <Search className="w-5 h-5 text-white" />
-                  </motion.button>
-                </div>
-              </div>
-            </form>
-          </motion.div>
+                    Welcome Back,{" "}
+                    <AuroraText
+                      colors={[
+                        "#D0C4E2",
+                        "#2F3C96",
+                        "#B8A5D5",
+                        "#474F97",
+                        "#E8E0EF",
+                      ]}
+                    >
+                      {user?.name || user?.username || "User"}!
+                    </AuroraText>
+                  </p>
+                </motion.div>
+              )}
+            </motion.div>
 
-          {/* CTA Buttons */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.6 }}
-            className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-4 sm:gap-4 w-full sm:w-auto px-2 sm:px-0"
-          >
-            {user ? (
-              // Single dashboard button for signed-in users
-              <ShinyButton
-                onClick={handleDashboardClick}
-                className="group relative w-full sm:w-auto px-6 sm:px-6 py-4 rounded-full font-semibold text-base shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
+            {/* Right Section - Get Started */}
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.8, delay: 0.2 }}
+              className="relative"
+            >
+              <div
+                className="rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 border-2 sm:shadow-2xl overflow-hidden"
                 style={{
-                  backgroundColor: "#F5F2F8",
-                  borderColor: "#D0C4E2",
-                  color: "#2F3C96",
-                  borderWidth: "1px",
+                  backgroundColor: isMobile
+                    ? "transparent"
+                    : "rgba(245, 242, 248, 0.95)",
+                  borderColor: isMobile ? "transparent" : "#D0C4E2",
                 }}
               >
-                <div className="relative z-10 flex items-center gap-3 !normal-case justify-center sm:justify-start">
-                  <LayoutDashboard className="w-5 h-5 shrink-0" />
-                  <div className="flex flex-col items-center sm:items-start">
-                    <span
-                      className="font-semibold text-sm sm:text-base tracking-normal leading-tight text-center sm:text-left"
-                      style={{ color: "#2F3C96" }}
-                    >
-                      See your personalized dashboard
-                    </span>
-                    <span
-                      className="text-xs font-normal text-center sm:text-left"
-                      style={{ color: "#787878" }}
-                    >
-                      Continue to your dashboard
-                    </span>
-                  </div>
-                </div>
-              </ShinyButton>
-            ) : (
-              // Two CTA buttons for non-signed-in users
-              <>
-                <ShinyButton
-                  onClick={() => navigate("/onboard/patient")}
-                  className="group relative w-full sm:w-auto px-6 sm:px-10 py-4 rounded-full font-semibold text-base shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
-                  style={{
-                    backgroundColor: "#F5F2F8",
-                    borderColor: "#D0C4E2",
-                    color: "#2F3C96",
-                    borderWidth: "1px",
-                  }}
+                {/* Title */}
+                <motion.h2
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.6, delay: 0.3 }}
+                  className="text-lg sm:text-xl md:text-2xl font-bold mb-5 text-center"
+                  style={{ color: "#2F3C96" }}
                 >
-                  <div className="relative z-10 flex items-center gap-3 !normal-case justify-center sm:justify-start">
-                    <Users className="w-5 h-5 shrink-0" />
-                    <div className="flex flex-col items-center sm:items-start">
-                      <span
-                        className="font-semibold text-sm sm:text-base tracking-normal leading-tight text-center sm:text-left"
-                        style={{ color: "#2F3C96" }}
-                      >
-                        Get Started
-                      </span>
-                      <span
-                        className="text-xs font-normal text-center sm:text-left"
-                        style={{ color: "#787878" }}
-                      >
-                        Join as Patient
-                      </span>
-                    </div>
-                  </div>
-                </ShinyButton>
-                <ShinyButton
-                  onClick={() => navigate("/onboard/researcher")}
-                  className="group relative w-full sm:w-auto px-6 sm:px-10 py-4 rounded-full font-semibold text-base shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
-                  style={{
-                    backgroundColor: "#F5F2F8",
-                    borderColor: "#D0C4E2",
-                    color: "#2F3C96",
-                    borderWidth: "1px",
-                  }}
-                >
-                  <div className="relative z-10 flex items-center gap-3 !normal-case justify-center sm:justify-start">
-                    <FlaskConical className="w-5 h-5 shrink-0" />
-                    <div className="flex flex-col items-center sm:items-start">
-                      <span
-                        className="font-semibold text-sm sm:text-base tracking-normal leading-tight text-center sm:text-left"
-                        style={{ color: "#2F3C96" }}
-                      >
-                        Get Started
-                      </span>
-                      <span
-                        className="text-xs font-normal text-center sm:text-left"
-                        style={{ color: "#787878" }}
-                      >
-                        For Researchers
-                      </span>
-                    </div>
-                  </div>
-                </ShinyButton>
-              </>
-            )}
-          </motion.div>
+                  Discover Before You Commit
+                </motion.h2>
 
-          {/* Tablet Mockup with Dashboard */}
-          <div className="mt-5 hidden md:block">
-            <TabletMockup imageSrc="/dashboard-preview.png" />
+                {/* Explanatory Text */}
+                <motion.p
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.6, delay: 0.4 }}
+                  className="text-[10px] sm:text-xs text-center mb-4 sm:mb-6 leading-relaxed px-1"
+                  style={{ color: "#787878" }}
+                >
+                  Browse clinical trials, publications, and experts. No sign-up
+                  required to start discovering!
+                </motion.p>
+
+                {/* CTA Buttons */}
+                <div className="space-y-2.5 sm:space-y-3 mb-4 sm:mb-6">
+                  {user ? (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.6, delay: 0.5 }}
+                    >
+                      <ShinyButton
+                        onClick={handleDashboardClick}
+                        className="group relative w-full px-4 sm:px-6 py-2.5 sm:py-3.5 rounded-lg sm:rounded-xl font-semibold text-sm sm:text-base shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-[1.02]"
+                        style={{
+                          backgroundColor: "#D0C4E2",
+                          color: "#2F3C96",
+                          borderWidth: "0px",
+                        }}
+                      >
+                        <div className="relative z-10 flex items-center justify-center gap-1.5 sm:gap-2">
+                          <LayoutDashboard className="w-4 h-4 sm:w-5 sm:h-5" />
+                          <span className="font-bold text-xs sm:text-sm">
+                            Go to Your Dashboard
+                          </span>
+                          <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5" />
+                        </div>
+                      </ShinyButton>
+                    </motion.div>
+                  ) : (
+                    <>
+                      {/* Role Selection - Segmented Toggle on Mobile, Buttons on Desktop */}
+                      {isMobile ? (
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.6, delay: 0.5 }}
+                          className="flex rounded-lg border-2 p-1"
+                          style={{
+                            borderColor: "#D0C4E2",
+                            backgroundColor: "#F5F2F8",
+                          }}
+                        >
+                          <button
+                            onClick={() => {
+                              setSelectedRole("patient");
+                              navigate("/trials");
+                            }}
+                            className={`flex-1 py-2 px-3 rounded-md text-xs font-semibold transition-all ${
+                              selectedRole === "patient"
+                                ? "shadow-sm"
+                                : "bg-transparent"
+                            }`}
+                            style={{
+                              backgroundColor:
+                                selectedRole === "patient"
+                                  ? "#D0C4E2"
+                                  : "transparent",
+                              color: "#2F3C96",
+                            }}
+                          >
+                            <div className="flex items-center justify-center gap-1.5">
+                              <Users className="w-3.5 h-3.5" />
+                              <span>Patient</span>
+                            </div>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedRole("researcher");
+                              navigate("/trials");
+                            }}
+                            className={`flex-1 py-2 px-3 rounded-md text-xs font-semibold transition-all ${
+                              selectedRole === "researcher"
+                                ? "shadow-sm"
+                                : "bg-transparent"
+                            }`}
+                            style={{
+                              backgroundColor:
+                                selectedRole === "researcher"
+                                  ? "#D0C4E2"
+                                  : "transparent",
+                              color: "#2F3C96",
+                            }}
+                          >
+                            <div className="flex items-center justify-center gap-1.5">
+                              <FlaskConical className="w-3.5 h-3.5" />
+                              <span>Researcher</span>
+                            </div>
+                          </button>
+                        </motion.div>
+                      ) : (
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.6, delay: 0.5 }}
+                          className="grid grid-cols-2 gap-3"
+                        >
+                          <ShinyButton
+                            onClick={() => navigate("/trials")}
+                            className="group relative w-full px-3 py-3.5 rounded-xl font-semibold text-sm shadow-md hover:shadow-lg transition-all duration-300 transform hover:scale-[1.02]"
+                            style={{
+                              backgroundColor: "#D0C4E2",
+                              color: "#2F3C96",
+                              borderWidth: "0px",
+                            }}
+                          >
+                            <div className="relative z-10 flex flex-col items-center gap-1.5 text-center">
+                              <Users
+                                className="w-5 h-5"
+                                style={{ color: "#2F3C96" }}
+                              />
+                              <div className="flex flex-col items-center">
+                                <span className="font-bold text-xs">
+                                  Explore as Patient
+                                </span>
+                                <span
+                                  className="text-xs"
+                                  style={{ color: "#474F97" }}
+                                >
+                                  Find Meaningful Health Insights
+                                </span>
+                              </div>
+                            </div>
+                          </ShinyButton>
+
+                          <ShinyButton
+                            onClick={() => navigate("/trials")}
+                            className="group relative w-full px-3 py-3.5 rounded-xl font-semibold text-sm shadow-md hover:shadow-lg transition-all duration-300 transform hover:scale-[1.02]"
+                            style={{
+                              backgroundColor: "#F5F2F8",
+                              borderColor: "#D0C4E2",
+                              color: "#2F3C96",
+                              borderWidth: "2px",
+                            }}
+                          >
+                            <div className="relative z-10 flex flex-col items-center gap-1.5 text-center">
+                              <FlaskConical
+                                className="w-5 h-5"
+                                style={{ color: "#2F3C96" }}
+                              />
+                              <div className="flex flex-col items-center">
+                                <span className="font-bold text-xs">
+                                  Explore as Researcher
+                                </span>
+                                <span
+                                  className="text-xs"
+                                  style={{ color: "#787878" }}
+                                >
+                                  Discover Research Possibilities
+                                </span>
+                              </div>
+                            </div>
+                          </ShinyButton>
+                        </motion.div>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* Credits Badge (for logged in users) or Free Searches (for logged out users) */}
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.6, delay: 0.7 }}
+                  className="pt-3 sm:pt-5 border-t-2"
+                  style={{ borderColor: "#D0C4E2" }}
+                >
+                  <div
+                    className="rounded-lg sm:rounded-xl p-3 sm:p-5 text-center border-2"
+                    style={{
+                      backgroundColor: "#F5F2F8",
+                      borderColor: "#D0C4E2",
+                    }}
+                  >
+                    {user ? (
+                      <>
+                        <div className="flex items-center justify-center gap-1.5 sm:gap-2 mb-1.5 sm:mb-2">
+                          <Sparkles
+                            className="w-4 h-4 sm:w-5 sm:h-5"
+                            style={{ color: "#D0C4E2" }}
+                          />
+                        </div>
+                        <p
+                          className="text-xs sm:text-sm font-semibold mb-0.5 sm:mb-1"
+                          style={{ color: "#2F3C96" }}
+                        >
+                          You have{" "}
+                          <span
+                            className="text-base sm:text-lg font-bold"
+                            style={{ color: "#2F3C96" }}
+                          >
+                            {credits} credits left
+                          </span>
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-center mb-3 sm:mb-4">
+                          <div
+                            className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full border-2 shadow-md"
+                            style={{
+                              background: `linear-gradient(to right, #F5F2F8, #E8E0EF)`,
+                              borderColor: "#D0C4E2",
+                            }}
+                          >
+                            <div className="flex items-center gap-1.5 sm:gap-2">
+                              <Search
+                                className="w-4 h-4 sm:w-5 sm:h-5"
+                                style={{ color: "#2F3C96" }}
+                              />
+                              <Sparkles
+                                className="w-4 h-4 sm:w-5 sm:h-5"
+                                style={{ color: "#D0C4E2" }}
+                              />
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className="text-xs sm:text-sm font-semibold"
+                                style={{ color: "#2F3C96" }}
+                              >
+                                Search using 6 free searches
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <p
+                          className="text-[10px] sm:text-xs leading-relaxed"
+                          style={{ color: "#787878" }}
+                        >
+                          Search through clinical trials, research publications,
+                          and healthcare experts. Start exploring now!
+                        </p>
+                      </>
+                    )}
+                  </div>
+                </motion.div>
+              </div>
+            </motion.div>
           </div>
         </div>
       </section>
 
+      {/* Trusted Research Networks Marquee */}
+      <div className={isMobile ? "py-8" : ""}>
+        <TrustedNetworksMarquee />
+      </div>
+<StatsSection />
+      {/* Get Started Section */}
+      {/* <GetStartedSection /> */}
+
       {/* How It Works Section */}
-      {isMobile ? <HowItWorksMobile /> : <HowItWorks />}
+      <div className={isMobile ? "py-8" : ""}>
+        {isMobile ? <HowItWorksMobile /> : <HowItWorks />}
+      </div>
 
       <style jsx>{`
         @keyframes gradient-slow {

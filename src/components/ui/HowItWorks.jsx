@@ -69,15 +69,15 @@ export default function HowItWorks() {
   const getColorClasses = (color) => {
     const colors = {
       indigo: {
-        gradient: "from-indigo-500 to-blue-600",
-        bg: "bg-indigo-50",
-        border: "border-indigo-200",
-        text: "text-indigo-700",
-        light: "bg-indigo-100",
-        darkGradient: "from-indigo-400 to-blue-500",
-        darkBg: "bg-indigo-950/40",
-        darkBorder: "border-indigo-800/50",
-        darkText: "text-indigo-300",
+        gradient: "from-[#2F3C96] to-[#D0C4E2]",
+        bg: "bg-[#F5F2F8]",
+        border: "border-[#D0C4E2]",
+        text: "text-[#2F3C96]",
+        light: "bg-[#E8E0EF]",
+        darkGradient: "from-[#2F3C96] to-[#D0C4E2]",
+        darkBg: "bg-[#F5F2F8]",
+        darkBorder: "border-[#D0C4E2]",
+        darkText: "text-[#2F3C96]",
       },
     };
     return colors[color] || colors.indigo;
@@ -98,15 +98,19 @@ export default function HowItWorks() {
               return (
                 <div
                   key={i}
-                  className="bg-white/80 dark:bg-gray-800/80 rounded-lg p-2 border border-gray-200/50 dark:border-gray-700/50"
+                  className="rounded-lg p-2 border"
+                  style={{
+                    backgroundColor: "#FFFFFF",
+                    borderColor: "#D0C4E2",
+                  }}
                 >
                   <div className="flex items-center gap-1.5 mb-1">
-                    <Icon className="w-3 h-3 text-indigo-500 dark:text-indigo-300" />
-                    <span className="text-[9px] font-semibold text-gray-900 dark:text-gray-100">
+                    <Icon className="w-3 h-3" style={{ color: "#D0C4E2" }} />
+                    <span className="text-[9px] font-semibold" style={{ color: "#2F3C96" }}>
                       {item.label}
                     </span>
                   </div>
-                  <div className="text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                  <div className="text-xs font-bold" style={{ color: "#2F3C96" }}>
                     {item.value}
                   </div>
                 </div>
@@ -119,27 +123,42 @@ export default function HowItWorks() {
         return (
           <div className="space-y-2 w-full">
             <button
-              className={`w-full py-1.5 px-3 bg-linear-to-r ${colorClasses.gradient} text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 shadow-md`}
+              className="w-full py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 shadow-md text-white"
+              style={{
+                background: `linear-gradient(to right, #2F3C96, #D0C4E2)`,
+              }}
             >
               <Zap className="w-3 h-3" />
               Generate
             </button>
-            <div className="bg-white/80 dark:bg-gray-800/80 rounded-lg p-2.5 border border-gray-200/50 dark:border-gray-700/50">
+            <div
+              className="rounded-lg p-2.5 border"
+              style={{
+                backgroundColor: "#FFFFFF",
+                borderColor: "#D0C4E2",
+              }}
+            >
               <div className="flex items-center justify-between mb-1.5">
-                <div className="text-xs font-bold text-gray-900 dark:text-gray-100">
+                <div className="text-xs font-bold" style={{ color: "#2F3C96" }}>
                   Summary
                 </div>
                 <div className="flex gap-1">
-                  <Download className="w-3 h-3 text-gray-600 dark:text-gray-400" />
-                  <Share2 className="w-3 h-3 text-gray-600 dark:text-gray-400" />
+                  <Download className="w-3 h-3" style={{ color: "#787878" }} />
+                  <Share2 className="w-3 h-3" style={{ color: "#787878" }} />
                 </div>
               </div>
-              <div className="w-full h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden mb-1">
+              <div
+                className="w-full h-1 rounded-full overflow-hidden mb-1"
+                style={{ backgroundColor: "#F5F2F8" }}
+              >
                 <div
-                  className={`h-full bg-linear-to-r ${colorClasses.gradient} w-3/4`}
+                  className="h-full w-3/4 rounded-full"
+                  style={{
+                    background: `linear-gradient(to right, #2F3C96, #D0C4E2)`,
+                  }}
                 />
               </div>
-              <div className="text-[10px] text-gray-600 dark:text-gray-400">
+              <div className="text-[10px]" style={{ color: "#787878" }}>
                 3 trials, 5 papers
               </div>
             </div>
@@ -150,21 +169,31 @@ export default function HowItWorks() {
         return (
           <div className="space-y-2 w-full">
             <div
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full ${colorClasses.bg} dark:${colorClasses.darkBg} border ${colorClasses.border} dark:${colorClasses.darkBorder} w-full justify-center`}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border w-full justify-center"
+              style={{
+                backgroundColor: "#F5F2F8",
+                borderColor: "#D0C4E2",
+              }}
             >
-              <Sparkles className="w-3 h-3 text-indigo-600 dark:text-indigo-300" />
-              <span className="text-[10px] font-bold text-indigo-700 dark:text-indigo-200">
+              <Sparkles className="w-3 h-3" style={{ color: "#D0C4E2" }} />
+              <span className="text-[10px] font-bold" style={{ color: "#2F3C96" }}>
                 AI Summary
               </span>
             </div>
-            <div className="bg-white/80 dark:bg-gray-800/80 rounded-lg p-2.5 border border-gray-200/50 dark:border-gray-700/50">
-              <div className="text-xs font-bold text-gray-900 dark:text-gray-100 mb-1.5">
+            <div
+              className="rounded-lg p-2.5 border"
+              style={{
+                backgroundColor: "#FFFFFF",
+                borderColor: "#D0C4E2",
+              }}
+            >
+              <div className="text-xs font-bold mb-1.5" style={{ color: "#2F3C96" }}>
                 Findings
               </div>
-              <div className="text-[10px] text-gray-700 dark:text-gray-300 leading-relaxed mb-2">
+              <div className="text-[10px] leading-relaxed mb-2" style={{ color: "#787878" }}>
                 78% response rate in advanced trials...
               </div>
-              <div className="flex items-center gap-1 text-indigo-600 dark:text-indigo-300 text-[10px] font-semibold">
+              <div className="flex items-center gap-1 text-[10px] font-semibold" style={{ color: "#D0C4E2" }}>
                 <Zap className="w-2.5 h-2.5" />
                 <span>2s</span>
               </div>
@@ -176,29 +205,44 @@ export default function HowItWorks() {
         return (
           <div className="space-y-2 w-full">
             <button
-              className={`w-full py-1.5 px-3 bg-linear-to-r ${colorClasses.gradient} text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 shadow-md`}
+              className="w-full py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 shadow-md text-white"
+              style={{
+                background: `linear-gradient(to right, #2F3C96, #D0C4E2)`,
+              }}
             >
               <Calendar className="w-3 h-3" />
               Schedule
             </button>
-            <div className="bg-white/80 dark:bg-gray-800/80 rounded-lg p-2.5 border border-gray-200/50 dark:border-gray-700/50">
+            <div
+              className="rounded-lg p-2.5 border"
+              style={{
+                backgroundColor: "#FFFFFF",
+                borderColor: "#D0C4E2",
+              }}
+            >
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
+                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: "#D0C4E2" }} />
                 <div className="flex-1">
-                  <div className="text-xs font-bold text-gray-900 dark:text-gray-100">
+                  <div className="text-xs font-bold" style={{ color: "#2F3C96" }}>
                     Dr. Chen
                   </div>
-                  <div className="text-[10px] text-gray-500 dark:text-gray-400">
+                  <div className="text-[10px]" style={{ color: "#787878" }}>
                     Online
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-1.5 p-1.5 bg-gray-50 dark:bg-gray-800/50 rounded border border-gray-200/50 dark:border-gray-700/50">
-                <MessageSquare className="w-3 h-3 text-gray-400 dark:text-gray-500" />
-                <span className="text-[10px] text-gray-500 dark:text-gray-400 flex-1">
+              <div
+                className="flex items-center gap-1.5 p-1.5 rounded border"
+                style={{
+                  backgroundColor: "#F5F2F8",
+                  borderColor: "#D0C4E2",
+                }}
+              >
+                <MessageSquare className="w-3 h-3" style={{ color: "#787878" }} />
+                <span className="text-[10px] flex-1" style={{ color: "#787878" }}>
                   Message...
                 </span>
-                <Send className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
+                <Send className="w-3 h-3" style={{ color: "#D0C4E2" }} />
               </div>
             </div>
           </div>
@@ -220,28 +264,44 @@ export default function HowItWorks() {
           className="relative h-[340px] rounded-2xl p-4 flex flex-col group overflow-hidden bg-transparent"
         >
           {/* Inner colored card - appears floating */}
-          <div className="relative h-full bg-white/95 dark:bg-gray-900/95 backdrop-blur-xl rounded-xl p-4 border border-gray-200/50 dark:border-gray-700/50 hover:shadow-2xl transition-all duration-300 flex flex-col">
+          <div
+            className="relative h-full backdrop-blur-xl rounded-xl p-4 border hover:shadow-2xl transition-all duration-300 flex flex-col"
+            style={{
+              backgroundColor: "#FFFFFF",
+              borderColor: "#D0C4E2",
+            }}
+          >
             <div
-              className={`absolute top-0 left-0 right-0 h-0.5 bg-linear-to-r ${colorClasses.gradient} opacity-60 group-hover:opacity-100 transition-opacity rounded-t-xl`}
+              className="absolute top-0 left-0 right-0 h-0.5 rounded-t-xl transition-opacity opacity-60 group-hover:opacity-100"
+              style={{
+                background: `linear-gradient(to right, #2F3C96, #D0C4E2)`,
+              }}
             />
 
             <motion.div
               whileHover={{ rotate: 8, scale: 1.05 }}
-              className={`inline-flex p-2 rounded-lg bg-linear-to-br ${colorClasses.gradient} shadow-md mb-3 w-fit`}
+              className="inline-flex p-2 rounded-lg shadow-md mb-3 w-fit"
+              style={{
+                background: `linear-gradient(to bottom right, #2F3C96, #D0C4E2)`,
+              }}
             >
               <Icon className="w-4 h-4 text-white" />
             </motion.div>
 
-            <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 mb-2 leading-tight line-clamp-2">
+            <h3 className="text-sm font-bold mb-2 leading-tight line-clamp-2" style={{ color: "#2F3C96" }}>
               {feature.title}
             </h3>
 
-            <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed mb-4 line-clamp-2">
+            <p className="text-xs leading-relaxed mb-4 line-clamp-2" style={{ color: "#787878" }}>
               {feature.description}
             </p>
 
             <div
-              className={`${colorClasses.bg} dark:${colorClasses.darkBg} rounded-lg p-3 border ${colorClasses.border} dark:${colorClasses.darkBorder} min-h-[140px] flex items-center backdrop-blur-sm transition-all flex-1`}
+              className="rounded-lg p-3 border min-h-[140px] flex items-center backdrop-blur-sm transition-all flex-1"
+              style={{
+                backgroundColor: "#F5F2F8",
+                borderColor: "#D0C4E2",
+              }}
             >
               {renderVisual(feature.visual, colorClasses)}
             </div>
@@ -256,8 +316,14 @@ export default function HowItWorks() {
   return (
     <section className="relative px-5  overflow-hidden">
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/3 left-1/4 w-96 h-96  rounded-full blur-3xl"></div>
-        <div className="absolute bottom-1/3 right-1/4 w-96 h-96  rounded-full blur-3xl"></div>
+        <div
+          className="absolute top-1/3 left-1/4 w-96 h-96 rounded-full blur-3xl opacity-30"
+          style={{ backgroundColor: "#" }}
+        ></div>
+        <div
+          className="absolute bottom-1/3 right-1/4 w-96 h-96 rounded-full blur-3xl opacity-20"
+          style={{ backgroundColor: "#" }}
+        ></div>
       </div>
 
       <div className="relative mt-5 max-w-5xl mx-auto">
@@ -268,16 +334,16 @@ export default function HowItWorks() {
           transition={{ duration: 0.6 }}
           className="text-center "
         >
-          <p className="text-xl md:text-2xl font-bold mb-4 text-black dark:text-indigo-100 leading-tight">
+          <p className="text-xl md:text-2xl font-bold mb-4 leading-tight" style={{ color: "#2F3C96" }}>
             Everything{" "}
             {isMobile ? (
-              <span className="text-indigo-600 dark:text-indigo-400">
+              <span style={{ color: "#D0C4E2" }}>
                 You Need for
               </span>
             ) : (
               <Highlighter
                 action="underline"
-                color="#4f46e5"
+                color="#D0C4E2"
                 strokeWidth={2}
                 animationDuration={600}
                 iterations={2}
@@ -290,11 +356,11 @@ export default function HowItWorks() {
             )}{" "}
             Smarter Healthcare{" "}
             {isMobile ? (
-              <span className="px-1 rounded">All in One Place</span>
+              <span className="px-1 rounded" style={{ color: "#D0C4E2" }}>All in One Place</span>
             ) : (
               <Highlighter
                 action="highlight"
-                color="#a5b4fc"
+                color="#D0C4E2"
                 strokeWidth={1}
                 animationDuration={1000}
                 iterations={2}
