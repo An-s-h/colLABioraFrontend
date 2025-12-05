@@ -550,7 +550,7 @@ export default function Landing() {
                                 className="text-sm sm:text-sm font-semibold"
                                 style={{ color: "#2F3C96" }}
                               >
-                                Search using 6 free searches
+                                Search (6 free searches left)
                               </span>
                             </div>
                           </div>
