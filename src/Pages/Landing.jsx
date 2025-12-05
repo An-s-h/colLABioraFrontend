@@ -21,7 +21,7 @@ import AnimatedBackground from "../components/ui/AnimatedBackground";
 import TrustedNetworksMarquee from "../components/TrustedNetworksMarquee";
 import StatsSection from "../components/StatsSection";
 import GetStartedSection from "../components/GetStartedSection";
-import HowItWorks from "../components/ui/HowItWorks";
+import HowItWorks from "../Components/ui/HowItWorks";
 import HowItWorksMobile from "../components/ui/how-it-works-mobile";
 import Footer from "../components/Footer";
 import { AuroraText } from "@/components/ui/aurora-text";
@@ -302,7 +302,7 @@ export default function Landing() {
               className="relative"
             >
               <div
-                className="rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 border-2 sm:shadow-2xl overflow-hidden"
+                className="rounded-2xl sm:rounded-3xl p-6 sm:p-6 md:p-8 border-2 sm:shadow-2xl overflow-hidden"
                 style={{
                   backgroundColor: isMobile
                     ? "transparent"
@@ -315,7 +315,7 @@ export default function Landing() {
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6, delay: 0.3 }}
-                  className="text-lg sm:text-xl md:text-2xl font-bold mb-5 text-center"
+                  className="text-xl sm:text-xl md:text-2xl font-bold mb-3 sm:mb-5 text-center whitespace-nowrap"
                   style={{ color: "#2F3C96" }}
                 >
                   Discover Before You Commit
@@ -326,7 +326,7 @@ export default function Landing() {
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6, delay: 0.4 }}
-                  className="text-[10px] sm:text-xs text-center mb-4 sm:mb-6 leading-relaxed px-1"
+                  className="text-sm sm:text-xs text-center mb-4 sm:mb-6 leading-tight px-2"
                   style={{ color: "#787878" }}
                 >
                   Browse clinical trials, publications, and experts. No sign-up
@@ -334,7 +334,7 @@ export default function Landing() {
                 </motion.p>
 
                 {/* CTA Buttons */}
-                <div className="space-y-2.5 sm:space-y-3 mb-4 sm:mb-6">
+                <div className="space-y-3 sm:space-y-3 mb-5 sm:mb-6">
                   {user ? (
                     <motion.div
                       initial={{ opacity: 0, y: 10 }}
@@ -367,7 +367,7 @@ export default function Landing() {
                           initial={{ opacity: 0, y: 10 }}
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ duration: 0.6, delay: 0.5 }}
-                          className="flex rounded-lg border-2 p-1"
+                          className="flex rounded-lg border-2 p-1.5"
                           style={{
                             borderColor: "#D0C4E2",
                             backgroundColor: "#F5F2F8",
@@ -378,7 +378,7 @@ export default function Landing() {
                               setSelectedRole("patient");
                               navigate("/trials");
                             }}
-                            className={`flex-1 py-2 px-3 rounded-md text-xs font-semibold transition-all ${
+                            className={`flex-1 py-3 px-4 rounded-md text-sm font-semibold transition-all ${
                               selectedRole === "patient"
                                 ? "shadow-sm"
                                 : "bg-transparent"
@@ -391,8 +391,8 @@ export default function Landing() {
                               color: "#2F3C96",
                             }}
                           >
-                            <div className="flex items-center justify-center gap-1.5">
-                              <Users className="w-3.5 h-3.5" />
+                            <div className="flex items-center justify-center gap-2">
+                              <Users className="w-4 h-4" />
                               <span>Patient</span>
                             </div>
                           </button>
@@ -401,7 +401,7 @@ export default function Landing() {
                               setSelectedRole("researcher");
                               navigate("/trials");
                             }}
-                            className={`flex-1 py-2 px-3 rounded-md text-xs font-semibold transition-all ${
+                            className={`flex-1 py-3 px-4 rounded-md text-sm font-semibold transition-all ${
                               selectedRole === "researcher"
                                 ? "shadow-sm"
                                 : "bg-transparent"
@@ -414,8 +414,8 @@ export default function Landing() {
                               color: "#2F3C96",
                             }}
                           >
-                            <div className="flex items-center justify-center gap-1.5">
-                              <FlaskConical className="w-3.5 h-3.5" />
+                            <div className="flex items-center justify-center gap-2">
+                              <FlaskConical className="w-4 h-4" />
                               <span>Researcher</span>
                             </div>
                           </button>
@@ -527,36 +527,36 @@ export default function Landing() {
                       </>
                     ) : (
                       <>
-                        <div className="flex items-center justify-center mb-3 sm:mb-4">
+                        <div className="flex items-center justify-center mb-4 sm:mb-4">
                           <div
-                            className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full border-2 shadow-md"
+                            className="inline-flex items-center gap-2.5 px-5 sm:px-5 py-3 sm:py-2.5 rounded-full border-2 shadow-md"
                             style={{
                               background: `linear-gradient(to right, #F5F2F8, #E8E0EF)`,
                               borderColor: "#D0C4E2",
                             }}
                           >
-                            <div className="flex items-center gap-1.5 sm:gap-2">
+                            <div className="flex items-center gap-2 sm:gap-2">
                               <Search
-                                className="w-4 h-4 sm:w-5 sm:h-5"
+                                className="w-5 h-5 sm:w-5 sm:h-5"
                                 style={{ color: "#2F3C96" }}
                               />
                               <Sparkles
-                                className="w-4 h-4 sm:w-5 sm:h-5"
+                                className="w-5 h-5 sm:w-5 sm:h-5"
                                 style={{ color: "#D0C4E2" }}
                               />
                             </div>
                             <div className="flex items-center gap-1.5">
                               <span
-                                className="text-xs sm:text-sm font-semibold"
+                                className="text-sm sm:text-sm font-semibold"
                                 style={{ color: "#2F3C96" }}
                               >
-                               You have 6 free searches left
+                                Search using 6 free searches
                               </span>
                             </div>
                           </div>
                         </div>
                         <p
-                          className="text-[10px] sm:text-xs leading-relaxed"
+                          className="text-sm sm:text-xs leading-relaxed"
                           style={{ color: "#787878" }}
                         >
                           Search through clinical trials, research publications,
@@ -576,7 +576,7 @@ export default function Landing() {
       <div className={isMobile ? "py-8" : ""}>
         <TrustedNetworksMarquee />
       </div>
-<StatsSection />
+      <StatsSection />
       {/* Get Started Section */}
       {/* <GetStartedSection /> */}
 

@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 
 import { motion, AnimatePresence } from "framer-motion";
-// import GlobalSearch from "./GlobalSearch";
+import GlobalSearch from "./GlobalSearch";
+
 export default function Navbar() {
   const [user, setUser] = useState(null);
   const [isMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -621,7 +622,7 @@ export default function Navbar() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -20, scale: 0.95 }}
             transition={{ duration: 0.2 }}
-            className="pointer-events-auto absolute top-20 left-4 right-4 mx-auto rounded-3xl backdrop-blur-2xl border shadow-2xl py-6 px-6 flex flex-col items-stretch gap-4 sm:hidden z-50"
+            className="pointer-events-auto absolute top-20 left-4 right-4 mx-auto rounded-2xl backdrop-blur-2xl border shadow-2xl py-4 px-4 flex flex-col items-stretch gap-2.5 sm:hidden z-50 max-h-[70vh] overflow-y-auto"
             style={{
               backgroundColor: "rgba(245, 242, 248, 0.95)",
               borderColor: "#D0C4E2",
@@ -634,7 +635,7 @@ export default function Navbar() {
 
             {/* Navigation Links Section */}
             <div
-              className="space-y-2 pb-4 border-b"
+              className="space-y-1.5 pb-3 border-b"
               style={{ borderColor: "#D0C4E2" }}
             >
               {navItems.map((item) => (
@@ -642,7 +643,7 @@ export default function Navbar() {
                   key={item}
                   to={`/${item.toLowerCase()}`}
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex items-center gap-4 w-full text-lg font-medium rounded-2xl py-3 px-4 transition-all duration-200 group"
+                  className="flex items-center gap-3 w-full text-base font-medium rounded-xl py-2 px-3 transition-all duration-200 group"
                   style={{ color: "#2F3C96" }}
                   onMouseEnter={(e) => {
                     e.target.style.backgroundColor = "#E8E0EF";
@@ -654,7 +655,7 @@ export default function Navbar() {
                   }}
                 >
                   <span
-                    className="p-2 rounded-xl group-hover:scale-110 transition-all duration-200"
+                    className="p-1.5 rounded-lg group-hover:scale-110 transition-all duration-200"
                     style={{ backgroundColor: "#E8E0EF", color: "#2F3C96" }}
                   >
                     {getIcon(item)}
@@ -667,13 +668,13 @@ export default function Navbar() {
             {/* User-Specific Links */}
             {user ? (
               <div
-                className="space-y-2 pb-4 border-b"
+                className="space-y-1.5 pb-3 border-b"
                 style={{ borderColor: "#D0C4E2" }}
               >
                 <Link
                   to={getDashboardPath()}
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex items-center gap-4 w-full text-lg font-medium rounded-2xl py-3 px-4 transition-all duration-200 group"
+                  className="flex items-center gap-3 w-full text-base font-medium rounded-xl py-2 px-3 transition-all duration-200 group"
                   style={{ color: "#2F3C96" }}
                   onMouseEnter={(e) => {
                     e.target.style.backgroundColor = "#E8E0EF";
@@ -685,11 +686,11 @@ export default function Navbar() {
                   }}
                 >
                   <span
-                    className="p-2 rounded-xl group-hover:scale-110 transition-all duration-200"
+                    className="p-1.5 rounded-lg group-hover:scale-110 transition-all duration-200"
                     style={{ backgroundColor: "#E8E0EF", color: "#2F3C96" }}
                   >
                     <svg
-                      className="w-5 h-5"
+                      className="w-4 h-4"
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
@@ -707,7 +708,7 @@ export default function Navbar() {
                 <Link
                   to="/favorites"
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex items-center gap-4 w-full text-lg font-medium rounded-2xl py-3 px-4 transition-all duration-200 group"
+                  className="flex items-center gap-3 w-full text-base font-medium rounded-xl py-2 px-3 transition-all duration-200 group"
                   style={{ color: "#2F3C96" }}
                   onMouseEnter={(e) => {
                     e.target.style.backgroundColor = "#E8E0EF";
@@ -719,11 +720,11 @@ export default function Navbar() {
                   }}
                 >
                   <span
-                    className="p-2 rounded-xl group-hover:scale-110 transition-all duration-200"
+                    className="p-1.5 rounded-lg group-hover:scale-110 transition-all duration-200"
                     style={{ backgroundColor: "#E8E0EF", color: "#2F3C96" }}
                   >
                     <svg
-                      className="w-5 h-5"
+                      className="w-4 h-4"
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
@@ -741,7 +742,7 @@ export default function Navbar() {
                 <Link
                   to="/insights"
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex items-center gap-4 w-full text-lg font-medium rounded-2xl py-3 px-4 transition-all duration-200 group"
+                  className="flex items-center gap-3 w-full text-base font-medium rounded-xl py-2 px-3 transition-all duration-200 group"
                   style={{ color: "#2F3C96" }}
                   onMouseEnter={(e) => {
                     e.target.style.backgroundColor = "#E8E0EF";
@@ -753,11 +754,11 @@ export default function Navbar() {
                   }}
                 >
                   <span
-                    className="p-2 rounded-xl group-hover:scale-110 transition-all duration-200"
+                    className="p-1.5 rounded-lg group-hover:scale-110 transition-all duration-200"
                     style={{ backgroundColor: "#E8E0EF", color: "#2F3C96" }}
                   >
                     <svg
-                      className="w-5 h-5"
+                      className="w-4 h-4"
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
@@ -776,11 +777,11 @@ export default function Navbar() {
             ) : null}
 
             {/* Auth Button */}
-            <div className="pt-2">
+            <div className="pt-1.5">
               {user ? (
                 <button
                   onClick={handleLogout}
-                  className="w-full text-center text-lg font-semibold text-white py-4 rounded-2xl shadow-lg transition-all duration-200 transform hover:scale-[1.02]"
+                  className="w-full text-center text-base font-semibold text-white py-2.5 rounded-xl shadow-lg transition-all duration-200 transform hover:scale-[1.02]"
                   style={{
                     background: "linear-gradient(135deg, #dc2626, #ef4444)",
                   }}
@@ -799,7 +800,7 @@ export default function Navbar() {
                 <Link
                   to="/signin"
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex items-center justify-center w-full text-center text-lg font-semibold text-white py-4 rounded-2xl shadow-lg transition-all duration-200 transform hover:scale-[1.02]"
+                  className="flex items-center justify-center w-full text-center text-base font-semibold text-white py-2.5 rounded-xl shadow-lg transition-all duration-200 transform hover:scale-[1.02]"
                   style={{
                     background: "linear-gradient(135deg, #2F3C96, #474F97)",
                   }}
