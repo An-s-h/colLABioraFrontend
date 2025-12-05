@@ -21,7 +21,7 @@ import AnimatedBackground from "../components/ui/AnimatedBackground";
 import TrustedNetworksMarquee from "../components/TrustedNetworksMarquee";
 import StatsSection from "../components/StatsSection";
 import GetStartedSection from "../components/GetStartedSection";
-import HowItWorks from "../Components/ui/HowItWorks";
+import HowItWorks from "../components/ui/HowItWorks";
 import HowItWorksMobile from "../components/ui/how-it-works-mobile";
 import Footer from "../components/Footer";
 import { AuroraText } from "@/components/ui/aurora-text";
