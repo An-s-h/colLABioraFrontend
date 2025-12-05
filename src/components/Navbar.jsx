@@ -10,6 +10,8 @@ export default function Navbar() {
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const menuRef = useRef(null);
   const notificationRef = useRef(null);
+  const mobileMenuRef = useRef(null);
+  const mobileMenuButtonRef = useRef(null);
   const scrollTimeoutRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -65,7 +67,15 @@ export default function Navbar() {
       ) {
         setIsNotificationOpen(false);
       }
-      setIsMobileMenuOpen(false);
+      // Only close mobile menu if it's rendered (open) and click is outside both the menu and the button
+      if (
+        mobileMenuRef.current &&
+        !mobileMenuRef.current.contains(event.target) &&
+        mobileMenuButtonRef.current &&
+        !mobileMenuButtonRef.current.contains(event.target)
+      ) {
+        setIsMobileMenuOpen(false);
+      }
     };
     document.addEventListener("mousedown", handleClickOutside);
 
@@ -551,7 +561,11 @@ export default function Navbar() {
           )}
 
           <motion.button
-            onClick={() => setIsMobileMenuOpen(!isMenuOpen)}
+            ref={mobileMenuButtonRef}
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsMobileMenuOpen(prev => !prev);
+            }}
             className="w-10 h-10 rounded-full transition-all duration-300 flex items-center justify-center shadow-md hover:shadow-lg border-2"
             style={{
               background: "linear-gradient(135deg, #F5F2F8, #E8E0EF)",
@@ -617,6 +631,7 @@ export default function Navbar() {
       <AnimatePresence>
         {isMenuOpen && (
           <motion.div
+            ref={mobileMenuRef}
             initial={{ opacity: 0, y: -20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -20, scale: 0.95 }}
