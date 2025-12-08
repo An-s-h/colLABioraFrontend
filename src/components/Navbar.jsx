@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 
 import { motion, AnimatePresence } from "framer-motion";
-//import GlobalSearch from "./GlobalSearch";
+import GlobalSearch from "./GlobalSearch";
 
 export default function Navbar() {
   const [user, setUser] = useState(null);
@@ -23,8 +23,11 @@ export default function Navbar() {
   const isDashboardPage = location.pathname.includes("/dashboard");
 
   // Navigation items - filter out Trials, Publications, Experts on dashboard pages
+  // Also hide all nav items if user is not signed in
   const allNavItems = ["Trials", "Publications", "Experts", "Forums"];
-  const navItems = isDashboardPage
+  const navItems = !user
+    ? [] // No nav items if user is not signed in
+    : isDashboardPage
     ? allNavItems.filter(
         (item) => !["Trials", "Publications", "Experts"].includes(item)
       )
@@ -254,28 +257,30 @@ export default function Navbar() {
 
         {/* Desktop Nav */}
         <nav className="hidden sm:flex items-center gap-6 text-[15px] font-semibold">
-          {navItems.map((item) => (
-            <Link
-              key={item}
-              to={`/${item.toLowerCase()}`}
-              className="relative group transition-all py-2"
-            >
-              <span
-                className="relative z-10 transition-colors duration-200"
-                style={{
-                  color: "#2F3C96",
-                }}
-                onMouseEnter={(e) => (e.target.style.color = "#B8A5D5")}
-                onMouseLeave={(e) => (e.target.style.color = "#2F3C96")}
+          {/* Only show nav items if user is signed in */}
+          {user &&
+            navItems.map((item) => (
+              <Link
+                key={item}
+                to={`/${item.toLowerCase()}`}
+                className="relative group transition-all py-2"
               >
-                {item}
-              </span>
-              <span
-                className="absolute bottom-0 left-0 w-0 h-[3px] rounded-full transition-all duration-300 group-hover:w-full"
-                style={{ backgroundColor: "#2F3C96" }}
-              ></span>
-            </Link>
-          ))}
+                <span
+                  className="relative z-10 transition-colors duration-200"
+                  style={{
+                    color: "#2F3C96",
+                  }}
+                  onMouseEnter={(e) => (e.target.style.color = "#B8A5D5")}
+                  onMouseLeave={(e) => (e.target.style.color = "#2F3C96")}
+                >
+                  {item}
+                </span>
+                <span
+                  className="absolute bottom-0 left-0 w-0 h-[3px] rounded-full transition-all duration-300 group-hover:w-full"
+                  style={{ backgroundColor: "#2F3C96" }}
+                ></span>
+              </Link>
+            ))}
 
           {/* Global Search */}
           {/* <GlobalSearch /> */}
@@ -514,10 +519,10 @@ export default function Navbar() {
           </div>
         </nav>
 
-        {/* Mobile Hamburger */}
-        <div className="sm:hidden flex items-center gap-2">
-          {/* Notification Bell for Mobile */}
-          {user && (
+        {/* Mobile Hamburger - Only show if user is signed in */}
+        {user && (
+          <div className="sm:hidden flex items-center gap-2">
+            {/* Notification Bell for Mobile */}
             <motion.button
               onClick={() => setIsNotificationOpen(!isNotificationOpen)}
               className="w-10 h-10 rounded-full shadow-md hover:shadow-lg transition-all duration-300 flex items-center justify-center border"
@@ -544,50 +549,76 @@ export default function Navbar() {
                 />
               </svg>
             </motion.button>
-          )}
 
-          <motion.button
-            ref={mobileMenuButtonRef}
-            onClick={(e) => {
-              e.stopPropagation();
-              setIsMobileMenuOpen((prev) => !prev);
-            }}
-            className="w-10 h-10 rounded-full transition-all duration-300 flex items-center justify-center shadow-md hover:shadow-lg border-2"
-            style={{
-              background: "linear-gradient(135deg, #F5F2F8, #E8E0EF)",
-              borderColor: "#D0C4E2",
-              color: "#2F3C96",
-            }}
-            whileHover={{
-              scale: 1.1,
-              background: "linear-gradient(135deg, #E8E0EF, #F5F2F8)",
-            }}
-            whileTap={{ scale: 0.95 }}
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="w-5 h-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth="2"
+            <motion.button
+              ref={mobileMenuButtonRef}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsMobileMenuOpen((prev) => !prev);
+              }}
+              className="w-10 h-10 rounded-full transition-all duration-300 flex items-center justify-center shadow-md hover:shadow-lg border-2"
+              style={{
+                background: "linear-gradient(135deg, #F5F2F8, #E8E0EF)",
+                borderColor: "#D0C4E2",
+                color: "#2F3C96",
+              }}
+              whileHover={{
+                scale: 1.1,
+                background: "linear-gradient(135deg, #E8E0EF, #F5F2F8)",
+              }}
+              whileTap={{ scale: 0.95 }}
             >
-              {isMenuOpen ? (
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              ) : (
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M4 6h16M4 12h16M4 18h16"
-                />
-              )}
-            </svg>
-          </motion.button>
-        </div>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="w-5 h-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                {isMenuOpen ? (
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                ) : (
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M4 6h16M4 12h16M4 18h16"
+                  />
+                )}
+              </svg>
+            </motion.button>
+          </div>
+        )}
+
+        {/* Mobile Sign In Button - Only show if user is not signed in */}
+        {!user && (
+          <div className="sm:hidden">
+            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+              <Link
+                to="/signin"
+                className="px-5 py-2 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 font-semibold border-2 text-white text-sm"
+                style={{
+                  background: "linear-gradient(135deg, #2F3C96, #474F97)",
+                  borderColor: "#D0C4E2",
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.background =
+                    "linear-gradient(135deg, #474F97, #2F3C96)";
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.background =
+                    "linear-gradient(135deg, #2F3C96, #474F97)";
+                }}
+              >
+                Sign In
+              </Link>
+            </motion.div>
+          </div>
+        )}
 
         {/* Scroll Progress Bar - Below Navbar */}
         <motion.div
@@ -615,7 +646,7 @@ export default function Navbar() {
       </motion.div>
 
       <AnimatePresence>
-        {isMenuOpen && (
+        {isMenuOpen && user && (
           <motion.div
             ref={mobileMenuRef}
             initial={{ opacity: 0, y: -20, scale: 0.95 }}
@@ -633,37 +664,39 @@ export default function Navbar() {
               <GlobalSearch />
             </div> */}
 
-            {/* Navigation Links Section */}
-            <div
-              className="space-y-1.5 pb-3 border-b"
-              style={{ borderColor: "#D0C4E2" }}
-            >
-              {navItems.map((item) => (
-                <Link
-                  key={item}
-                  to={`/${item.toLowerCase()}`}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex items-center gap-3 w-full text-base font-medium rounded-xl py-2 px-3 transition-all duration-200 group"
-                  style={{ color: "#2F3C96" }}
-                  onMouseEnter={(e) => {
-                    e.target.style.backgroundColor = "#E8E0EF";
-                    e.target.style.color = "#474F97";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.target.style.backgroundColor = "transparent";
-                    e.target.style.color = "#2F3C96";
-                  }}
-                >
-                  <span
-                    className="p-1.5 rounded-lg group-hover:scale-110 transition-all duration-200"
-                    style={{ backgroundColor: "#E8E0EF", color: "#2F3C96" }}
+            {/* Navigation Links Section - Only show if user is signed in */}
+            {user && navItems.length > 0 && (
+              <div
+                className="space-y-1.5 pb-3 border-b"
+                style={{ borderColor: "#D0C4E2" }}
+              >
+                {navItems.map((item) => (
+                  <Link
+                    key={item}
+                    to={`/${item.toLowerCase()}`}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="flex items-center gap-3 w-full text-base font-medium rounded-xl py-2 px-3 transition-all duration-200 group"
+                    style={{ color: "#2F3C96" }}
+                    onMouseEnter={(e) => {
+                      e.target.style.backgroundColor = "#E8E0EF";
+                      e.target.style.color = "#474F97";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.backgroundColor = "transparent";
+                      e.target.style.color = "#2F3C96";
+                    }}
                   >
-                    {getIcon(item)}
-                  </span>
-                  {item}
-                </Link>
-              ))}
-            </div>
+                    <span
+                      className="p-1.5 rounded-lg group-hover:scale-110 transition-all duration-200"
+                      style={{ backgroundColor: "#E8E0EF", color: "#2F3C96" }}
+                    >
+                      {getIcon(item)}
+                    </span>
+                    {item}
+                  </Link>
+                ))}
+              </div>
+            )}
 
             {/* User-Specific Links */}
             {user ? (
@@ -776,9 +809,9 @@ export default function Navbar() {
               </div>
             ) : null}
 
-            {/* Auth Button */}
-            <div className="pt-1.5">
-              {user ? (
+            {/* Auth Button - Only show if user is signed in (mobile menu only shows when signed in) */}
+            {user && (
+              <div className="pt-1.5">
                 <button
                   onClick={handleLogout}
                   className="w-full text-center text-base font-semibold text-white py-2.5 rounded-xl shadow-lg transition-all duration-200 transform hover:scale-[1.02]"
@@ -796,27 +829,8 @@ export default function Navbar() {
                 >
                   Logout
                 </button>
-              ) : (
-                <Link
-                  to="/signin"
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex items-center justify-center w-full text-center text-base font-semibold text-white py-2.5 rounded-xl shadow-lg transition-all duration-200 transform hover:scale-[1.02]"
-                  style={{
-                    background: "linear-gradient(135deg, #2F3C96, #474F97)",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.target.style.background =
-                      "linear-gradient(135deg, #474F97, #2F3C96)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.target.style.background =
-                      "linear-gradient(135deg, #2F3C96, #474F97)";
-                  }}
-                >
-                  Sign In
-                </Link>
-              )}
-            </div>
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

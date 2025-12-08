@@ -16,6 +16,9 @@ import {
   User,
   LogIn,
   Star,
+  Calendar,
+  MessageSquare,
+  UserPlus,
 } from "lucide-react";
 import AnimatedBackground from "../components/ui/AnimatedBackground";
 import TrustedNetworksMarquee from "../components/TrustedNetworksMarquee";
@@ -164,102 +167,104 @@ export default function Landing() {
                 </div>
               </motion.h1>
 
-              {/* Simplified Value Props - Collapsible on Mobile */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8, delay: 0.3 }}
-                className="mb-4 sm:mb-6"
-              >
-                {isMobile ? (
-                  <>
-                    <button
-                      onClick={() => setIsBulletsExpanded(!isBulletsExpanded)}
-                      className="flex items-center justify-between w-full mb-2"
-                      style={{ color: "#2F3C96" }}
-                    >
-                      <span className="text-sm font-semibold">
-                        Key Features
-                      </span>
-                      <ChevronDown
-                        className={`w-4 h-4 transition-transform ${
-                          isBulletsExpanded ? "rotate-180" : ""
-                        }`}
-                      />
-                    </button>
-                    {isBulletsExpanded && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="space-y-2"
+              {/* Simplified Value Props - Collapsible on Mobile - Only show if user is not signed in */}
+              {!user && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.8, delay: 0.3 }}
+                  className="mb-4 sm:mb-6"
+                >
+                  {isMobile ? (
+                    <>
+                      <button
+                        onClick={() => setIsBulletsExpanded(!isBulletsExpanded)}
+                        className="flex items-center justify-between w-full mb-2"
+                        style={{ color: "#2F3C96" }}
                       >
-                        {[
-                          "Find clinical trials tailored to your needs",
-                          "Connect with researchers and experts",
-                          "Connect and collaborate in well-moderated forums",
-                        ].map((text, idx) => (
-                          <motion.div
-                            key={idx}
-                            initial={{ opacity: 0, x: -20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ duration: 0.3, delay: idx * 0.1 }}
-                            className="flex items-center gap-2"
-                          >
-                            <div
-                              className="w-4 h-4 rounded-full flex items-center justify-center shrink-0"
-                              style={{ backgroundColor: "#E8E0EF" }}
-                            >
-                              <CheckCircle2
-                                className="w-3 h-3"
-                                style={{ color: "#2F3C96" }}
-                              />
-                            </div>
-                            <span
-                              className="text-xs font-medium leading-tight"
-                              style={{ color: "#2F3C96" }}
-                            >
-                              {text}
-                            </span>
-                          </motion.div>
-                        ))}
-                      </motion.div>
-                    )}
-                  </>
-                ) : (
-                  <div className="space-y-2.5">
-                    {[
-                      "Find clinical trials tailored to your needs",
-                      "Connect with researchers and experts",
-                      "Connect and collaborate in well-moderated forums",
-                    ].map((text, idx) => (
-                      <motion.div
-                        key={idx}
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ duration: 0.6, delay: 0.4 + idx * 0.1 }}
-                        className="flex items-center gap-2.5"
-                      >
-                        <div
-                          className="w-5 h-5 rounded-full flex items-center justify-center shrink-0"
-                          style={{ backgroundColor: "#E8E0EF" }}
-                        >
-                          <CheckCircle2
-                            className="w-3.5 h-3.5"
-                            style={{ color: "#2F3C96" }}
-                          />
-                        </div>
-                        <span
-                          className="text-sm font-medium leading-tight"
-                          style={{ color: "#2F3C96" }}
-                        >
-                          {text}
+                        <span className="text-sm font-semibold">
+                          Key Features
                         </span>
-                      </motion.div>
-                    ))}
-                  </div>
-                )}
-              </motion.div>
+                        <ChevronDown
+                          className={`w-4 h-4 transition-transform ${
+                            isBulletsExpanded ? "rotate-180" : ""
+                          }`}
+                        />
+                      </button>
+                      {isBulletsExpanded && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="space-y-2"
+                        >
+                          {[
+                            "Find clinical trials tailored to your needs",
+                            "Connect with researchers and experts",
+                            "Connect and collaborate in well-moderated forums",
+                          ].map((text, idx) => (
+                            <motion.div
+                              key={idx}
+                              initial={{ opacity: 0, x: -20 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ duration: 0.3, delay: idx * 0.1 }}
+                              className="flex items-center gap-2"
+                            >
+                              <div
+                                className="w-4 h-4 rounded-full flex items-center justify-center shrink-0"
+                                style={{ backgroundColor: "#E8E0EF" }}
+                              >
+                                <CheckCircle2
+                                  className="w-3 h-3"
+                                  style={{ color: "#2F3C96" }}
+                                />
+                              </div>
+                              <span
+                                className="text-xs font-medium leading-tight"
+                                style={{ color: "#2F3C96" }}
+                              >
+                                {text}
+                              </span>
+                            </motion.div>
+                          ))}
+                        </motion.div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {[
+                        "Find clinical trials tailored to your needs",
+                        "Connect with researchers and experts",
+                        "Connect and collaborate in well-moderated forums",
+                      ].map((text, idx) => (
+                        <motion.div
+                          key={idx}
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ duration: 0.6, delay: 0.4 + idx * 0.1 }}
+                          className="flex items-center gap-2.5"
+                        >
+                          <div
+                            className="w-5 h-5 rounded-full flex items-center justify-center shrink-0"
+                            style={{ backgroundColor: "#E8E0EF" }}
+                          >
+                            <CheckCircle2
+                              className="w-3.5 h-3.5"
+                              style={{ color: "#2F3C96" }}
+                            />
+                          </div>
+                          <span
+                            className="text-sm font-medium leading-tight"
+                            style={{ color: "#2F3C96" }}
+                          >
+                            {text}
+                          </span>
+                        </motion.div>
+                      ))}
+                    </div>
+                  )}
+                </motion.div>
+              )}
 
               {/* Welcome for signed-in users */}
               {user && (
@@ -267,29 +272,130 @@ export default function Landing() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.8, delay: 0.5 }}
-                  className="p-4 rounded-xl border-2"
-                  style={{
-                    backgroundColor: "rgba(245, 242, 248, 0.6)",
-                    borderColor: "#D0C4E2",
-                  }}
+                  className="space-y-4"
                 >
-                  <p
-                    className="text-base font-semibold"
-                    style={{ color: "#2F3C96" }}
+                  {/* Welcome Message */}
+                  <div
+                    className="p-4 rounded-xl border-2"
+                    style={{
+                      backgroundColor: "rgba(245, 242, 248, 0.6)",
+                      borderColor: "#D0C4E2",
+                    }}
                   >
-                    Welcome Back,{" "}
-                    <AuroraText
-                      colors={[
-                        "#D0C4E2",
-                        "#2F3C96",
-                        "#B8A5D5",
-                        "#474F97",
-                        "#E8E0EF",
-                      ]}
+                    <p
+                      className="text-base font-semibold mb-3"
+                      style={{ color: "#2F3C96" }}
                     >
-                      {user?.name || user?.username || "User"}!
-                    </AuroraText>
-                  </p>
+                      Welcome Back,{" "}
+                      <AuroraText
+                        colors={[
+                          "#D0C4E2",
+                          "#2F3C96",
+                          "#B8A5D5",
+                          "#474F97",
+                          "#E8E0EF",
+                        ]}
+                      >
+                        {user?.name || user?.username || "User"}!
+                      </AuroraText>
+                    </p>
+
+                    {/* Metrics Grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-4">
+                      {/* Upcoming Meetings */}
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ duration: 0.4, delay: 0.6 }}
+                        className="p-3 rounded-lg border"
+                        style={{
+                          backgroundColor: "rgba(255, 255, 255, 0.7)",
+                          borderColor: "#D0C4E2",
+                        }}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <Calendar
+                            className="w-4 h-4"
+                            style={{ color: "#2F3C96" }}
+                          />
+                          <span
+                            className="text-xs font-semibold"
+                            style={{ color: "#2F3C96" }}
+                          >
+                            Upcoming Meetings
+                          </span>
+                        </div>
+                        <p
+                          className="text-xl font-bold"
+                          style={{ color: "#2F3C96" }}
+                        >
+                          2
+                        </p>
+                      </motion.div>
+
+                      {/* Forums Participated */}
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ duration: 0.4, delay: 0.7 }}
+                        className="p-3 rounded-lg border"
+                        style={{
+                          backgroundColor: "rgba(255, 255, 255, 0.7)",
+                          borderColor: "#D0C4E2",
+                        }}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <MessageSquare
+                            className="w-4 h-4"
+                            style={{ color: "#2F3C96" }}
+                          />
+                          <span
+                            className="text-xs font-semibold"
+                            style={{ color: "#2F3C96" }}
+                          >
+                            Forums Participated
+                          </span>
+                        </div>
+                        <p
+                          className="text-xl font-bold"
+                          style={{ color: "#2F3C96" }}
+                        >
+                          2
+                        </p>
+                      </motion.div>
+
+                      {/* Researchers Followed */}
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ duration: 0.4, delay: 0.8 }}
+                        className="p-3 rounded-lg border col-span-2 sm:col-span-1"
+                        style={{
+                          backgroundColor: "rgba(255, 255, 255, 0.7)",
+                          borderColor: "#D0C4E2",
+                        }}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <UserPlus
+                            className="w-4 h-4"
+                            style={{ color: "#2F3C96" }}
+                          />
+                          <span
+                            className="text-xs font-semibold"
+                            style={{ color: "#2F3C96" }}
+                          >
+                            Researchers Followed
+                          </span>
+                        </div>
+                        <p
+                          className="text-xl font-bold"
+                          style={{ color: "#2F3C96" }}
+                        >
+                          4
+                        </p>
+                      </motion.div>
+                    </div>
+                  </div>
                 </motion.div>
               )}
             </motion.div>
@@ -550,7 +656,7 @@ export default function Landing() {
                                 className="text-sm sm:text-sm font-semibold"
                                 style={{ color: "#2F3C96" }}
                               >
-                               Search (6 free searches left)
+                                Search (6 free searches left)
                               </span>
                             </div>
                           </div>
@@ -578,7 +684,7 @@ export default function Landing() {
       </div>
       <StatsSection />
       {/* Get Started Section */}
-      {/* <GetStartedSection /> */}
+       <GetStartedSection /> 
 
       {/* How It Works Section */}
       <div className={isMobile ? "py-8" : ""}>
