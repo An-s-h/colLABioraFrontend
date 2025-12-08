@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 
 import { motion, AnimatePresence } from "framer-motion";
-import GlobalSearch from "./GlobalSearch";
+//import GlobalSearch from "./GlobalSearch";
 
 export default function Navbar() {
   const [user, setUser] = useState(null);

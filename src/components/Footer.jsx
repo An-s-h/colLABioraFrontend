@@ -16,14 +16,7 @@ export default function Footer() {
     <footer className="relative w-full pb-10 pt-4 text-center bg-transparent">
       {/* Logo */}
       <div className="flex items-center justify-center gap-2 mb-4">
-        <span
-          className="text-4xl font-bold lobster-two-regular tracking-tight transition-colors"
-          style={{ color: "#2F3C96" }}
-          onMouseEnter={(e) => (e.target.style.color = "#D0C4E2")}
-          onMouseLeave={(e) => (e.target.style.color = "#2F3C96")}
-        >
-          Collabiora
-        </span>
+   
       </div>
 
       {/* Social Media Icons */}
@@ -74,7 +67,7 @@ export default function Footer() {
       <div className="text-sm" style={{ color: "#787878" }}>
         © {new Date().getFullYear()}{" "}
         <span
-          className="lobster-two-regular tracking-tight"
+          className=" tracking-tight"
           style={{ color: "#2F3C96" }}
         >
           Collabiora
