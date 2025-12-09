@@ -28,6 +28,9 @@ import SmartSearchInput from "../components/SmartSearchInput.jsx";
 import { BorderBeam } from "@/components/ui/border-beam";
 import AnimatedBackgroundDiff from "../components/ui/AnimatedBackgroundDiff.jsx";
 import { AuroraText } from "@/components/ui/aurora-text";
+import FreeSearchesIndicator, {
+  useFreeSearches,
+} from "../components/FreeSearchesIndicator.jsx";
 export default function Trials() {
   const navigate = useNavigate();
   const [q, setQ] = useState("");
@@ -39,10 +42,12 @@ export default function Trials() {
   const [userMedicalInterest, setUserMedicalInterest] = useState(""); // User's medical interest
   const [isInitialLoad, setIsInitialLoad] = useState(true); // Track if it's the initial load
   const [isSignedIn, setIsSignedIn] = useState(false); // Track if user is signed in
+  const [user, setUser] = useState(null); // Track user state
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false); // Start with loading false - no initial search
   const [favorites, setFavorites] = useState([]);
   const [favoritingItems, setFavoritingItems] = useState(new Set()); // Track items being favorited/unfavorited
+  const { checkAndUseSearch, getRemainingSearches } = useFreeSearches();
   const [summaryModal, setSummaryModal] = useState({
     open: false,
     title: "",
@@ -88,10 +93,41 @@ export default function Trials() {
   ];
 
   async function search(overrideQuery) {
+    const userData = JSON.parse(localStorage.getItem("user") || "{}");
+    const token = localStorage.getItem("token");
+    const isUserSignedIn = userData && token;
+
+    // Check free searches for non-signed-in users
+    if (!isUserSignedIn) {
+      const canSearch = checkAndUseSearch();
+      if (!canSearch) {
+        toast.error(
+          "You've used all your free searches! Sign in to continue searching.",
+          { duration: 4000 }
+        );
+        return;
+      }
+
+      const remaining = getRemainingSearches();
+      if (remaining === 0) {
+        toast(
+          "You've used all your free searches! Sign in for unlimited searches.",
+          { duration: 5000, icon: "🔒" }
+        );
+      } else {
+        toast.success(
+          `Search successful! ${remaining} free search${
+            remaining !== 1 ? "es" : ""
+          } remaining.`,
+          { duration: 3000 }
+        );
+      }
+    }
+
     setLoading(true);
     const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
     const params = new URLSearchParams();
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
+    const user = userData;
     const appliedQuery = typeof overrideQuery === "string" ? overrideQuery : q;
 
     // Mark that initial load is complete when user performs search
@@ -178,13 +214,44 @@ export default function Trials() {
   }
 
   async function quickSearch(filterValue) {
+    const userData = JSON.parse(localStorage.getItem("user") || "{}");
+    const token = localStorage.getItem("token");
+    const isUserSignedIn = userData && token;
+
+    // Check free searches for non-signed-in users
+    if (!isUserSignedIn) {
+      const canSearch = checkAndUseSearch();
+      if (!canSearch) {
+        toast.error(
+          "You've used all your free searches! Sign in to continue searching.",
+          { duration: 4000 }
+        );
+        return;
+      }
+
+      const remaining = getRemainingSearches();
+      if (remaining === 0) {
+        toast(
+          "You've used all your free searches! Sign in for unlimited searches.",
+          { duration: 5000, icon: "🔒" }
+        );
+      } else {
+        toast.success(
+          `Search successful! ${remaining} free search${
+            remaining !== 1 ? "es" : ""
+          } remaining.`,
+          { duration: 3000 }
+        );
+      }
+    }
+
     setQ(filterValue);
     setIsInitialLoad(false); // Mark initial load as complete when user performs quick search
     setLoading(true);
     setTimeout(() => {
       const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
       const params = new URLSearchParams();
-      const user = JSON.parse(localStorage.getItem("user") || "{}");
+      const user = userData;
 
       // Combine user's medical interest with quick search if enabled
       let searchQuery = filterValue;
@@ -581,8 +648,13 @@ export default function Trials() {
   // Fetch user profile to get location and medical interests, then auto-search if signed in
   useEffect(() => {
     async function fetchUserData() {
-      const user = JSON.parse(localStorage.getItem("user") || "{}");
-      if (!user?._id && !user?.id) {
+      const userData = JSON.parse(localStorage.getItem("user") || "{}");
+      const token = localStorage.getItem("token");
+      const isUserSignedIn = userData && token;
+
+      setUser(userData && token ? userData : null);
+
+      if (!userData?._id && !userData?.id) {
         setUseMedicalInterest(false);
         setIsSignedIn(false);
         return;
@@ -600,7 +672,7 @@ export default function Trials() {
       try {
         // Fetch profile for location
         const response = await fetch(
-          `${base}/api/profile/${user._id || user.id}`
+          `${base}/api/profile/${userData._id || userData.id}`
         );
         const data = await response.json();
         if (data.profile) {
@@ -649,6 +721,9 @@ export default function Trials() {
 
   return (
     <Layout>
+      {/* Free Searches Indicator */}
+      <FreeSearchesIndicator user={user} />
+
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50 to-slate-100 relative overflow-hidden">
         <AnimatedBackgroundDiff />
 

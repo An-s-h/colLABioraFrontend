@@ -2,6 +2,7 @@ import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 import Landing from "./Pages/Landing.jsx";
+import Explore from "./Pages/Explore.jsx";
 import SignIn from "./Pages/SignIn.jsx";
 import OnboardPatient from "./Pages/OnboardPatient.jsx";
 import OnboardResearcher from "./Pages/OnboardResearcher.jsx";
@@ -56,6 +57,7 @@ const App = () => {
           />
           <Routes>
             <Route path="/" element={<Landing />} />
+            <Route path="/explore" element={<Explore />} />
             <Route path="/signin" element={<SignIn />} />
             <Route path="/onboard/patient" element={<OnboardPatient />} />
             <Route path="/onboard/researcher" element={<OnboardResearcher />} />

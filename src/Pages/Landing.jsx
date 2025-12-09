@@ -482,7 +482,7 @@ export default function Landing() {
                           <button
                             onClick={() => {
                               setSelectedRole("patient");
-                              navigate("/trials");
+                              navigate("/explore");
                             }}
                             className={`flex-1 py-3 px-4 rounded-md text-sm font-semibold transition-all ${
                               selectedRole === "patient"
@@ -505,7 +505,7 @@ export default function Landing() {
                           <button
                             onClick={() => {
                               setSelectedRole("researcher");
-                              navigate("/trials");
+                              navigate("/explore");
                             }}
                             className={`flex-1 py-3 px-4 rounded-md text-sm font-semibold transition-all ${
                               selectedRole === "researcher"
@@ -534,7 +534,7 @@ export default function Landing() {
                           className="grid grid-cols-2 gap-3"
                         >
                           <ShinyButton
-                            onClick={() => navigate("/trials")}
+                            onClick={() => navigate("/explore")}
                             className="group relative w-full px-3 py-3.5 rounded-xl font-semibold text-sm shadow-md hover:shadow-lg transition-all duration-300 transform hover:scale-[1.02]"
                             style={{
                               backgroundColor: "#D0C4E2",
@@ -562,7 +562,7 @@ export default function Landing() {
                           </ShinyButton>
 
                           <ShinyButton
-                            onClick={() => navigate("/trials")}
+                            onClick={() => navigate("/explore")}
                             className="group relative w-full px-3 py-3.5 rounded-xl font-semibold text-sm shadow-md hover:shadow-lg transition-all duration-300 transform hover:scale-[1.02]"
                             style={{
                               backgroundColor: "#F5F2F8",
@@ -684,7 +684,7 @@ export default function Landing() {
       </div>
       <StatsSection />
       {/* Get Started Section */}
-       <GetStartedSection /> 
+      <GetStartedSection />
 
       {/* How It Works Section */}
       <div className={isMobile ? "py-8" : ""}>

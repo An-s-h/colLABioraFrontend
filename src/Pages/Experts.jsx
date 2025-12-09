@@ -29,6 +29,9 @@ import AnimatedBackgroundDiff from "../components/ui/AnimatedBackgroundDiff.jsx"
 import { BorderBeam } from "@/components/ui/border-beam";
 import { AuroraText } from "@/components/ui/aurora-text";
 import SmartSearchInput from "../components/SmartSearchInput.jsx";
+import FreeSearchesIndicator, {
+  useFreeSearches,
+} from "../components/FreeSearchesIndicator.jsx";
 
 export default function Experts() {
   const navigate = useNavigate();
@@ -42,10 +45,12 @@ export default function Experts() {
   const [userMedicalInterest, setUserMedicalInterest] = useState(""); // User's medical interest
   const [isInitialLoad, setIsInitialLoad] = useState(true); // Track if it's the initial load
   const [isSignedIn, setIsSignedIn] = useState(false); // Track if user is signed in
+  const [user, setUser] = useState(null); // Track user state
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false); // Start with loading false - no initial search
   const [favorites, setFavorites] = useState([]);
   const [favoritingItems, setFavoritingItems] = useState(new Set()); // Track items being favorited/unfavorited
+  const { checkAndUseSearch, getRemainingSearches } = useFreeSearches();
   const [publications, setPublications] = useState({}); // Map of expert name/id to publications array
   const [loadingPublications, setLoadingPublications] = useState({}); // Map of expert name/id to loading state
   const [expandedCards, setExpandedCards] = useState({}); // Map of expert name/id to expanded state
@@ -75,11 +80,42 @@ export default function Experts() {
   ].filter(Boolean);
 
   async function search(overrides = {}) {
+    const userData = JSON.parse(localStorage.getItem("user") || "{}");
+    const token = localStorage.getItem("token");
+    const isUserSignedIn = userData && token;
+
+    // Check free searches for non-signed-in users
+    if (!isUserSignedIn) {
+      const canSearch = checkAndUseSearch();
+      if (!canSearch) {
+        toast.error(
+          "You've used all your free searches! Sign in to continue searching.",
+          { duration: 4000 }
+        );
+        return;
+      }
+
+      const remaining = getRemainingSearches();
+      if (remaining === 0) {
+        toast(
+          "You've used all your free searches! Sign in for unlimited searches.",
+          { duration: 5000, icon: "🔒" }
+        );
+      } else {
+        toast.success(
+          `Search successful! ${remaining} free search${
+            remaining !== 1 ? "es" : ""
+          } remaining.`,
+          { duration: 3000 }
+        );
+      }
+    }
+
     setLoading(true);
     setResults([]);
     const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
     const params = new URLSearchParams();
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
+    const user = userData;
     const nextResearchArea =
       overrides.researchArea !== undefined
         ? overrides.researchArea
@@ -145,8 +181,8 @@ export default function Experts() {
     if (searchQuery) params.set("q", searchQuery);
 
     // Add user profile data for matching
-    if (user?._id || user?.id) {
-      params.set("userId", user._id || user.id);
+    if (userData?._id || userData?.id) {
+      params.set("userId", userData._id || userData.id);
     } else if (currentDiseaseOfInterest || locationStr) {
       if (currentDiseaseOfInterest) {
         params.set("conditions", currentDiseaseOfInterest);
@@ -215,6 +251,37 @@ export default function Experts() {
   }
 
   async function quickSearch(filterValue) {
+    const userData = JSON.parse(localStorage.getItem("user") || "{}");
+    const token = localStorage.getItem("token");
+    const isUserSignedIn = userData && token;
+
+    // Check free searches for non-signed-in users
+    if (!isUserSignedIn) {
+      const canSearch = checkAndUseSearch();
+      if (!canSearch) {
+        toast.error(
+          "You've used all your free searches! Sign in to continue searching.",
+          { duration: 4000 }
+        );
+        return;
+      }
+
+      const remaining = getRemainingSearches();
+      if (remaining === 0) {
+        toast(
+          "You've used all your free searches! Sign in for unlimited searches.",
+          { duration: 5000, icon: "🔒" }
+        );
+      } else {
+        toast.success(
+          `Search successful! ${remaining} free search${
+            remaining !== 1 ? "es" : ""
+          } remaining.`,
+          { duration: 3000 }
+        );
+      }
+    }
+
     setResearchArea(filterValue);
     setDiseaseOfInterest("");
     setIsInitialLoad(false); // Mark initial load as complete when user performs quick search
@@ -223,7 +290,7 @@ export default function Experts() {
     setTimeout(async () => {
       const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
       const params = new URLSearchParams();
-      const user = JSON.parse(localStorage.getItem("user") || "{}");
+      const userData = JSON.parse(localStorage.getItem("user") || "{}");
 
       // Build search query
       const searchQueryParts = [filterValue];
@@ -249,8 +316,8 @@ export default function Experts() {
       params.set("q", searchQuery);
 
       // Add user profile data for matching
-      if (user?._id || user?.id) {
-        params.set("userId", user._id || user.id);
+      if (userData?._id || userData?.id) {
+        params.set("userId", userData._id || userData.id);
       } else if (locationStr) {
         if (locationMode === "current" && userLocation) {
           params.set("userLocation", JSON.stringify(userLocation));
@@ -375,8 +442,9 @@ export default function Experts() {
   };
 
   async function favorite(item) {
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
-    if (!user?._id && !user?.id) {
+    const userData = JSON.parse(localStorage.getItem("user") || "{}");
+    const token = localStorage.getItem("token");
+    if (!userData?._id && !userData?.id) {
       toast.error("Please sign in to favorite items");
       return;
     }
@@ -479,7 +547,7 @@ export default function Experts() {
 
         const deleteResponse = await fetch(
           `${base}/api/favorites/${
-            user._id || user.id
+            userData._id || userData.id
           }?type=expert&id=${encodeURIComponent(deleteId)}`,
           {
             method: "DELETE",
@@ -510,7 +578,7 @@ export default function Experts() {
         }
 
         const addResponse = await fetch(
-          `${base}/api/favorites/${user._id || user.id}`,
+          `${base}/api/favorites/${userData._id || userData.id}`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -531,7 +599,7 @@ export default function Experts() {
       // Refresh favorites from backend - wait a bit to ensure backend has processed
       await new Promise((resolve) => setTimeout(resolve, 100));
       const favResponse = await fetch(
-        `${base}/api/favorites/${user._id || user.id}`
+        `${base}/api/favorites/${userData._id || userData.id}`
       );
 
       if (favResponse.ok) {
@@ -557,10 +625,11 @@ export default function Experts() {
 
   // Load favorites on mount
   useEffect(() => {
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
-    if (user?._id || user?.id) {
+    const userData = JSON.parse(localStorage.getItem("user") || "{}");
+    const token = localStorage.getItem("token");
+    if (userData?._id && token) {
       const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
-      fetch(`${base}/api/favorites/${user._id || user.id}`)
+      fetch(`${base}/api/favorites/${userData._id || userData.id}`)
         .then((r) => r.json())
         .then((data) => setFavorites(data.items || []))
         .catch((err) => console.error("Error loading favorites:", err));
@@ -635,8 +704,13 @@ export default function Experts() {
     if (initialFetchDone.current) return;
 
     async function fetchUserData() {
-      const user = JSON.parse(localStorage.getItem("user") || "{}");
-      if (!user?._id && !user?.id) {
+      const userData = JSON.parse(localStorage.getItem("user") || "{}");
+      const token = localStorage.getItem("token");
+      const isUserSignedIn = userData && token;
+
+      setUser(userData && token ? userData : null);
+
+      if (!userData?._id && !userData?.id) {
         setUseMedicalInterest(false);
         setIsSignedIn(false);
         initialFetchDone.current = true; // Mark as done even if no user
@@ -655,7 +729,7 @@ export default function Experts() {
       try {
         // Fetch profile for location
         const response = await fetch(
-          `${base}/api/profile/${user._id || user.id}`
+          `${base}/api/profile/${userData._id || userData.id}`
         );
         const data = await response.json();
         if (data.profile) {
@@ -671,11 +745,11 @@ export default function Experts() {
 
         // Get medical interests from user object
         if (
-          user.medicalInterests &&
-          Array.isArray(user.medicalInterests) &&
-          user.medicalInterests.length > 0
+          userData.medicalInterests &&
+          Array.isArray(userData.medicalInterests) &&
+          userData.medicalInterests.length > 0
         ) {
-          const medicalInterest = user.medicalInterests[0];
+          const medicalInterest = userData.medicalInterests[0];
           setUserMedicalInterest(medicalInterest); // Use first medical interest
 
           // Only auto-search if no saved state exists (no previous searches before sign-in)
@@ -731,6 +805,9 @@ export default function Experts() {
 
   return (
     <Layout>
+      {/* Free Searches Indicator */}
+      <FreeSearchesIndicator user={user} />
+
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50 to-slate-100 relative overflow-hidden">
         <AnimatedBackgroundDiff />
 
@@ -1300,35 +1377,40 @@ export default function Experts() {
           ) : null}
 
           {/* Sign Up Message for More Results */}
-          {!loading && results.length > 0 && !isSignedIn && results.length > 3 && (
-            <div className="mt-8 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl border-2 border-indigo-200 p-6 text-center shadow-lg">
-              <div className="flex flex-col items-center gap-3">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-indigo-600" />
-                  <h3 className="text-lg font-bold text-indigo-900">
-                    Want to see more experts?
-                  </h3>
-                </div>
-                <p className="text-sm text-indigo-700 max-w-md">
-                  Sign up for free to view all {results.length} matching experts and get personalized recommendations based on your medical interests.
-                </p>
-                <div className="flex gap-3 mt-2">
-                  <button
-                    onClick={() => navigate("/signin")}
-                    className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-lg font-semibold hover:from-indigo-700 hover:to-indigo-800 transition-all shadow-md hover:shadow-lg"
-                  >
-                    Sign In
-                  </button>
-                  <button
-                    onClick={() => navigate("/onboard/patient")}
-                    className="px-6 py-2.5 bg-white text-indigo-600 rounded-lg font-semibold hover:bg-indigo-50 transition-all border-2 border-indigo-200 hover:border-indigo-300"
-                  >
-                    Sign Up
-                  </button>
+          {!loading &&
+            results.length > 0 &&
+            !isSignedIn &&
+            results.length > 3 && (
+              <div className="mt-8 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl border-2 border-indigo-200 p-6 text-center shadow-lg">
+                <div className="flex flex-col items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-indigo-600" />
+                    <h3 className="text-lg font-bold text-indigo-900">
+                      Want to see more experts?
+                    </h3>
+                  </div>
+                  <p className="text-sm text-indigo-700 max-w-md">
+                    Sign up for free to view all {results.length} matching
+                    experts and get personalized recommendations based on your
+                    medical interests.
+                  </p>
+                  <div className="flex gap-3 mt-2">
+                    <button
+                      onClick={() => navigate("/signin")}
+                      className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-lg font-semibold hover:from-indigo-700 hover:to-indigo-800 transition-all shadow-md hover:shadow-lg"
+                    >
+                      Sign In
+                    </button>
+                    <button
+                      onClick={() => navigate("/onboard/patient")}
+                      className="px-6 py-2.5 bg-white text-indigo-600 rounded-lg font-semibold hover:bg-indigo-50 transition-all border-2 border-indigo-200 hover:border-indigo-300"
+                    >
+                      Sign Up
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
           {/* Empty State */}
           {!loading && !isInitialLoad && results.length === 0 ? (

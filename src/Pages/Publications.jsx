@@ -24,6 +24,9 @@ import { BorderBeam } from "@/components/ui/border-beam";
 import { LinkPreview } from "@/components/ui/link-preview";
 import { AuroraText } from "@/components/ui/aurora-text";
 import SmartSearchInput from "../components/SmartSearchInput.jsx";
+import FreeSearchesIndicator, {
+  useFreeSearches,
+} from "../components/FreeSearchesIndicator.jsx";
 export default function Publications() {
   const navigate = useNavigate();
   const [q, setQ] = useState("");
@@ -31,6 +34,7 @@ export default function Publications() {
   const [userMedicalInterest, setUserMedicalInterest] = useState(""); // User's medical interest
   const [isInitialLoad, setIsInitialLoad] = useState(true); // Track if it's the initial load
   const [isSignedIn, setIsSignedIn] = useState(false); // Track if user is signed in
+  const [user, setUser] = useState(null); // Track user state
   const [location, setLocation] = useState("");
   const [locationMode, setLocationMode] = useState("global"); // "current", "global", "custom"
   const [userLocation, setUserLocation] = useState(null);
@@ -38,6 +42,7 @@ export default function Publications() {
   const [loading, setLoading] = useState(false); // Start with loading false - no initial search
   const [favorites, setFavorites] = useState([]);
   const [favoritingItems, setFavoritingItems] = useState(new Set()); // Track items being favorited/unfavorited
+  const { checkAndUseSearch, getRemainingSearches } = useFreeSearches();
   const [summaryModal, setSummaryModal] = useState({
     open: false,
     title: "",
@@ -67,10 +72,41 @@ export default function Publications() {
   ].filter(Boolean);
 
   async function search(overrideQuery) {
+    const userData = JSON.parse(localStorage.getItem("user") || "{}");
+    const token = localStorage.getItem("token");
+    const isUserSignedIn = userData && token;
+
+    // Check free searches for non-signed-in users
+    if (!isUserSignedIn) {
+      const canSearch = checkAndUseSearch();
+      if (!canSearch) {
+        toast.error(
+          "You've used all your free searches! Sign in to continue searching.",
+          { duration: 4000 }
+        );
+        return;
+      }
+
+      const remaining = getRemainingSearches();
+      if (remaining === 0) {
+        toast(
+          "You've used all your free searches! Sign in for unlimited searches.",
+          { duration: 5000, icon: "🔒" }
+        );
+      } else {
+        toast.success(
+          `Search successful! ${remaining} free search${
+            remaining !== 1 ? "es" : ""
+          } remaining.`,
+          { duration: 3000 }
+        );
+      }
+    }
+
     setLoading(true);
     const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
     const params = new URLSearchParams();
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
+    const user = userData;
     const appliedQuery = typeof overrideQuery === "string" ? overrideQuery : q;
 
     // Mark that initial load is complete when user performs search
@@ -103,8 +139,8 @@ export default function Publications() {
     // "global" mode doesn't send location parameter
 
     // Add user profile data for matching
-    if (user?._id || user?.id) {
-      params.set("userId", user._id || user.id);
+    if (userData?._id || userData?.id) {
+      params.set("userId", userData._id || userData.id);
     } else if (useMedicalInterest && userMedicalInterest) {
       params.set("conditions", userMedicalInterest);
       if (locationMode === "current" && userLocation) {
@@ -153,13 +189,44 @@ export default function Publications() {
   }
 
   async function quickSearch(filterValue) {
+    const userData = JSON.parse(localStorage.getItem("user") || "{}");
+    const token = localStorage.getItem("token");
+    const isUserSignedIn = userData && token;
+
+    // Check free searches for non-signed-in users
+    if (!isUserSignedIn) {
+      const canSearch = checkAndUseSearch();
+      if (!canSearch) {
+        toast.error(
+          "You've used all your free searches! Sign in to continue searching.",
+          { duration: 4000 }
+        );
+        return;
+      }
+
+      const remaining = getRemainingSearches();
+      if (remaining === 0) {
+        toast(
+          "You've used all your free searches! Sign in for unlimited searches.",
+          { duration: 5000, icon: "🔒" }
+        );
+      } else {
+        toast.success(
+          `Search successful! ${remaining} free search${
+            remaining !== 1 ? "es" : ""
+          } remaining.`,
+          { duration: 3000 }
+        );
+      }
+    }
+
     setQ(filterValue);
     setIsInitialLoad(false); // Mark initial load as complete when user performs quick search
     setLoading(true);
     setTimeout(() => {
       const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
       const params = new URLSearchParams();
-      const user = JSON.parse(localStorage.getItem("user") || "{}");
+      const user = userData;
 
       // Combine user's medical interest with quick search if enabled
       let searchQuery = filterValue;
@@ -182,8 +249,8 @@ export default function Publications() {
       // "global" mode doesn't send location parameter
 
       // Add user profile data for matching
-      if (user?._id || user?.id) {
-        params.set("userId", user._id || user.id);
+      if (userData?._id || userData?.id) {
+        params.set("userId", userData._id || userData.id);
       } else if (useMedicalInterest && userMedicalInterest) {
         params.set("conditions", userMedicalInterest);
         if (locationMode === "current" && userLocation) {
@@ -463,8 +530,13 @@ export default function Publications() {
   // Fetch user medical interests and location on mount, then auto-search if signed in
   useEffect(() => {
     async function fetchUserData() {
-      const user = JSON.parse(localStorage.getItem("user") || "{}");
-      if (!user?._id && !user?.id) {
+      const userData = JSON.parse(localStorage.getItem("user") || "{}");
+      const token = localStorage.getItem("token");
+      const isUserSignedIn = userData && token;
+
+      setUser(userData && token ? userData : null);
+
+      if (!userData?._id && !userData?.id) {
         setUseMedicalInterest(false);
         setIsSignedIn(false);
         return;
@@ -482,11 +554,11 @@ export default function Publications() {
       try {
         // Get medical interests from user object
         if (
-          user.medicalInterests &&
-          Array.isArray(user.medicalInterests) &&
-          user.medicalInterests.length > 0
+          userData.medicalInterests &&
+          Array.isArray(userData.medicalInterests) &&
+          userData.medicalInterests.length > 0
         ) {
-          const medicalInterest = user.medicalInterests[0]; // Use first medical interest
+          const medicalInterest = userData.medicalInterests[0]; // Use first medical interest
           setUserMedicalInterest(medicalInterest);
 
           // Only auto-search if no saved state exists
@@ -509,7 +581,7 @@ export default function Publications() {
 
         // Fetch profile for location
         const response = await fetch(
-          `${base}/api/profile/${user._id || user.id}`
+          `${base}/api/profile/${userData._id || userData.id}`
         );
         const data = await response.json();
         if (data.profile) {
@@ -533,6 +605,9 @@ export default function Publications() {
 
   return (
     <Layout>
+      {/* Free Searches Indicator */}
+      <FreeSearchesIndicator user={user} />
+
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50 to-slate-100 relative overflow-hidden">
         <AnimatedBackgroundDiff />
 
@@ -750,194 +825,205 @@ export default function Publications() {
           {/* Results Section */}
           {!loading && results.length > 0 && (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {results.slice(0, isSignedIn ? results.length : 6).map((pub, cardIdx) => {
-                const itemId = pub.id || pub.pmid;
-                return (
-                  <div
-                    key={itemId}
-                    className="bg-white rounded-xl shadow-sm border border-slate-200 hover:shadow-lg hover:border-indigo-300 transition-all duration-300 transform hover:-translate-y-0.5 animate-fade-in overflow-hidden"
-                    style={{ animationDelay: `${cardIdx * 50}ms` }}
-                  >
-                    <div className="p-5">
-                      {/* Match Badge Banner */}
-                      {pub.matchPercentage !== undefined && (
-                        <div className="mb-3 -mt-2 -mx-5 px-5 py-2 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <TrendingUp className="w-4 h-4 text-blue-600" />
-                              <span className="text-sm font-bold text-blue-700">
-                                {pub.matchPercentage}% Match
-                              </span>
+              {results
+                .slice(0, isSignedIn ? results.length : 6)
+                .map((pub, cardIdx) => {
+                  const itemId = pub.id || pub.pmid;
+                  return (
+                    <div
+                      key={itemId}
+                      className="bg-white rounded-xl shadow-sm border border-slate-200 hover:shadow-lg hover:border-indigo-300 transition-all duration-300 transform hover:-translate-y-0.5 animate-fade-in overflow-hidden"
+                      style={{ animationDelay: `${cardIdx * 50}ms` }}
+                    >
+                      <div className="p-5">
+                        {/* Match Badge Banner */}
+                        {pub.matchPercentage !== undefined && (
+                          <div className="mb-3 -mt-2 -mx-5 px-5 py-2 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <TrendingUp className="w-4 h-4 text-blue-600" />
+                                <span className="text-sm font-bold text-blue-700">
+                                  {pub.matchPercentage}% Match
+                                </span>
+                              </div>
+                              {pub.matchExplanation && (
+                                <span className="text-xs text-blue-600 truncate flex-1 ml-2 max-w-[200px] sm:max-w-none">
+                                  {pub.matchExplanation}
+                                </span>
+                              )}
                             </div>
-                            {pub.matchExplanation && (
-                              <span className="text-xs text-blue-600 truncate flex-1 ml-2 max-w-[200px] sm:max-w-none">
-                                {pub.matchExplanation}
-                              </span>
-                            )}
                           </div>
-                        </div>
-                      )}
-
-                      {/* Publication Header */}
-                      <div className="flex items-start justify-between mb-3">
-                        <span className="inline-flex items-center px-2.5 py-1 bg-indigo-100 text-indigo-700 text-xs font-medium rounded-full">
-                          <FileText className="w-3 h-3 mr-1" />
-                          {pub.pmid ? `PMID: ${pub.pmid}` : pub.id || "PUB-001"}
-                        </span>
-                        {pub.journal && (
-                          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border bg-slate-50 text-slate-700 border-slate-200">
-                            {pub.journal.length > 20
-                              ? `${pub.journal.substring(0, 20)}...`
-                              : pub.journal}
-                          </span>
                         )}
-                      </div>
 
-                      {/* Publication Title */}
-                      <h3 className="text-base font-bold text-slate-900 mb-3 line-clamp-2 leading-tight">
-                        {pub.title}
-                      </h3>
+                        {/* Publication Header */}
+                        <div className="flex items-start justify-between mb-3">
+                          <span className="inline-flex items-center px-2.5 py-1 bg-indigo-100 text-indigo-700 text-xs font-medium rounded-full">
+                            <FileText className="w-3 h-3 mr-1" />
+                            {pub.pmid
+                              ? `PMID: ${pub.pmid}`
+                              : pub.id || "PUB-001"}
+                          </span>
+                          {pub.journal && (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border bg-slate-50 text-slate-700 border-slate-200">
+                              {pub.journal.length > 20
+                                ? `${pub.journal.substring(0, 20)}...`
+                                : pub.journal}
+                            </span>
+                          )}
+                        </div>
 
-                      {/* Basic Info - Authors and Published Date */}
-                      <div className="space-y-1.5 mb-3">
-                        {pub.authors &&
-                          Array.isArray(pub.authors) &&
-                          pub.authors.length > 0 && (
-                            <div className="flex items-center text-sm text-slate-700">
-                              <User className="w-3.5 h-3.5 mr-2 shrink-0" />
-                              <span className="line-clamp-1">
-                                {pub.authors.join(", ")}
+                        {/* Publication Title */}
+                        <h3 className="text-base font-bold text-slate-900 mb-3 line-clamp-2 leading-tight">
+                          {pub.title}
+                        </h3>
+
+                        {/* Basic Info - Authors and Published Date */}
+                        <div className="space-y-1.5 mb-3">
+                          {pub.authors &&
+                            Array.isArray(pub.authors) &&
+                            pub.authors.length > 0 && (
+                              <div className="flex items-center text-sm text-slate-700">
+                                <User className="w-3.5 h-3.5 mr-2 shrink-0" />
+                                <span className="line-clamp-1">
+                                  {pub.authors.join(", ")}
+                                </span>
+                              </div>
+                            )}
+                          {(pub.year || pub.month) && (
+                            <div className="flex items-center text-sm text-slate-600">
+                              <Calendar className="w-3.5 h-3.5 mr-2 shrink-0" />
+                              <span>
+                                {pub.month && pub.month + " "}
+                                {pub.year || ""}
                               </span>
                             </div>
                           )}
-                        {(pub.year || pub.month) && (
-                          <div className="flex items-center text-sm text-slate-600">
-                            <Calendar className="w-3.5 h-3.5 mr-2 shrink-0" />
-                            <span>
-                              {pub.month && pub.month + " "}
-                              {pub.year || ""}
-                            </span>
-                          </div>
-                        )}
-                        {pub.journal && (
-                          <div className="flex items-center text-sm text-slate-600">
-                            <BookOpen className="w-3.5 h-3.5 mr-2 shrink-0" />
-                            <span className="line-clamp-1">{pub.journal}</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* One-line Abstract Description */}
-                      {pub.abstract && (
-                        <div className="mb-3">
-                          <button
-                            onClick={() => openDetailsModal(pub)}
-                            className="w-full text-left text-sm text-slate-700 hover:text-indigo-700 font-medium py-2 px-3 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
-                          >
-                            <div className="flex items-start gap-2">
-                              <Info className="w-4 h-4 mt-0.5 shrink-0" />
-                              <span className="line-clamp-2 flex-1">
-                                {pub.abstract}
+                          {pub.journal && (
+                            <div className="flex items-center text-sm text-slate-600">
+                              <BookOpen className="w-3.5 h-3.5 mr-2 shrink-0" />
+                              <span className="line-clamp-1">
+                                {pub.journal}
                               </span>
                             </div>
+                          )}
+                        </div>
+
+                        {/* One-line Abstract Description */}
+                        {pub.abstract && (
+                          <div className="mb-3">
+                            <button
+                              onClick={() => openDetailsModal(pub)}
+                              className="w-full text-left text-sm text-slate-700 hover:text-indigo-700 font-medium py-2 px-3 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
+                            >
+                              <div className="flex items-start gap-2">
+                                <Info className="w-4 h-4 mt-0.5 shrink-0" />
+                                <span className="line-clamp-2 flex-1">
+                                  {pub.abstract}
+                                </span>
+                              </div>
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Action Buttons */}
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => generateSummary(pub)}
+                            className="flex-1 flex items-center justify-center gap-2 py-2 bg-gradient-to-r from-slate-600 to-slate-700 text-white rounded-lg text-sm font-semibold hover:from-slate-700 hover:to-slate-800 transition-all shadow-sm"
+                          >
+                            <Sparkles className="w-4 h-4" />
+                            Summarize
+                          </button>
+
+                          <button
+                            onClick={() => favorite(pub)}
+                            disabled={favoritingItems.has(getFavoriteKey(pub))}
+                            className={`p-2 rounded-lg border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                              favorites.some(
+                                (fav) =>
+                                  fav.type === "publication" &&
+                                  (fav.item?.id === itemId ||
+                                    fav.item?._id === itemId ||
+                                    fav.item?.pmid === itemId)
+                              )
+                                ? "bg-red-50 border-red-200 text-red-500"
+                                : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-red-500"
+                            }`}
+                          >
+                            {favoritingItems.has(getFavoriteKey(pub)) ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Heart
+                                className={`w-4 h-4 ${
+                                  favorites.some(
+                                    (fav) =>
+                                      fav.type === "publication" &&
+                                      (fav.item?.id === itemId ||
+                                        fav.item?._id === itemId ||
+                                        fav.item?.pmid === itemId)
+                                  )
+                                    ? "fill-current"
+                                    : ""
+                                }`}
+                              />
+                            )}
                           </button>
                         </div>
-                      )}
 
-                      {/* Action Buttons */}
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => generateSummary(pub)}
-                          className="flex-1 flex items-center justify-center gap-2 py-2 bg-gradient-to-r from-slate-600 to-slate-700 text-white rounded-lg text-sm font-semibold hover:from-slate-700 hover:to-slate-800 transition-all shadow-sm"
-                        >
-                          <Sparkles className="w-4 h-4" />
-                          Summarize
-                        </button>
-
-                        <button
-                          onClick={() => favorite(pub)}
-                          disabled={favoritingItems.has(getFavoriteKey(pub))}
-                          className={`p-2 rounded-lg border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
-                            favorites.some(
-                              (fav) =>
-                                fav.type === "publication" &&
-                                (fav.item?.id === itemId ||
-                                  fav.item?._id === itemId ||
-                                  fav.item?.pmid === itemId)
-                            )
-                              ? "bg-red-50 border-red-200 text-red-500"
-                              : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-red-500"
-                          }`}
-                        >
-                          {favoritingItems.has(getFavoriteKey(pub)) ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Heart
-                              className={`w-4 h-4 ${
-                                favorites.some(
-                                  (fav) =>
-                                    fav.type === "publication" &&
-                                    (fav.item?.id === itemId ||
-                                      fav.item?._id === itemId ||
-                                      fav.item?.pmid === itemId)
-                                )
-                                  ? "fill-current"
-                                  : ""
-                              }`}
-                            />
-                          )}
-                        </button>
+                        {/* Open Paper Action */}
+                        {pub.url && (
+                          <a
+                            href={pub.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center justify-center gap-2 py-2 text-xs text-indigo-600 hover:text-indigo-700 font-medium bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors mt-3 w-full"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            Open Paper
+                          </a>
+                        )}
                       </div>
-
-                      {/* Open Paper Action */}
-                      {pub.url && (
-                        <a
-                          href={pub.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="flex items-center justify-center gap-2 py-2 text-xs text-indigo-600 hover:text-indigo-700 font-medium bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors mt-3 w-full"
-                        >
-                          <ExternalLink className="w-3.5 h-3.5" />
-                          Open Paper
-                        </a>
-                      )}
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
             </div>
           )}
 
           {/* Sign Up Message for More Results */}
-          {!loading && results.length > 0 && !isSignedIn && results.length > 6 && (
-            <div className="mt-8 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl border-2 border-indigo-200 p-6 text-center shadow-lg">
-              <div className="flex flex-col items-center gap-3">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-indigo-600" />
-                  <h3 className="text-lg font-bold text-indigo-900">
-                    Want to see more publications?
-                  </h3>
-                </div>
-                <p className="text-sm text-indigo-700 max-w-md">
-                  Sign up for free to view all {results.length} matching publications and get personalized recommendations based on your medical interests.
-                </p>
-                <div className="flex gap-3 mt-2">
-                  <button
-                    onClick={() => navigate("/signin")}
-                    className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-lg font-semibold hover:from-indigo-700 hover:to-indigo-800 transition-all shadow-md hover:shadow-lg"
-                  >
-                    Sign In
-                  </button>
-                  <button
-                    onClick={() => navigate("/onboard/patient")}
-                    className="px-6 py-2.5 bg-white text-indigo-600 rounded-lg font-semibold hover:bg-indigo-50 transition-all border-2 border-indigo-200 hover:border-indigo-300"
-                  >
-                    Sign Up
-                  </button>
+          {!loading &&
+            results.length > 0 &&
+            !isSignedIn &&
+            results.length > 6 && (
+              <div className="mt-8 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl border-2 border-indigo-200 p-6 text-center shadow-lg">
+                <div className="flex flex-col items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-indigo-600" />
+                    <h3 className="text-lg font-bold text-indigo-900">
+                      Want to see more publications?
+                    </h3>
+                  </div>
+                  <p className="text-sm text-indigo-700 max-w-md">
+                    Sign up for free to view all {results.length} matching
+                    publications and get personalized recommendations based on
+                    your medical interests.
+                  </p>
+                  <div className="flex gap-3 mt-2">
+                    <button
+                      onClick={() => navigate("/signin")}
+                      className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-lg font-semibold hover:from-indigo-700 hover:to-indigo-800 transition-all shadow-md hover:shadow-lg"
+                    >
+                      Sign In
+                    </button>
+                    <button
+                      onClick={() => navigate("/onboard/patient")}
+                      className="px-6 py-2.5 bg-white text-indigo-600 rounded-lg font-semibold hover:bg-indigo-50 transition-all border-2 border-indigo-200 hover:border-indigo-300"
+                    >
+                      Sign Up
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
           {/* Empty State */}
           {!loading && results.length === 0 && !isInitialLoad && (
