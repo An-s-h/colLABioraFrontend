@@ -24,12 +24,10 @@ import "./App.css";
 import Navbar from "./components/Navbar.jsx";
 import { ProfileProvider } from "./contexts/ProfileContext.jsx";
 
-const App = () => {
+const AppContent = () => {
   return (
-    <ProfileProvider>
-      <BrowserRouter>
-        <div>
-          <Navbar />
+    <div>
+      <Navbar />
           <Toaster
             position="top-right"
             toastOptions={{
@@ -85,6 +83,14 @@ const App = () => {
           </Routes>
           {/* Nav is provided by Navbar in Layout */}
         </div>
+  );
+};
+
+const App = () => {
+  return (
+    <ProfileProvider>
+      <BrowserRouter>
+        <AppContent />
       </BrowserRouter>
     </ProfileProvider>
   );

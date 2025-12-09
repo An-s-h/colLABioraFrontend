@@ -6,12 +6,6 @@ import { InfiniteMovingCards } from "./ui/infinite-moving-cards";
 const TrustedNetworksMarquee = () => {
   const networks = [
     {
-      name: "ResearchGate",
-      linkUrl: "#", // Update with actual ResearchGate link URL
-      imageUrl:
-        "https://coverimages.igi-global.com/newsroom/research%20gate%20logo.jpg", // Update with ResearchGate logo image URL
-    },
-    {
       name: "ClinicalTrials.gov",
       linkUrl: "#", // Update with actual ClinicalTrials.gov link URL
       imageUrl:

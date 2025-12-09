@@ -249,3 +249,5 @@ export function useFreeSearches() {
 
   return { freeSearches, checkAndUseSearch, getRemainingSearches };
 }
+
+

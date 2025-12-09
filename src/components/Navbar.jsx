@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Fragment } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 
 import { motion, AnimatePresence } from "framer-motion";
 import GlobalSearch from "./GlobalSearch";
+import { ShimmerButton } from "@/components/ui/shimmer-button";
 
 export default function Navbar() {
   const [user, setUser] = useState(null);
@@ -19,16 +20,30 @@ export default function Navbar() {
   const [isAtTop, setIsAtTop] = useState(true);
   const [scrollProgress, setScrollProgress] = useState(0);
 
+  // Check if we're on the landing page
+  const isLandingPage = location.pathname === "/";
+
   // Check if we're on a dashboard page
   const isDashboardPage = location.pathname.includes("/dashboard");
 
-  // Navigation items - filter out Trials, Publications, Experts on dashboard pages
-  const allNavItems = ["Trials", "Publications", "Experts", "Forums"];
-  const navItems = isDashboardPage
-    ? allNavItems.filter(
-        (item) => !["Trials", "Publications", "Experts"].includes(item)
-      )
-    : allNavItems;
+  // Determine navigation items based on route and auth state
+  // Landing page + NOT signed in: About, FAQ, Contact
+  // All other pages OR signed in: Trials, Publications, Experts, Forums
+  const getNavItems = () => {
+    if (isLandingPage && !user) {
+      return ["About Us", "FAQ", "Contact"];
+    } else {
+      // Filter out Trials, Publications, Experts on dashboard pages
+      const allNavItems = ["Trials", "Publications", "Experts", "Forums"];
+      return isDashboardPage
+        ? allNavItems.filter(
+            (item) => !["Trials", "Publications", "Experts"].includes(item)
+          )
+        : allNavItems;
+    }
+  };
+
+  const navItems = getNavItems();
 
   useEffect(() => {
     const updateUser = () => {
@@ -133,6 +148,53 @@ export default function Navbar() {
 
   const getIcon = (item) => {
     const icons = {
+      // Landing page navigation
+      "About Us": (
+        <svg
+          className="w-5 h-5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+          />
+        </svg>
+      ),
+      FAQ: (
+        <svg
+          className="w-5 h-5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+          />
+        </svg>
+      ),
+      Contact: (
+        <svg
+          className="w-5 h-5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+          />
+        </svg>
+      ),
+      // Regular navigation
       Trials: (
         <svg
           className="w-5 h-5"
@@ -254,28 +316,58 @@ export default function Navbar() {
 
         {/* Desktop Nav */}
         <nav className="hidden sm:flex items-center gap-6 text-[15px] font-semibold">
-          {navItems.map((item) => (
-            <Link
-              key={item}
-              to={`/${item.toLowerCase()}`}
-              className="relative group transition-all py-2"
-            >
-              <span
-                className="relative z-10 transition-colors duration-200"
-                style={{
-                  color: "#2F3C96",
-                }}
-                onMouseEnter={(e) => (e.target.style.color = "#B8A5D5")}
-                onMouseLeave={(e) => (e.target.style.color = "#2F3C96")}
-              >
-                {item}
-              </span>
-              <span
-                className="absolute bottom-0 left-0 w-0 h-[3px] rounded-full transition-all duration-300 group-hover:w-full"
-                style={{ backgroundColor: "#2F3C96" }}
-              ></span>
-            </Link>
-          ))}
+          {navItems.map((item, index) => {
+            // Map navigation items to their routes
+            const routeMap = {
+              // Landing page routes
+              "About Us": "/about",
+              FAQ: "/faq",
+              Contact: "/contact",
+              // Regular navigation routes
+              Trials: "/trials",
+              Publications: "/publications",
+              Experts: "/experts",
+              Forums: "/forums",
+            };
+            const route =
+              routeMap[item] || `/${item.toLowerCase().replace(/\s+/g, "-")}`;
+
+            return (
+              <Fragment key={item}>
+                <Link to={route} className="relative group transition-all py-2">
+                  <span
+                    className="relative z-10 transition-colors duration-200"
+                    style={{
+                      color: "#2F3C96",
+                    }}
+                    onMouseEnter={(e) => (e.target.style.color = "#B8A5D5")}
+                    onMouseLeave={(e) => (e.target.style.color = "#2F3C96")}
+                  >
+                    {item}
+                  </span>
+                  <span
+                    className="absolute bottom-0 left-0 w-0 h-[3px] rounded-full transition-all duration-300 group-hover:w-full"
+                    style={{ backgroundColor: "#2F3C96" }}
+                  ></span>
+                </Link>
+                {/* Vertical separator */}
+                {index < navItems.length - 1 && (
+                  <div
+                    className="h-6 w-px"
+                    style={{ backgroundColor: "#D0C4E2" }}
+                  />
+                )}
+              </Fragment>
+            );
+          })}
+
+          {/* Separator before buttons */}
+          {navItems.length > 0 && (
+            <div
+              className="h-6 w-px ml-2"
+              style={{ backgroundColor: "#D0C4E2" }}
+            />
+          )}
 
           {/* Global Search */}
           {/* <GlobalSearch /> */}
@@ -639,31 +731,49 @@ export default function Navbar() {
                 className="space-y-1.5 pb-3 border-b"
                 style={{ borderColor: "#D0C4E2" }}
               >
-                {navItems.map((item) => (
-                  <Link
-                    key={item}
-                    to={`/${item.toLowerCase()}`}
-                    onClick={() => setIsMobileMenuOpen(false)}
-                    className="flex items-center gap-3 w-full text-base font-medium rounded-xl py-2 px-3 transition-all duration-200 group"
-                    style={{ color: "#2F3C96" }}
-                    onMouseEnter={(e) => {
-                      e.target.style.backgroundColor = "#E8E0EF";
-                      e.target.style.color = "#474F97";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.target.style.backgroundColor = "transparent";
-                      e.target.style.color = "#2F3C96";
-                    }}
-                  >
-                    <span
-                      className="p-1.5 rounded-lg group-hover:scale-110 transition-all duration-200"
-                      style={{ backgroundColor: "#E8E0EF", color: "#2F3C96" }}
+                {navItems.map((item) => {
+                  // Map navigation items to their routes
+                  const routeMap = {
+                    // Landing page routes
+                    "About Us": "/about",
+                    FAQ: "/faq",
+                    Contact: "/contact",
+                    // Regular navigation routes
+                    Trials: "/trials",
+                    Publications: "/publications",
+                    Experts: "/experts",
+                    Forums: "/forums",
+                  };
+                  const route =
+                    routeMap[item] ||
+                    `/${item.toLowerCase().replace(/\s+/g, "-")}`;
+
+                  return (
+                    <Link
+                      key={item}
+                      to={route}
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className="flex items-center gap-3 w-full text-base font-medium rounded-xl py-2 px-3 transition-all duration-200 group"
+                      style={{ color: "#2F3C96" }}
+                      onMouseEnter={(e) => {
+                        e.target.style.backgroundColor = "#E8E0EF";
+                        e.target.style.color = "#474F97";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.backgroundColor = "transparent";
+                        e.target.style.color = "#2F3C96";
+                      }}
                     >
-                      {getIcon(item)}
-                    </span>
-                    {item}
-                  </Link>
-                ))}
+                      <span
+                        className="p-1.5 rounded-lg group-hover:scale-110 transition-all duration-200"
+                        style={{ backgroundColor: "#E8E0EF", color: "#2F3C96" }}
+                      >
+                        {getIcon(item)}
+                      </span>
+                      {item}
+                    </Link>
+                  );
+                })}
               </div>
             )}
 

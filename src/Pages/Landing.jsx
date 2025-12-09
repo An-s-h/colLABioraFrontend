@@ -535,35 +535,31 @@ export default function Landing() {
                         >
                           <ShinyButton
                             onClick={() => navigate("/explore")}
-                            className="group relative w-full px-3 py-3.5 rounded-xl font-semibold text-sm shadow-md hover:shadow-lg transition-all duration-300 transform hover:scale-[1.02]"
+                            className="group relative w-full px-3 py-3.5 rounded-xl font-semibold text-sm shadow-md hover:shadow-lg transition-all duration-300 transform hover:scale-[1.02] overflow-hidden"
                             style={{
                               backgroundColor: "#D0C4E2",
                               color: "#2F3C96",
                               borderWidth: "0px",
                             }}
                           >
-                            <div className="relative z-10 flex flex-col items-center gap-1.5 text-center">
+                            <div className="relative z-10 flex items-center justify-center gap-2 min-w-0">
                               <Users
-                                className="w-5 h-5"
+                                className="w-4 h-4 shrink-0"
                                 style={{ color: "#2F3C96" }}
                               />
-                              <div className="flex flex-col items-center">
-                                <span className="font-bold text-xs">
-                                  Explore as Patient
-                                </span>
-                                <span
-                                  className="text-xs"
-                                  style={{ color: "#474F97" }}
-                                >
-                                  Find Meaningful Health Insights
-                                </span>
-                              </div>
+                              <span className="font-bold text-xs truncate">
+                                Explore as Patient
+                              </span>
+                              <ArrowRight
+                                className="w-3.5 h-3.5 shrink-0 transition-transform group-hover:translate-x-1"
+                                style={{ color: "#2F3C96" }}
+                              />
                             </div>
                           </ShinyButton>
 
                           <ShinyButton
                             onClick={() => navigate("/explore")}
-                            className="group relative w-full px-3 py-3.5 rounded-xl font-semibold text-sm shadow-md hover:shadow-lg transition-all duration-300 transform hover:scale-[1.02]"
+                            className="group relative w-full px-3 py-3.5 rounded-xl font-semibold text-sm shadow-md hover:shadow-lg transition-all duration-300 transform hover:scale-[1.02] overflow-hidden"
                             style={{
                               backgroundColor: "#F5F2F8",
                               borderColor: "#D0C4E2",
@@ -571,22 +567,18 @@ export default function Landing() {
                               borderWidth: "2px",
                             }}
                           >
-                            <div className="relative z-10 flex flex-col items-center gap-1.5 text-center">
+                            <div className="relative z-10 flex items-center justify-center gap-2 min-w-0">
                               <FlaskConical
-                                className="w-5 h-5"
+                                className="w-4 h-4 shrink-0"
                                 style={{ color: "#2F3C96" }}
                               />
-                              <div className="flex flex-col items-center">
-                                <span className="font-bold text-xs">
-                                  Explore as Researcher
-                                </span>
-                                <span
-                                  className="text-xs"
-                                  style={{ color: "#787878" }}
-                                >
-                                  Discover Research Possibilities
-                                </span>
-                              </div>
+                              <span className="font-bold text-xs truncate">
+                                Explore as Researcher
+                              </span>
+                              <ArrowRight
+                                className="w-3.5 h-3.5 shrink-0 transition-transform group-hover:translate-x-1"
+                                style={{ color: "#2F3C96" }}
+                              />
                             </div>
                           </ShinyButton>
                         </motion.div>
@@ -656,17 +648,16 @@ export default function Landing() {
                                 className="text-sm sm:text-sm font-semibold"
                                 style={{ color: "#2F3C96" }}
                               >
-                                Search (6 free searches left)
+                                Start Searching
                               </span>
                             </div>
                           </div>
                         </div>
                         <p
-                          className="text-sm sm:text-xs leading-relaxed"
+                          className="text-xs mt-3 leading-relaxed"
                           style={{ color: "#787878" }}
                         >
-                          Search through clinical trials, research publications,
-                          and healthcare experts. Start exploring now!
+                          Instant access to trials, experts, and publications.
                         </p>
                       </>
                     )}
