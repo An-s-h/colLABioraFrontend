@@ -38,14 +38,25 @@ export default function SmartSearchInput({
   const showDropdown =
     isDropdownOpen && suggestions.length > 0 && value?.trim()?.length > 0;
 
-  // Update dropdown position based on input position
+  // Update dropdown position based on input position (viewport-relative for better scroll handling)
   const updateDropdownPosition = () => {
     if (inputRef.current) {
       const rect = inputRef.current.getBoundingClientRect();
+      
+      // Calculate available space below input
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      const dropdownHeight = 240; // max-height
+      
+      // Position dropdown below input if there's space, otherwise above
+      const positionBelow = spaceBelow > dropdownHeight || spaceBelow > spaceAbove;
+      
       setDropdownPosition({
-        top: rect.bottom + window.scrollY + 4,
-        left: rect.left + window.scrollX,
-        width: rect.width,
+        top: positionBelow 
+          ? rect.bottom + 4 
+          : rect.top - dropdownHeight - 4,
+        left: rect.left,
+        width: Math.max(rect.width, 200),
       });
     }
   };
@@ -53,14 +64,40 @@ export default function SmartSearchInput({
   useEffect(() => {
     if (showDropdown) {
       updateDropdownPosition();
-      const handleScroll = () => updateDropdownPosition();
-      const handleResize = () => updateDropdownPosition();
+      
+      // Use requestAnimationFrame for smoother updates during scroll
+      let rafId;
+      let ticking = false;
+      
+      const handleScroll = () => {
+        if (!ticking) {
+          ticking = true;
+          rafId = requestAnimationFrame(() => {
+            updateDropdownPosition();
+            ticking = false;
+          });
+        }
+      };
+      
+      const handleResize = () => {
+        if (rafId) cancelAnimationFrame(rafId);
+        updateDropdownPosition();
+      };
 
-      window.addEventListener("scroll", handleScroll, true);
-      window.addEventListener("resize", handleResize);
+      // Add scroll listeners with passive option for better performance
+      // Listen on window and all scrollable containers
+      window.addEventListener("scroll", handleScroll, { passive: true, capture: true });
+      document.addEventListener("scroll", handleScroll, { passive: true, capture: true });
+      window.addEventListener("resize", handleResize, { passive: true });
+
+      // Also update position periodically to handle any missed scroll events
+      const intervalId = setInterval(updateDropdownPosition, 100);
 
       return () => {
-        window.removeEventListener("scroll", handleScroll, true);
+        if (rafId) cancelAnimationFrame(rafId);
+        clearInterval(intervalId);
+        window.removeEventListener("scroll", handleScroll, { capture: true });
+        document.removeEventListener("scroll", handleScroll, { capture: true });
         window.removeEventListener("resize", handleResize);
       };
     }
@@ -104,8 +141,18 @@ export default function SmartSearchInput({
     }
   };
 
-  const handleBlur = () => {
-    closeDropdown(120);
+  const handleBlur = (event) => {
+    // Don't close if user is clicking/interacting with dropdown
+    const relatedTarget = event.relatedTarget || document.activeElement;
+    const dropdown = document.querySelector('[data-smart-search-dropdown]');
+    
+    // Check if the related target is within the dropdown
+    if (dropdown && relatedTarget && dropdown.contains(relatedTarget)) {
+      return;
+    }
+    
+    // Delay closing to allow click events to fire first
+    closeDropdown(150);
   };
 
   const handleSelectSuggestion = (suggestion) => {
@@ -144,13 +191,22 @@ export default function SmartSearchInput({
     }
 
     if (event.key === "Enter") {
+      event.preventDefault();
       if (activeIndex >= 0 && suggestions[activeIndex]) {
-        event.preventDefault();
+        // User has selected a suggestion with arrow keys
         handleSelectSuggestion(suggestions[activeIndex]);
       } else if (typeof onSubmit === "function") {
-        event.preventDefault();
-        onSubmit(value);
-        setIsDropdownOpen(false);
+        // User pressed Enter without selecting - submit current input value
+        // Get the current value directly from the input to ensure it's up-to-date
+        const currentValue = event.target.value || value;
+        if (currentValue && currentValue.trim()) {
+          setIsDropdownOpen(false);
+          setActiveIndex(-1);
+          // Small delay to ensure state is updated
+          setTimeout(() => {
+            onSubmit(currentValue.trim());
+          }, 0);
+        }
       }
       return;
     }
@@ -163,14 +219,29 @@ export default function SmartSearchInput({
 
   const dropdownContent = showDropdown && (
     <div
-      className="fixed z-[9999] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl"
+      data-smart-search-dropdown
+      className="fixed overflow-hidden rounded-lg border bg-white shadow-xl"
       style={{
         top: `${dropdownPosition.top}px`,
         left: `${dropdownPosition.left}px`,
-        width: `${dropdownPosition.width}px`,
+        width: `${Math.max(dropdownPosition.width, 200)}px`,
+        maxWidth: "calc(100vw - 2rem)",
+        zIndex: 9999,
+        borderColor: "#E8E8E8",
+        maxHeight: "240px",
+      }}
+      onMouseDown={(e) => {
+        // Prevent dropdown from closing when clicking inside it
+        e.preventDefault();
       }}
     >
-      <ul className="max-h-60 overflow-y-auto">
+      <ul 
+        className="overflow-y-auto overscroll-contain"
+        style={{
+          maxHeight: "240px",
+          scrollBehavior: "smooth",
+        }}
+      >
         {suggestions.map((suggestion, index) => (
           <li
             key={`${suggestion}-${index}`}
@@ -180,15 +251,31 @@ export default function SmartSearchInput({
             }}
             onMouseEnter={() => setActiveIndex(index)}
             className={clsx(
-              "flex items-center justify-between gap-2 px-3 py-2 text-sm text-slate-700 transition-colors",
+              "flex items-center justify-between gap-2 px-3 py-2 text-sm transition-colors cursor-pointer",
               index === activeIndex
-                ? "bg-indigo-50 text-indigo-700"
-                : "hover:bg-slate-50"
+                ? ""
+                : ""
             )}
+            style={
+              index === activeIndex
+                ? {
+                    backgroundColor: "rgba(245, 242, 248, 1)",
+                    color: "#2F3C96",
+                  }
+                : {
+                    color: "#787878",
+                  }
+            }
+            onMouseLeave={() => {
+              // Keep hover state but don't clear activeIndex to preserve keyboard selection
+            }}
           >
             <span className="truncate">{suggestion}</span>
             {index === activeIndex && (
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-indigo-500">
+              <span 
+                className="text-[10px] font-semibold uppercase tracking-wide"
+                style={{ color: "#2F3C96" }}
+              >
                 Enter ↵
               </span>
             )}

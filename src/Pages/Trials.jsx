@@ -97,32 +97,32 @@ export default function Trials() {
     const token = localStorage.getItem("token");
     const isUserSignedIn = userData && token;
 
-    // Check free searches for non-signed-in users
-    if (!isUserSignedIn) {
-      const canSearch = checkAndUseSearch();
-      if (!canSearch) {
-        toast.error(
-          "You've used all your free searches! Sign in to continue searching.",
-          { duration: 4000 }
-        );
-        return;
-      }
+    // Free searches are only tracked on Explore page, not here
+    // if (!isUserSignedIn) {
+    //   const canSearch = checkAndUseSearch();
+    //   if (!canSearch) {
+    //     toast.error(
+    //       "You've used all your free searches! Sign in to continue searching.",
+    //       { duration: 4000 }
+    //     );
+    //     return;
+    //   }
 
-      const remaining = getRemainingSearches();
-      if (remaining === 0) {
-        toast(
-          "You've used all your free searches! Sign in for unlimited searches.",
-          { duration: 5000, icon: "🔒" }
-        );
-      } else {
-        toast.success(
-          `Search successful! ${remaining} free search${
-            remaining !== 1 ? "es" : ""
-          } remaining.`,
-          { duration: 3000 }
-        );
-      }
-    }
+    //   const remaining = getRemainingSearches();
+    //   if (remaining === 0) {
+    //     toast(
+    //       "You've used all your free searches! Sign in for unlimited searches.",
+    //       { duration: 5000, icon: "🔒" }
+    //     );
+    //   } else {
+    //     toast.success(
+    //       `Search successful! ${remaining} free search${
+    //         remaining !== 1 ? "es" : ""
+    //       } remaining.`,
+    //       { duration: 3000 }
+    //     );
+    //   }
+    // }
 
     setLoading(true);
     const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
@@ -218,32 +218,32 @@ export default function Trials() {
     const token = localStorage.getItem("token");
     const isUserSignedIn = userData && token;
 
-    // Check free searches for non-signed-in users
-    if (!isUserSignedIn) {
-      const canSearch = checkAndUseSearch();
-      if (!canSearch) {
-        toast.error(
-          "You've used all your free searches! Sign in to continue searching.",
-          { duration: 4000 }
-        );
-        return;
-      }
+    // Free searches are only tracked on Explore page, not here
+    // if (!isUserSignedIn) {
+    //   const canSearch = checkAndUseSearch();
+    //   if (!canSearch) {
+    //     toast.error(
+    //       "You've used all your free searches! Sign in to continue searching.",
+    //       { duration: 4000 }
+    //     );
+    //     return;
+    //   }
 
-      const remaining = getRemainingSearches();
-      if (remaining === 0) {
-        toast(
-          "You've used all your free searches! Sign in for unlimited searches.",
-          { duration: 5000, icon: "🔒" }
-        );
-      } else {
-        toast.success(
-          `Search successful! ${remaining} free search${
-            remaining !== 1 ? "es" : ""
-          } remaining.`,
-          { duration: 3000 }
-        );
-      }
-    }
+    //   const remaining = getRemainingSearches();
+    //   if (remaining === 0) {
+    //     toast(
+    //       "You've used all your free searches! Sign in for unlimited searches.",
+    //       { duration: 5000, icon: "🔒" }
+    //     );
+    //   } else {
+    //     toast.success(
+    //       `Search successful! ${remaining} free search${
+    //         remaining !== 1 ? "es" : ""
+    //       } remaining.`,
+    //       { duration: 3000 }
+    //     );
+    //   }
+    // }
 
     setQ(filterValue);
     setIsInitialLoad(false); // Mark initial load as complete when user performs quick search
@@ -645,8 +645,32 @@ export default function Trials() {
     return () => window.removeEventListener("logout", handleLogout);
   }, []);
 
-  // Fetch user profile to get location and medical interests, then auto-search if signed in
+  // Check for guest info or URL parameters, then fetch user profile
   useEffect(() => {
+    // Check URL parameters first (from Explore page search)
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlQuery = urlParams.get("q");
+    // TODO: Re-implement guest user logic later
+    // const guestCondition = urlParams.get("guestCondition");
+    // const guestLocation = urlParams.get("guestLocation");
+
+    // TODO: Re-implement guest user logic later
+    // // Check localStorage for guest info
+    // const guestInfo = localStorage.getItem("guest_user_info");
+    // let parsedGuestInfo = null;
+    // if (guestInfo) {
+    //   try {
+    //     parsedGuestInfo = JSON.parse(guestInfo);
+    //   } catch (e) {
+    //     console.error("Error parsing guest info:", e);
+    //   }
+    // }
+
+    // If URL has a query, set it
+    if (urlQuery) {
+      setQ(urlQuery);
+    }
+
     async function fetchUserData() {
       const userData = JSON.parse(localStorage.getItem("user") || "{}");
       const token = localStorage.getItem("token");
@@ -654,7 +678,32 @@ export default function Trials() {
 
       setUser(userData && token ? userData : null);
 
+      // TODO: Re-implement guest user logic later
+      // // Use guest info from URL params or localStorage (only if not signed in)
+      // if (!isUserSignedIn && (guestCondition || parsedGuestInfo?.condition)) {
+      //   const condition = guestCondition || parsedGuestInfo?.condition;
+      //   if (condition) {
+      //     setUserMedicalInterest(condition);
+      //     setUseMedicalInterest(true);
+      //   }
+      // }
+
+      // if (!isUserSignedIn && (guestLocation || parsedGuestInfo?.location)) {
+      //   const loc = guestLocation || parsedGuestInfo?.location;
+      //   if (loc) {
+      //     setLocation(loc);
+      //     setLocationMode("custom");
+      //   }
+      // }
+
       if (!userData?._id && !userData?.id) {
+        // TODO: Re-implement guest user logic later
+        // // If guest has info and no saved state, use it
+        // if ((guestCondition || parsedGuestInfo?.condition) && !sessionStorage.getItem("trials_search_state")) {
+        //   setUseMedicalInterest(true);
+        // } else {
+        //   setUseMedicalInterest(false);
+        // }
         setUseMedicalInterest(false);
         setIsSignedIn(false);
         return;
@@ -688,11 +737,11 @@ export default function Trials() {
 
         // Get medical interests from user object
         if (
-          user.medicalInterests &&
-          Array.isArray(user.medicalInterests) &&
-          user.medicalInterests.length > 0
+          userData.medicalInterests &&
+          Array.isArray(userData.medicalInterests) &&
+          userData.medicalInterests.length > 0
         ) {
-          const medicalInterest = user.medicalInterests[0]; // Use first medical interest
+          const medicalInterest = userData.medicalInterests[0]; // Use first medical interest
           setUserMedicalInterest(medicalInterest);
 
           // Only auto-search if no saved state exists
