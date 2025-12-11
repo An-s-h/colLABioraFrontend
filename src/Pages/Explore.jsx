@@ -22,20 +22,58 @@ import {
   Edit2,
   User,
   CheckCircle,
+  Loader2,
 } from "lucide-react";
 import AnimatedBackground from "../components/ui/AnimatedBackground";
 import SmartSearchInput from "../components/SmartSearchInput";
 import Modal from "../components/ui/Modal";
 import Button from "../components/ui/Button";
+import apiFetch from "../utils/api.js";
 
-const FREE_SEARCHES_KEY = "free_searches_remaining";
 const FREE_SEARCHES_TOTAL = 6;
 const GUEST_INFO_KEY = "guest_user_info"; // Store guest condition/location
+const COOKIE_CONSENT_KEY = "cookie_consent_accepted";
+const FREE_SEARCHES_CACHE_KEY = "free_searches_cache";
+const CACHE_TTL = 30000; // 30 seconds cache
+
+// Helper to get cached searches
+function getCachedSearches() {
+  try {
+    const cached = localStorage.getItem(FREE_SEARCHES_CACHE_KEY);
+    if (!cached) return null;
+    const { value, timestamp } = JSON.parse(cached);
+    const now = Date.now();
+    if (now - timestamp < CACHE_TTL) {
+      return value;
+    }
+    localStorage.removeItem(FREE_SEARCHES_CACHE_KEY);
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// Helper to cache searches
+function setCachedSearches(value) {
+  try {
+    localStorage.setItem(
+      FREE_SEARCHES_CACHE_KEY,
+      JSON.stringify({ value, timestamp: Date.now() })
+    );
+  } catch {
+    // Ignore storage errors
+  }
+}
 
 export default function Explore() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
-  const [freeSearches, setFreeSearches] = useState(FREE_SEARCHES_TOTAL);
+  // Initialize with cached value for instant display
+  const cachedValue = getCachedSearches();
+  const [freeSearches, setFreeSearches] = useState(
+    cachedValue !== null ? cachedValue : FREE_SEARCHES_TOTAL
+  );
+  const [loadingSearches, setLoadingSearches] = useState(cachedValue === null);
   const [isMobile, setIsMobile] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchCategory, setSearchCategory] = useState("trials"); // "trials", "publications", "experts"
@@ -44,6 +82,7 @@ export default function Explore() {
   const [guestCondition, setGuestCondition] = useState("");
   const [guestLocation, setGuestLocation] = useState("");
   const [hasShownModal, setHasShownModal] = useState(false);
+  const [showCookieConsent, setShowCookieConsent] = useState(false);
 
   useEffect(() => {
     // Check if user is signed in
@@ -51,13 +90,58 @@ export default function Explore() {
     const token = localStorage.getItem("token");
     setUser(userData && token ? userData : null);
 
-    // Load free searches from localStorage
-    const savedSearches = localStorage.getItem(FREE_SEARCHES_KEY);
-    if (savedSearches !== null) {
-      setFreeSearches(parseInt(savedSearches, 10));
-    } else {
-      setFreeSearches(FREE_SEARCHES_TOTAL);
-      localStorage.setItem(FREE_SEARCHES_KEY, FREE_SEARCHES_TOTAL.toString());
+    // Load free searches from server for anonymous users with caching
+    const updateFreeSearches = async (forceRefresh = false) => {
+      if (userData && token) {
+        // Signed-in users have unlimited searches
+        setFreeSearches(null);
+        setLoadingSearches(false);
+        return;
+      }
+
+      // Check cache first (unless forcing refresh)
+      if (!forceRefresh) {
+        const cached = getCachedSearches();
+        if (cached !== null) {
+          setFreeSearches(cached);
+          setLoadingSearches(false);
+          // Still fetch in background to update cache
+          updateFreeSearches(true);
+          return;
+        }
+      }
+
+      setLoadingSearches(true);
+      try {
+        const response = await apiFetch("/api/search/remaining");
+        if (response && response.ok) {
+          const data = await response.json();
+          const newValue = data.unlimited
+            ? null
+            : data.remaining ?? FREE_SEARCHES_TOTAL;
+          setFreeSearches(newValue);
+          setCachedSearches(newValue);
+        } else {
+          // Fallback to cached or default if API fails
+          const cached = getCachedSearches();
+          setFreeSearches(cached !== null ? cached : FREE_SEARCHES_TOTAL);
+        }
+      } catch (error) {
+        console.error("Error fetching remaining searches:", error);
+        // Use cached value on error
+        const cached = getCachedSearches();
+        setFreeSearches(cached !== null ? cached : FREE_SEARCHES_TOTAL);
+      } finally {
+        setLoadingSearches(false);
+      }
+    };
+
+    updateFreeSearches();
+
+    // Check cookie consent
+    const cookieConsent = localStorage.getItem(COOKIE_CONSENT_KEY);
+    if (!cookieConsent) {
+      setShowCookieConsent(true);
     }
 
     // Check if guest info already exists
@@ -88,7 +172,14 @@ export default function Explore() {
     };
     checkMobile();
     window.addEventListener("resize", checkMobile);
-    return () => window.removeEventListener("resize", checkMobile);
+
+    // Listen for free search updates
+    window.addEventListener("freeSearchUsed", updateFreeSearches);
+
+    return () => {
+      window.removeEventListener("resize", checkMobile);
+      window.removeEventListener("freeSearchUsed", updateFreeSearches);
+    };
   }, []);
 
   // Listen for login events
@@ -99,11 +190,62 @@ export default function Explore() {
       setUser(userData && token ? userData : null);
       // Clear guest info when user signs in
       localStorage.removeItem(GUEST_INFO_KEY);
+      // Update free searches (will be unlimited for signed-in users)
+      const updateFreeSearches = async () => {
+        if (userData && token) {
+          setFreeSearches(null);
+          setLoadingSearches(false);
+          return;
+        }
+
+        // Check cache first
+        const cached = getCachedSearches();
+        if (cached !== null) {
+          setFreeSearches(cached);
+          setLoadingSearches(false);
+          // Fetch in background to update
+          const response = await apiFetch("/api/search/remaining").catch(
+            () => null
+          );
+          if (response?.ok) {
+            const data = await response.json();
+            const newValue = data.unlimited
+              ? null
+              : data.remaining ?? FREE_SEARCHES_TOTAL;
+            setFreeSearches(newValue);
+            setCachedSearches(newValue);
+          }
+          return;
+        }
+
+        setLoadingSearches(true);
+        try {
+          const response = await apiFetch("/api/search/remaining");
+          if (response && response.ok) {
+            const data = await response.json();
+            const newValue = data.unlimited
+              ? null
+              : data.remaining ?? FREE_SEARCHES_TOTAL;
+            setFreeSearches(newValue);
+            setCachedSearches(newValue);
+          }
+        } catch (error) {
+          console.error("Error fetching remaining searches:", error);
+        } finally {
+          setLoadingSearches(false);
+        }
+      };
+      updateFreeSearches();
     };
 
     window.addEventListener("login", handleLogin);
     return () => window.removeEventListener("login", handleLogin);
   }, []);
+
+  const handleAcceptCookies = () => {
+    localStorage.setItem(COOKIE_CONSENT_KEY, "true");
+    setShowCookieConsent(false);
+  };
 
   const handleSearch = (searchValue = null) => {
     // Use provided value or fallback to state
@@ -288,14 +430,34 @@ export default function Explore() {
                   borderColor: "#D0C4E2",
                 }}
               >
-                <Sparkles className="w-4 h-4" style={{ color: "#2F3C96" }} />
-                <span
-                  className="text-sm font-semibold"
-                  style={{ color: "#2F3C96" }}
-                >
-                  {freeSearches} free search{freeSearches !== 1 ? "es" : ""}{" "}
-                  remaining
-                </span>
+                {loadingSearches ? (
+                  <>
+                    <Loader2
+                      className="w-4 h-4 animate-spin"
+                      style={{ color: "#2F3C96" }}
+                    />
+                    <span
+                      className="text-sm font-semibold"
+                      style={{ color: "#2F3C96" }}
+                    >
+                      Loading...
+                    </span>
+                  </>
+                ) : freeSearches !== null ? (
+                  <>
+                    <Sparkles
+                      className="w-4 h-4"
+                      style={{ color: "#2F3C96" }}
+                    />
+                    <span
+                      className="text-sm font-semibold"
+                      style={{ color: "#2F3C96" }}
+                    >
+                      {freeSearches} free search{freeSearches !== 1 ? "es" : ""}{" "}
+                      remaining
+                    </span>
+                  </>
+                ) : null}
               </div>
             </motion.div>
           )}
@@ -408,9 +570,8 @@ export default function Explore() {
             </div>
           </motion.div>
 
-          {/* TODO: Re-implement guest user logic later */}
           {/* Guest Info Display - Under Search Bar */}
-          {/* {!user && (guestCondition || guestLocation) && (
+          {!user && (guestCondition || guestLocation) && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -513,7 +674,7 @@ export default function Explore() {
                 </div>
               </div>
             </motion.div>
-          )} */}
+          )}
 
           {/* Quick Access Cards */}
 
@@ -816,6 +977,114 @@ export default function Explore() {
           </div>
         </div>
       </Modal>
+
+      {/* Cookie Consent Popup */}
+      {showCookieConsent && (
+        <motion.div
+          initial={{ opacity: 0, x: 100 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: 100 }}
+          className="fixed bottom-4 right-4 z-50 max-w-sm sm:max-w-md"
+        >
+          <div
+            className="rounded-xl p-4 sm:p-5 border-2 shadow-2xl"
+            style={{
+              backgroundColor: "#FFFFFF",
+              borderColor: "#D0C4E2",
+            }}
+          >
+            <div className="flex items-start gap-3 mb-3">
+              <div
+                className="p-2 rounded-lg shrink-0"
+                style={{ backgroundColor: "#F5F2F8" }}
+              >
+                <Lock className="w-5 h-5" style={{ color: "#2F3C96" }} />
+              </div>
+              <div className="flex-1">
+                <h3
+                  className="text-sm font-bold mb-1"
+                  style={{ color: "#2F3C96" }}
+                >
+                  We Use Cookies
+                </h3>
+                <p
+                  className="text-xs leading-relaxed mb-3"
+                  style={{ color: "#787878" }}
+                >
+                  We use cookies to track your search usage and provide a better
+                  experience. By continuing, you agree to our use of cookies.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowCookieConsent(false)}
+                className="p-1 rounded-lg hover:bg-gray-100 transition-colors shrink-0"
+                style={{ color: "#787878" }}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Button
+                onClick={handleAcceptCookies}
+                className="flex-1 px-4 py-2 text-white font-semibold text-xs rounded-lg transition-all shadow-sm hover:shadow-md"
+                style={{
+                  backgroundColor: "#2F3C96",
+                }}
+              >
+                Accept Cookies
+              </Button>
+              <button
+                onClick={() => {
+                  // Navigate to privacy policy if it exists, or just accept
+                  // You can add a privacy policy route later
+                  handleAcceptCookies();
+                }}
+                className="px-4 py-2 text-xs font-semibold rounded-lg transition-all border-2"
+                style={{
+                  borderColor: "#E8E8E8",
+                  color: "#787878",
+                  backgroundColor: "#FFFFFF",
+                }}
+              >
+                Learn More
+              </button>
+            </div>
+            <p
+              className="text-xs mt-3 pt-3 border-t"
+              style={{
+                color: "#787878",
+                borderColor: "#E8E8E8",
+              }}
+            >
+              <a
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  // Add privacy policy link here when available
+                  handleAcceptCookies();
+                }}
+                className="underline hover:no-underline"
+                style={{ color: "#2F3C96" }}
+              >
+                Privacy Policy
+              </a>{" "}
+              •{" "}
+              <a
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  // Add terms link here when available
+                  handleAcceptCookies();
+                }}
+                className="underline hover:no-underline"
+                style={{ color: "#2F3C96" }}
+              >
+                Terms of Service
+              </a>
+            </p>
+          </div>
+        </motion.div>
+      )}
     </div>
   );
 }

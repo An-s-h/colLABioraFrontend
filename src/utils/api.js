@@ -12,6 +12,7 @@ export async function apiFetch(endpoint, options = {}) {
   const response = await fetch(`${base}${endpoint}`, {
     ...options,
     headers,
+    credentials: "include", // Include cookies for device token
   });
 
   if (response.status === 401) {

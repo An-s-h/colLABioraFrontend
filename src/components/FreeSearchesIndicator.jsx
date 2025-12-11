@@ -3,15 +3,51 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, X, LogIn, ArrowRight } from "lucide-react";
+import { Sparkles, X, LogIn, ArrowRight, Loader2 } from "lucide-react";
+import apiFetch from "../utils/api.js";
 
-const FREE_SEARCHES_KEY = "free_searches_remaining";
 const FREE_SEARCHES_TOTAL = 6;
 const FREE_SEARCHES_POPUP_KEY = "free_searches_popup_shown";
+const FREE_SEARCHES_CACHE_KEY = "free_searches_cache";
+const CACHE_TTL = 30000; // 30 seconds cache
+
+// Helper to get cached searches
+function getCachedSearches() {
+  try {
+    const cached = localStorage.getItem(FREE_SEARCHES_CACHE_KEY);
+    if (!cached) return null;
+    const { value, timestamp } = JSON.parse(cached);
+    const now = Date.now();
+    if (now - timestamp < CACHE_TTL) {
+      return value;
+    }
+    localStorage.removeItem(FREE_SEARCHES_CACHE_KEY);
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// Helper to cache searches
+function setCachedSearches(value) {
+  try {
+    localStorage.setItem(
+      FREE_SEARCHES_CACHE_KEY,
+      JSON.stringify({ value, timestamp: Date.now() })
+    );
+  } catch {
+    // Ignore storage errors
+  }
+}
 
 export default function FreeSearchesIndicator({ user, onSearch }) {
   const navigate = useNavigate();
-  const [freeSearches, setFreeSearches] = useState(FREE_SEARCHES_TOTAL);
+  // Initialize with cached value for instant display
+  const cachedValue = getCachedSearches();
+  const [freeSearches, setFreeSearches] = useState(
+    cachedValue !== null ? cachedValue : FREE_SEARCHES_TOTAL
+  );
+  const [loadingSearches, setLoadingSearches] = useState(cachedValue === null);
   const [showPopup, setShowPopup] = useState(false);
 
   useEffect(() => {
@@ -20,14 +56,42 @@ export default function FreeSearchesIndicator({ user, onSearch }) {
       return;
     }
 
-    // Load free searches from localStorage
-    const updateFreeSearches = () => {
-      const savedSearches = localStorage.getItem(FREE_SEARCHES_KEY);
-      if (savedSearches !== null) {
-        setFreeSearches(parseInt(savedSearches, 10));
-      } else {
-        setFreeSearches(FREE_SEARCHES_TOTAL);
-        localStorage.setItem(FREE_SEARCHES_KEY, FREE_SEARCHES_TOTAL.toString());
+    // Load free searches from server with caching
+    const updateFreeSearches = async (forceRefresh = false) => {
+      // Check cache first (unless forcing refresh)
+      if (!forceRefresh) {
+        const cached = getCachedSearches();
+        if (cached !== null) {
+          setFreeSearches(cached);
+          setLoadingSearches(false);
+          // Still fetch in background to update cache
+          updateFreeSearches(true);
+          return;
+        }
+      }
+
+      setLoadingSearches(true);
+      try {
+        const response = await apiFetch("/api/search/remaining");
+        if (response && response.ok) {
+          const data = await response.json();
+          const newValue = data.unlimited
+            ? null
+            : data.remaining ?? FREE_SEARCHES_TOTAL;
+          setFreeSearches(newValue);
+          setCachedSearches(newValue);
+        } else {
+          // Fallback to cached or default if API fails
+          const cached = getCachedSearches();
+          setFreeSearches(cached !== null ? cached : FREE_SEARCHES_TOTAL);
+        }
+      } catch (error) {
+        console.error("Error fetching remaining searches:", error);
+        // Use cached value on error
+        const cached = getCachedSearches();
+        setFreeSearches(cached !== null ? cached : FREE_SEARCHES_TOTAL);
+      } finally {
+        setLoadingSearches(false);
       }
     };
 
@@ -41,19 +105,10 @@ export default function FreeSearchesIndicator({ user, onSearch }) {
       localStorage.setItem(FREE_SEARCHES_POPUP_KEY, "true");
     }
 
-    // Listen for storage changes to update free searches count
-    const handleStorageChange = (e) => {
-      if (e.key === FREE_SEARCHES_KEY) {
-        updateFreeSearches();
-      }
-    };
-
-    window.addEventListener("storage", handleStorageChange);
-    // Also listen for custom event for same-tab updates
+    // Listen for custom event for same-tab updates
     window.addEventListener("freeSearchUsed", updateFreeSearches);
 
     return () => {
-      window.removeEventListener("storage", handleStorageChange);
       window.removeEventListener("freeSearchUsed", updateFreeSearches);
     };
   }, [user]);
@@ -91,10 +146,37 @@ export default function FreeSearchesIndicator({ user, onSearch }) {
             borderColor: "#D0C4E2",
           }}
         >
-          <Sparkles className="w-4 h-4" style={{ color: "#2F3C96" }} />
-          <span className="text-sm font-semibold" style={{ color: "#2F3C96" }}>
-            {freeSearches} free search{freeSearches !== 1 ? "es" : ""} left
-          </span>
+          {loadingSearches ? (
+            <>
+              <Loader2
+                className="w-4 h-4 animate-spin"
+                style={{ color: "#2F3C96" }}
+              />
+              <span
+                className="text-sm font-semibold"
+                style={{ color: "#2F3C96" }}
+              >
+                Loading...
+              </span>
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-4 h-4" style={{ color: "#2F3C96" }} />
+              <span
+                className="text-sm font-semibold"
+                style={{ color: "#2F3C96" }}
+              >
+                {freeSearches !== null ? (
+                  <>
+                    {freeSearches} free search{freeSearches !== 1 ? "es" : ""}{" "}
+                    left
+                  </>
+                ) : (
+                  "Unlimited searches"
+                )}
+              </span>
+            </>
+          )}
         </div>
       </motion.div>
 
@@ -143,7 +225,16 @@ export default function FreeSearchesIndicator({ user, onSearch }) {
                         Start Exploring for Free!
                       </h3>
                       <p className="text-sm mt-1" style={{ color: "#787878" }}>
-                        You have {freeSearches} free searches
+                        {loadingSearches ? (
+                          <span className="flex items-center gap-2">
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            Loading...
+                          </span>
+                        ) : freeSearches !== null ? (
+                          <>You have {freeSearches} free searches</>
+                        ) : (
+                          "Unlimited searches"
+                        )}
                       </p>
                     </div>
                   </div>
@@ -203,52 +294,100 @@ export default function FreeSearchesIndicator({ user, onSearch }) {
   );
 }
 
-// Export function to check and decrement free searches
+// Export function to check and get remaining free searches
 export function useFreeSearches() {
   const [freeSearches, setFreeSearches] = useState(FREE_SEARCHES_TOTAL);
 
   useEffect(() => {
-    const savedSearches = localStorage.getItem(FREE_SEARCHES_KEY);
-    if (savedSearches !== null) {
-      setFreeSearches(parseInt(savedSearches, 10));
-    } else {
-      setFreeSearches(FREE_SEARCHES_TOTAL);
-      localStorage.setItem(FREE_SEARCHES_KEY, FREE_SEARCHES_TOTAL.toString());
-    }
+    const updateFreeSearches = async () => {
+      const user = JSON.parse(localStorage.getItem("user") || "null");
+      const token = localStorage.getItem("token");
+
+      // Signed-in users have unlimited searches
+      if (user && token) {
+        setFreeSearches(null);
+        return;
+      }
+
+      try {
+        const response = await apiFetch("/api/search/remaining");
+        if (response && response.ok) {
+          const data = await response.json();
+          if (data.unlimited) {
+            setFreeSearches(null);
+          } else {
+            setFreeSearches(data.remaining ?? FREE_SEARCHES_TOTAL);
+          }
+        } else {
+          setFreeSearches(FREE_SEARCHES_TOTAL);
+        }
+      } catch (error) {
+        console.error("Error fetching remaining searches:", error);
+        setFreeSearches(FREE_SEARCHES_TOTAL);
+      }
+    };
+
+    updateFreeSearches();
+
+    // Listen for updates
+    window.addEventListener("freeSearchUsed", updateFreeSearches);
+    return () => {
+      window.removeEventListener("freeSearchUsed", updateFreeSearches);
+    };
   }, []);
 
-  const checkAndUseSearch = () => {
+  const checkAndUseSearch = async () => {
     const user = JSON.parse(localStorage.getItem("user") || "null");
     const token = localStorage.getItem("token");
 
+    // Signed-in users can search freely
     if (user && token) {
-      return true; // Signed-in users can search freely
+      return true;
     }
 
-    const savedSearches = localStorage.getItem(FREE_SEARCHES_KEY);
-    const currentSearches = savedSearches
-      ? parseInt(savedSearches, 10)
-      : FREE_SEARCHES_TOTAL;
-
-    if (currentSearches <= 0) {
+    // Check remaining searches from server
+    try {
+      const response = await apiFetch("/api/search/remaining");
+      if (response && response.ok) {
+        const data = await response.json();
+        if (data.unlimited) {
+          return true;
+        }
+        const remaining = data.remaining ?? 0;
+        if (remaining <= 0) {
+          return false;
+        }
+        // The actual decrement happens on the server when the search is performed
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error("Error checking search limit:", error);
       return false;
     }
-
-    const newCount = currentSearches - 1;
-    setFreeSearches(newCount);
-    localStorage.setItem(FREE_SEARCHES_KEY, newCount.toString());
-    // Dispatch custom event to update indicator
-    window.dispatchEvent(new Event("freeSearchUsed"));
-    return true;
   };
 
-  const getRemainingSearches = () => {
-    const savedSearches = localStorage.getItem(FREE_SEARCHES_KEY);
-    return savedSearches ? parseInt(savedSearches, 10) : FREE_SEARCHES_TOTAL;
+  const getRemainingSearches = async () => {
+    const user = JSON.parse(localStorage.getItem("user") || "null");
+    const token = localStorage.getItem("token");
+
+    // Signed-in users have unlimited searches
+    if (user && token) {
+      return null;
+    }
+
+    try {
+      const response = await apiFetch("/api/search/remaining");
+      if (response && response.ok) {
+        const data = await response.json();
+        return data.unlimited ? null : data.remaining ?? FREE_SEARCHES_TOTAL;
+      }
+      return FREE_SEARCHES_TOTAL;
+    } catch (error) {
+      console.error("Error getting remaining searches:", error);
+      return FREE_SEARCHES_TOTAL;
+    }
   };
 
   return { freeSearches, checkAndUseSearch, getRemainingSearches };
 }
-
-
-
