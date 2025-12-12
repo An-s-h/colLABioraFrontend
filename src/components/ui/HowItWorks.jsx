@@ -50,9 +50,9 @@ export default function HowItWorks() {
     },
     {
       icon: Sparkles,
-      title: "AI Summaries",
+      title: "Instant Summaries",
       description:
-        "Get instant AI-powered summaries across trials, publications, and expert profiles — making complex medical info simple and actionable.",
+        "Get instant automated summaries across trials, publications, and expert profiles — making complex medical info simple and actionable.",
       color: "indigo",
       visual: "ai",
     },
@@ -106,11 +106,17 @@ export default function HowItWorks() {
                 >
                   <div className="flex items-center gap-1.5 mb-1">
                     <Icon className="w-3 h-3" style={{ color: "#D0C4E2" }} />
-                    <span className="text-[9px] font-semibold" style={{ color: "#2F3C96" }}>
+                    <span
+                      className="text-[9px] font-semibold"
+                      style={{ color: "#2F3C96" }}
+                    >
                       {item.label}
                     </span>
                   </div>
-                  <div className="text-xs font-bold" style={{ color: "#2F3C96" }}>
+                  <div
+                    className="text-xs font-bold"
+                    style={{ color: "#2F3C96" }}
+                  >
                     {item.value}
                   </div>
                 </div>
@@ -176,8 +182,11 @@ export default function HowItWorks() {
               }}
             >
               <Sparkles className="w-3 h-3" style={{ color: "#D0C4E2" }} />
-              <span className="text-[10px] font-bold" style={{ color: "#2F3C96" }}>
-                AI Summary
+              <span
+                className="text-[10px] font-bold"
+                style={{ color: "#2F3C96" }}
+              >
+                Quick Summary
               </span>
             </div>
             <div
@@ -187,13 +196,22 @@ export default function HowItWorks() {
                 borderColor: "#D0C4E2",
               }}
             >
-              <div className="text-xs font-bold mb-1.5" style={{ color: "#2F3C96" }}>
+              <div
+                className="text-xs font-bold mb-1.5"
+                style={{ color: "#2F3C96" }}
+              >
                 Findings
               </div>
-              <div className="text-[10px] leading-relaxed mb-2" style={{ color: "#787878" }}>
+              <div
+                className="text-[10px] leading-relaxed mb-2"
+                style={{ color: "#787878" }}
+              >
                 78% response rate in advanced trials...
               </div>
-              <div className="flex items-center gap-1 text-[10px] font-semibold" style={{ color: "#D0C4E2" }}>
+              <div
+                className="flex items-center gap-1 text-[10px] font-semibold"
+                style={{ color: "#D0C4E2" }}
+              >
                 <Zap className="w-2.5 h-2.5" />
                 <span>2s</span>
               </div>
@@ -221,9 +239,15 @@ export default function HowItWorks() {
               }}
             >
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: "#D0C4E2" }} />
+                <div
+                  className="w-2.5 h-2.5 rounded-full"
+                  style={{ backgroundColor: "#D0C4E2" }}
+                />
                 <div className="flex-1">
-                  <div className="text-xs font-bold" style={{ color: "#2F3C96" }}>
+                  <div
+                    className="text-xs font-bold"
+                    style={{ color: "#2F3C96" }}
+                  >
                     Dr. Chen
                   </div>
                   <div className="text-[10px]" style={{ color: "#787878" }}>
@@ -238,8 +262,14 @@ export default function HowItWorks() {
                   borderColor: "#D0C4E2",
                 }}
               >
-                <MessageSquare className="w-3 h-3" style={{ color: "#787878" }} />
-                <span className="text-[10px] flex-1" style={{ color: "#787878" }}>
+                <MessageSquare
+                  className="w-3 h-3"
+                  style={{ color: "#787878" }}
+                />
+                <span
+                  className="text-[10px] flex-1"
+                  style={{ color: "#787878" }}
+                >
                   Message...
                 </span>
                 <Send className="w-3 h-3" style={{ color: "#D0C4E2" }} />
@@ -288,11 +318,17 @@ export default function HowItWorks() {
               <Icon className="w-4 h-4 text-white" />
             </motion.div>
 
-            <h3 className="text-sm font-bold mb-2 leading-tight line-clamp-2" style={{ color: "#2F3C96" }}>
+            <h3
+              className="text-sm font-bold mb-2 leading-tight line-clamp-2"
+              style={{ color: "#2F3C96" }}
+            >
               {feature.title}
             </h3>
 
-            <p className="text-xs leading-relaxed mb-4 line-clamp-2" style={{ color: "#787878" }}>
+            <p
+              className="text-xs leading-relaxed mb-4 line-clamp-2"
+              style={{ color: "#787878" }}
+            >
               {feature.description}
             </p>
 
@@ -334,12 +370,13 @@ export default function HowItWorks() {
           transition={{ duration: 0.6 }}
           className="text-center "
         >
-          <p className="text-xl md:text-2xl font-bold mb-4 leading-tight" style={{ color: "#2F3C96" }}>
+          <p
+            className="text-xl md:text-2xl font-bold mb-4 leading-tight"
+            style={{ color: "#2F3C96" }}
+          >
             Everything{" "}
             {isMobile ? (
-              <span style={{ color: "#D0C4E2" }}>
-                You Need for
-              </span>
+              <span style={{ color: "#D0C4E2" }}>You Need for</span>
             ) : (
               <Highlighter
                 action="underline"
@@ -356,7 +393,9 @@ export default function HowItWorks() {
             )}{" "}
             Smarter Healthcare{" "}
             {isMobile ? (
-              <span className="px-1 rounded" style={{ color: "#D0C4E2" }}>All in One Place</span>
+              <span className="px-1 rounded" style={{ color: "#D0C4E2" }}>
+                All in One Place
+              </span>
             ) : (
               <Highlighter
                 action="highlight"

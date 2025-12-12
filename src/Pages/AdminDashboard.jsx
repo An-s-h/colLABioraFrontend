@@ -15,12 +15,25 @@ import {
   LogOut,
   Award,
   Briefcase,
+  Search,
+  RefreshCw,
+  Database,
+  Globe,
+  BarChart3,
 } from "lucide-react";
 
 export default function AdminDashboard() {
   const [experts, setExperts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState({});
+  const [searchStats, setSearchStats] = useState(null);
+  const [loadingStats, setLoadingStats] = useState(false);
+  const [resetting, setResetting] = useState({
+    deviceTokens: false,
+    ipLimits: false,
+    all: false,
+    cleanup: false,
+  });
   const navigate = useNavigate();
   const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
@@ -36,6 +49,7 @@ export default function AdminDashboard() {
 
     // Verify admin token by fetching experts
     fetchExperts();
+    fetchSearchStats();
   }, [navigate]);
 
   const fetchExperts = async () => {
@@ -135,6 +149,205 @@ export default function AdminDashboard() {
     }
   };
 
+  const fetchSearchStats = async () => {
+    setLoadingStats(true);
+    try {
+      const adminToken = localStorage.getItem("adminToken");
+      if (!adminToken) return;
+
+      const response = await fetch(`${base}/api/admin/search/config`, {
+        headers: {
+          Authorization: `Bearer ${adminToken}`,
+        },
+      });
+
+      if (response.status === 401) {
+        localStorage.removeItem("adminToken");
+        toast.error("Access denied. Admin access required.");
+        navigate("/");
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch search stats");
+      }
+
+      const data = await response.json();
+      setSearchStats(data);
+    } catch (error) {
+      console.error("Error fetching search stats:", error);
+      toast.error("Failed to load search statistics");
+    } finally {
+      setLoadingStats(false);
+    }
+  };
+
+  const handleResetDeviceTokens = async () => {
+    if (
+      !confirm("Are you sure you want to reset all device token search counts?")
+    ) {
+      return;
+    }
+
+    setResetting({ ...resetting, deviceTokens: true });
+    try {
+      const adminToken = localStorage.getItem("adminToken");
+      const response = await fetch(
+        `${base}/api/admin/search/reset-device-tokens`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${adminToken}`,
+          },
+        }
+      );
+
+      if (response.status === 401) {
+        localStorage.removeItem("adminToken");
+        toast.error("Access denied. Admin access required.");
+        navigate("/");
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error("Failed to reset device tokens");
+      }
+
+      const data = await response.json();
+      toast.success(data.message);
+      fetchSearchStats(); // Refresh stats
+    } catch (error) {
+      console.error("Error resetting device tokens:", error);
+      toast.error("Failed to reset device tokens");
+    } finally {
+      setResetting({ ...resetting, deviceTokens: false });
+    }
+  };
+
+  const handleResetIPLimits = async () => {
+    if (
+      !confirm("Are you sure you want to reset all IP limit search counts?")
+    ) {
+      return;
+    }
+
+    setResetting({ ...resetting, ipLimits: true });
+    try {
+      const adminToken = localStorage.getItem("adminToken");
+      const response = await fetch(`${base}/api/admin/search/reset-ip-limits`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${adminToken}`,
+        },
+      });
+
+      if (response.status === 401) {
+        localStorage.removeItem("adminToken");
+        toast.error("Access denied. Admin access required.");
+        navigate("/");
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error("Failed to reset IP limits");
+      }
+
+      const data = await response.json();
+      toast.success(data.message);
+      fetchSearchStats(); // Refresh stats
+    } catch (error) {
+      console.error("Error resetting IP limits:", error);
+      toast.error("Failed to reset IP limits");
+    } finally {
+      setResetting({ ...resetting, ipLimits: false });
+    }
+  };
+
+  const handleResetAll = async () => {
+    if (
+      !confirm(
+        "Are you sure you want to reset ALL search limits (device tokens + IPs)?"
+      )
+    ) {
+      return;
+    }
+
+    setResetting({ ...resetting, all: true });
+    try {
+      const adminToken = localStorage.getItem("adminToken");
+      const response = await fetch(`${base}/api/admin/search/reset-all`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${adminToken}`,
+        },
+      });
+
+      if (response.status === 401) {
+        localStorage.removeItem("adminToken");
+        toast.error("Access denied. Admin access required.");
+        navigate("/");
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error("Failed to reset all limits");
+      }
+
+      const data = await response.json();
+      toast.success(data.message);
+      fetchSearchStats(); // Refresh stats
+    } catch (error) {
+      console.error("Error resetting all limits:", error);
+      toast.error("Failed to reset all limits");
+    } finally {
+      setResetting({ ...resetting, all: false });
+    }
+  };
+
+  const handleCleanupDeviceTokens = async () => {
+    if (
+      !confirm(
+        "This will delete old unused device tokens (30+ days unused or 7+ days old and never used). Continue?"
+      )
+    ) {
+      return;
+    }
+
+    setResetting({ ...resetting, cleanup: true });
+    try {
+      const adminToken = localStorage.getItem("adminToken");
+      const response = await fetch(
+        `${base}/api/admin/search/cleanup-device-tokens`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${adminToken}`,
+          },
+        }
+      );
+
+      if (response.status === 401) {
+        localStorage.removeItem("adminToken");
+        toast.error("Access denied. Admin access required.");
+        navigate("/");
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error("Failed to cleanup device tokens");
+      }
+
+      const data = await response.json();
+      toast.success(data.message);
+      fetchSearchStats(); // Refresh stats
+    } catch (error) {
+      console.error("Error cleaning up device tokens:", error);
+      toast.error("Failed to cleanup device tokens");
+    } finally {
+      setResetting({ ...resetting, cleanup: false });
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem("adminToken");
     navigate("/admin/login");
@@ -221,6 +434,196 @@ export default function AdminDashboard() {
                 </p>
               </div>
             </div>
+          </div>
+
+          {/* Search Limit Management Section */}
+          <div className="bg-white/20 backdrop-blur-xl rounded-2xl shadow-lg border border-indigo-100 p-6 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <Search className="w-6 h-6 text-indigo-600" />
+                <h2 className="text-xl font-bold text-indigo-700">
+                  Search Limit Management
+                </h2>
+              </div>
+              <Button
+                onClick={fetchSearchStats}
+                disabled={loadingStats}
+                className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm transition-all disabled:opacity-50"
+              >
+                {loadingStats ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-4 h-4" />
+                )}
+                Refresh
+              </Button>
+            </div>
+
+            {loadingStats ? (
+              <div className="flex justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
+              </div>
+            ) : searchStats ? (
+              <>
+                {/* Configuration */}
+                <div className="bg-white/50 backdrop-blur-sm rounded-lg p-4 border border-indigo-100 mb-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <BarChart3 className="w-5 h-5 text-indigo-600" />
+                    <h3 className="font-semibold text-gray-700">
+                      Configuration
+                    </h3>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">
+                        Max Free Searches
+                      </p>
+                      <p className="text-2xl font-bold text-indigo-700">
+                        {searchStats.maxFreeSearches}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">
+                        Device Tokens
+                      </p>
+                      <p className="text-2xl font-bold text-indigo-700">
+                        {searchStats.statistics.deviceTokens.total}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">IP Limits</p>
+                      <p className="text-2xl font-bold text-indigo-700">
+                        {searchStats.statistics.ipLimits.total}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Statistics */}
+                <div className="bg-white/50 backdrop-blur-sm rounded-lg p-4 border border-indigo-100 mb-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Database className="w-5 h-5 text-indigo-600" />
+                    <h3 className="font-semibold text-gray-700">Statistics</h3>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="p-3 bg-indigo-50 rounded-lg">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Database className="w-4 h-4 text-indigo-600" />
+                        <span className="text-sm font-semibold text-gray-700">
+                          Device Token Searches
+                        </span>
+                      </div>
+                      <p className="text-xl font-bold text-indigo-700">
+                        {searchStats.statistics.deviceTokens.totalSearches}
+                      </p>
+                      <p className="text-xs text-gray-600 mt-1">
+                        Total searches across all device tokens
+                      </p>
+                    </div>
+                    <div className="p-3 bg-purple-50 rounded-lg">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Globe className="w-4 h-4 text-purple-600" />
+                        <span className="text-sm font-semibold text-gray-700">
+                          IP Limit Searches
+                        </span>
+                      </div>
+                      <p className="text-xl font-bold text-purple-700">
+                        {searchStats.statistics.ipLimits.totalSearches}
+                      </p>
+                      <p className="text-xs text-gray-600 mt-1">
+                        Total searches across all IP addresses
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Reset Controls */}
+                <div className="bg-white/50 backdrop-blur-sm rounded-lg p-4 border border-indigo-100">
+                  <div className="flex items-center gap-2 mb-3">
+                    <RefreshCw className="w-5 h-5 text-indigo-600" />
+                    <h3 className="font-semibold text-gray-700">
+                      Reset Controls
+                    </h3>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <Button
+                      onClick={handleResetDeviceTokens}
+                      disabled={resetting.deviceTokens}
+                      className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {resetting.deviceTokens ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Database className="w-4 h-4" />
+                      )}
+                      Reset Device Tokens
+                    </Button>
+                    <Button
+                      onClick={handleResetIPLimits}
+                      disabled={resetting.ipLimits}
+                      className="flex items-center justify-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {resetting.ipLimits ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Globe className="w-4 h-4" />
+                      )}
+                      Reset IP Limits
+                    </Button>
+                    <Button
+                      onClick={handleResetAll}
+                      disabled={resetting.all}
+                      className="flex items-center justify-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {resetting.all ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="w-4 h-4" />
+                      )}
+                      Reset All
+                    </Button>
+                  </div>
+                  <p className="text-xs text-gray-600 mt-3">
+                    ⚠️ Resetting will set all search counts to 0. This action
+                    cannot be undone.
+                  </p>
+                </div>
+
+                {/* Cleanup Controls */}
+                <div className="bg-yellow-50 backdrop-blur-sm rounded-lg p-4 border border-yellow-200 mt-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <RefreshCw className="w-5 h-5 text-yellow-600" />
+                    <h3 className="font-semibold text-gray-700">
+                      Database Cleanup
+                    </h3>
+                  </div>
+                  <div className="mb-3">
+                    <Button
+                      onClick={handleCleanupDeviceTokens}
+                      disabled={resetting.cleanup}
+                      className="flex items-center justify-center gap-2 px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {resetting.cleanup ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Database className="w-4 h-4" />
+                      )}
+                      Cleanup Old Device Tokens
+                    </Button>
+                  </div>
+                  <p className="text-xs text-gray-600">
+                    🧹 Deletes device tokens that haven't been used in 30+ days
+                    or were created 7+ days ago and never used. This helps
+                    reduce database bloat. Tokens also auto-delete via TTL
+                    indexes.
+                  </p>
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-8 text-gray-600">
+                Failed to load search statistics
+              </div>
+            )}
           </div>
 
           {/* Experts List */}

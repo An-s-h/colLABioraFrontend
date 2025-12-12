@@ -452,8 +452,7 @@ export default function Landing() {
                   className="text-sm sm:text-xs text-center mb-4 sm:mb-6 leading-tight px-2"
                   style={{ color: "#787878" }}
                 >
-                  Browse clinical trials, publications, and experts. No sign-up
-                  required to start discovering!
+                  Browse clinical trials, publications, and experts.
                 </motion.p>
 
                 {/* CTA Buttons */}
@@ -490,33 +489,22 @@ export default function Landing() {
                           initial={{ opacity: 0, y: 10 }}
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ duration: 0.6, delay: 0.5 }}
-                          className="flex rounded-lg border-2 p-1.5"
-                          style={{
-                            borderColor: "#D0C4E2",
-                            backgroundColor: "#F5F2F8",
-                          }}
+                          className="flex flex-col gap-4"
                         >
                           <button
                             onClick={() => {
                               setSelectedRole("patient");
                               navigate("/explore");
                             }}
-                            className={`flex-1 py-3 px-4 rounded-md text-sm font-semibold transition-all ${
-                              selectedRole === "patient"
-                                ? "shadow-sm"
-                                : "bg-transparent"
-                            }`}
+                            className="w-full py-5 px-6 rounded-xl text-base font-semibold transition-all shadow-md hover:shadow-lg"
                             style={{
-                              backgroundColor:
-                                selectedRole === "patient"
-                                  ? "#D0C4E2"
-                                  : "transparent",
+                              backgroundColor: "#D0C4E2",
                               color: "#2F3C96",
                             }}
                           >
-                            <div className="flex items-center justify-center gap-2">
-                              <Users className="w-4 h-4" />
-                              <span>Patient</span>
+                            <div className="flex items-center justify-center gap-3">
+                              <Users className="w-5 h-5" />
+                              <span>Explore as Patient</span>
                             </div>
                           </button>
                           <button
@@ -524,22 +512,16 @@ export default function Landing() {
                               setSelectedRole("researcher");
                               navigate("/explore");
                             }}
-                            className={`flex-1 py-3 px-4 rounded-md text-sm font-semibold transition-all ${
-                              selectedRole === "researcher"
-                                ? "shadow-sm"
-                                : "bg-transparent"
-                            }`}
+                            className="w-full py-5 px-6 rounded-xl text-base font-semibold transition-all border-2 shadow-md hover:shadow-lg"
                             style={{
-                              backgroundColor:
-                                selectedRole === "researcher"
-                                  ? "#D0C4E2"
-                                  : "transparent",
+                              backgroundColor: "#F5F2F8",
+                              borderColor: "#D0C4E2",
                               color: "#2F3C96",
                             }}
                           >
-                            <div className="flex items-center justify-center gap-2">
-                              <FlaskConical className="w-4 h-4" />
-                              <span>Researcher</span>
+                            <div className="flex items-center justify-center gap-3">
+                              <FlaskConical className="w-5 h-5" />
+                              <span>Explore as Researcher</span>
                             </div>
                           </button>
                         </motion.div>
@@ -548,27 +530,27 @@ export default function Landing() {
                           initial={{ opacity: 0, y: 10 }}
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ duration: 0.6, delay: 0.5 }}
-                          className="grid grid-cols-2 gap-3"
+                          className="flex flex-col gap-4"
                         >
                           <ShinyButton
                             onClick={() => navigate("/explore")}
-                            className="group relative w-full px-3 py-3.5 rounded-xl font-semibold text-sm shadow-md hover:shadow-lg transition-all duration-300 transform hover:scale-[1.02] overflow-hidden"
+                            className="group relative w-full px-6 py-5 rounded-xl font-semibold text-base shadow-md hover:shadow-lg transition-all duration-300 transform hover:scale-[1.02] overflow-hidden"
                             style={{
                               backgroundColor: "#D0C4E2",
                               color: "#2F3C96",
                               borderWidth: "0px",
                             }}
                           >
-                            <div className="relative z-10 flex items-center justify-center gap-2 min-w-0">
+                            <div className="relative z-10 flex items-center justify-center gap-3">
                               <Users
-                                className="w-4 h-4 shrink-0"
+                                className="w-5 h-5 shrink-0"
                                 style={{ color: "#2F3C96" }}
                               />
-                              <span className="font-bold text-xs truncate">
+                              <span className="font-bold text-base whitespace-nowrap">
                                 Explore as Patient
                               </span>
                               <ArrowRight
-                                className="w-3.5 h-3.5 shrink-0 transition-transform group-hover:translate-x-1"
+                                className="w-5 h-5 shrink-0 transition-transform group-hover:translate-x-1"
                                 style={{ color: "#2F3C96" }}
                               />
                             </div>
@@ -576,7 +558,7 @@ export default function Landing() {
 
                           <ShinyButton
                             onClick={() => navigate("/explore")}
-                            className="group relative w-full px-3 py-3.5 rounded-xl font-semibold text-sm shadow-md hover:shadow-lg transition-all duration-300 transform hover:scale-[1.02] overflow-hidden"
+                            className="group relative w-full px-6 py-5 rounded-xl font-semibold text-base shadow-md hover:shadow-lg transition-all duration-300 transform hover:scale-[1.02] overflow-hidden"
                             style={{
                               backgroundColor: "#F5F2F8",
                               borderColor: "#D0C4E2",
@@ -584,16 +566,16 @@ export default function Landing() {
                               borderWidth: "2px",
                             }}
                           >
-                            <div className="relative z-10 flex items-center justify-center gap-2 min-w-0">
+                            <div className="relative z-10 flex items-center justify-center gap-3">
                               <FlaskConical
-                                className="w-4 h-4 shrink-0"
+                                className="w-5 h-5 shrink-0"
                                 style={{ color: "#2F3C96" }}
                               />
-                              <span className="font-bold text-xs truncate">
+                              <span className="font-bold text-base whitespace-nowrap">
                                 Explore as Researcher
                               </span>
                               <ArrowRight
-                                className="w-3.5 h-3.5 shrink-0 transition-transform group-hover:translate-x-1"
+                                className="w-5 h-5 shrink-0 transition-transform group-hover:translate-x-1"
                                 style={{ color: "#2F3C96" }}
                               />
                             </div>
@@ -604,82 +586,16 @@ export default function Landing() {
                   )}
                 </div>
 
-                {/* Credits Badge (for logged in users) or Free Searches (for logged out users) */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.6, delay: 0.7 }}
-                  className="pt-3 sm:pt-5 border-t-2"
-                  style={{ borderColor: "#D0C4E2" }}
+                {/* No sign-up required text at bottom */}
+                <motion.p
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.6, delay: 0.6 }}
+                  className="text-sm sm:text-xs text-center mt-4 leading-tight px-2"
+                  style={{ color: "#787878" }}
                 >
-                  <div
-                    className="rounded-lg sm:rounded-xl p-3 sm:p-5 text-center border-2"
-                    style={{
-                      backgroundColor: "#F5F2F8",
-                      borderColor: "#D0C4E2",
-                    }}
-                  >
-                    {user ? (
-                      <>
-                        <div className="flex items-center justify-center gap-1.5 sm:gap-2 mb-1.5 sm:mb-2">
-                          <Sparkles
-                            className="w-4 h-4 sm:w-5 sm:h-5"
-                            style={{ color: "#D0C4E2" }}
-                          />
-                        </div>
-                        <p
-                          className="text-xs sm:text-sm font-semibold mb-0.5 sm:mb-1"
-                          style={{ color: "#2F3C96" }}
-                        >
-                          You have{" "}
-                          <span
-                            className="text-base sm:text-lg font-bold"
-                            style={{ color: "#2F3C96" }}
-                          >
-                            {credits} credits left
-                          </span>
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <div className="flex items-center justify-center mb-4 sm:mb-4">
-                          <div
-                            className="inline-flex items-center gap-2.5 px-5 sm:px-5 py-3 sm:py-2.5 rounded-full border-2 shadow-md"
-                            style={{
-                              background: `linear-gradient(to right, #F5F2F8, #E8E0EF)`,
-                              borderColor: "#D0C4E2",
-                            }}
-                          >
-                            <div className="flex items-center gap-2 sm:gap-2">
-                              <Search
-                                className="w-5 h-5 sm:w-5 sm:h-5"
-                                style={{ color: "#2F3C96" }}
-                              />
-                              <Sparkles
-                                className="w-5 h-5 sm:w-5 sm:h-5"
-                                style={{ color: "#D0C4E2" }}
-                              />
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <span
-                                className="text-sm sm:text-sm font-semibold"
-                                style={{ color: "#2F3C96" }}
-                              >
-                                Start Searching
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                        <p
-                          className="text-xs mt-3 leading-relaxed"
-                          style={{ color: "#787878" }}
-                        >
-                          Instant access to trials, experts, and publications.
-                        </p>
-                      </>
-                    )}
-                  </div>
-                </motion.div>
+                  No sign-up required to start discovering!
+                </motion.p>
               </div>
             </motion.div>
           </div>

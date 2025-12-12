@@ -106,10 +106,19 @@ export default function FreeSearchesIndicator({ user, onSearch }) {
     }
 
     // Listen for custom event for same-tab updates
-    window.addEventListener("freeSearchUsed", updateFreeSearches);
+    const handleFreeSearchUsed = () => {
+      // Clear cache immediately when search is used to force fresh fetch
+      localStorage.removeItem(FREE_SEARCHES_CACHE_KEY);
+      // Small delay to ensure backend has updated the count
+      setTimeout(() => {
+        updateFreeSearches(true); // Force refresh
+      }, 500);
+    };
+
+    window.addEventListener("freeSearchUsed", handleFreeSearchUsed);
 
     return () => {
-      window.removeEventListener("freeSearchUsed", updateFreeSearches);
+      window.removeEventListener("freeSearchUsed", handleFreeSearchUsed);
     };
   }, [user]);
 

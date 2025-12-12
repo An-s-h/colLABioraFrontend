@@ -1,6 +1,19 @@
 import React from "react";
 import { motion } from "framer-motion";
-import { LayoutDashboard, FileText, Sparkles, MessageSquare, Calendar, Download, Share2, Zap, Users, Beaker, BookOpen, Send } from 'lucide-react';
+import {
+  LayoutDashboard,
+  FileText,
+  Sparkles,
+  MessageSquare,
+  Calendar,
+  Download,
+  Share2,
+  Zap,
+  Users,
+  Beaker,
+  BookOpen,
+  Send,
+} from "lucide-react";
 
 export default function HowItWorksMobile() {
   const features = [
@@ -22,9 +35,9 @@ export default function HowItWorksMobile() {
     },
     {
       icon: Sparkles,
-      title: "AI Summaries",
+      title: "Instant Summaries",
       description:
-        "Get instant AI-powered summaries across trials, publications, and expert profiles — making complex medical info simple and actionable.",
+        "Get instant automated summaries across trials, publications, and expert profiles — making complex medical info simple and actionable.",
       color: "indigo",
       visual: "ai",
     },
@@ -126,7 +139,7 @@ export default function HowItWorksMobile() {
             >
               <Sparkles className="w-3 h-3 text-indigo-600 dark:text-indigo-300" />
               <span className="text-[10px] font-bold text-indigo-700 dark:text-indigo-200">
-                AI Summary
+                Quick Summary
               </span>
             </div>
             <div className="bg-white/80 dark:bg-gray-800/80 rounded-lg p-2.5 border border-gray-200/50 dark:border-gray-700/50">
@@ -201,12 +214,8 @@ export default function HowItWorksMobile() {
             <span className="text-indigo-600 dark:text-indigo-400">
               You Need
             </span>{" "}
-            for {" "}
-            <br></br>
-            
-            <span className="block mt-1">
-            Smarter Healthcare{" "} 
-            </span>
+            for <br></br>
+            <span className="block mt-1">Smarter Healthcare </span>
           </p>
         </motion.div>
 

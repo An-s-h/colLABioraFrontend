@@ -7,27 +7,63 @@ const TrustedNetworksMarquee = () => {
   const networks = [
     {
       name: "ClinicalTrials.gov",
-      linkUrl: "#", // Update with actual ClinicalTrials.gov link URL
+      linkUrl: "#",
       imageUrl:
-        "https://crir.ca/wp-content/uploads/2020/05/nihclinicaltrials.png", // Update with ClinicalTrials.gov logo image URL
+        "https://crir.ca/wp-content/uploads/2020/05/nihclinicaltrials.png",
     },
     {
       name: "PubMed",
-      linkUrl: "#", // Update with actual PubMed link URL
+      linkUrl: "#",
       imageUrl:
-        "https://upload.wikimedia.org/wikipedia/commons/thumb/f/fb/US-NLM-PubMed-Logo.svg/1280px-US-NLM-PubMed-Logo.svg.png", // Update with PubMed logo image URL
-    },
-    {
-      name: "ORCID",
-      linkUrl: "#", // Update with actual ORCID link URL
-      imageUrl:
-        "https://imgs.search.brave.com/vO_4RcuHKKD9is8uZvS7MKw9GCklUbT5d4BgRnSd2vs/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly91cGxv/YWQud2lraW1lZGlh/Lm9yZy93aWtpcGVk/aWEvY29tbW9ucy90/aHVtYi8xLzE0L09S/Q0lEX2xvZ28uc3Zn/LzI1MHB4LU9SQ0lE/X2xvZ28uc3ZnLnBu/Zw",
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/f/fb/US-NLM-PubMed-Logo.svg/1280px-US-NLM-PubMed-Logo.svg.png",
     },
     {
       name: "EU Clinical Trials Register",
-      linkUrl: "#", // Update with actual EU Clinical Trials Register link URL
+      linkUrl: "#",
       imageUrl:
-        "https://3d-hub-organoids.com/wp-content/uploads/2020/12/EU_CT-300x300.jpg", // Update with EU Clinical Trials Register logo image URL
+        "https://3d-hub-organoids.com/wp-content/uploads/2020/12/EU_CT-300x300.jpg",
+    },
+    {
+      name: "PLOS Medicine",
+      linkUrl: "#",
+      imageUrl: "/Plos.png",
+    },
+    {
+      name: "JAMA Psychiatry",
+      linkUrl: "#",
+      imageUrl: "/Jama.png",
+    },
+    {
+      name: "Journal of Clinical Oncology",
+      linkUrl: "#",
+      imageUrl: "/Journal of Oncology.png",
+    },
+    {
+      name: "Brain",
+      linkUrl: "#",
+      imageUrl:
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT828PSHJu-cFhjNimDJ--xv4d_0WwJ3QK7oQ&s",
+    },
+    {
+      name: "Nature Medicine",
+      linkUrl: "#",
+      imageUrl: "/nature_medicine_v-Photoroom.png",
+    },
+    {
+      name: "The Lancet",
+      linkUrl: "#",
+      imageUrl: "/TheLancet.png",
+    },
+    {
+      name: "CellPress",
+      linkUrl: "#",
+      imageUrl:
+        "https://yt3.googleusercontent.com/ytc/AIdro_kx8U3OIOWTTfOZy4qbb3l25bAQiakcI4ISlu4MRhZ1Rfk=s900-c-k-c0x00ffffff-no-rj",
+    },
+    {
+      name: "European Medicines Agency",
+      linkUrl: "#",
+      imageUrl: "/european-medicines-agency.jpg",
     },
   ];
 
@@ -45,7 +81,7 @@ const TrustedNetworksMarquee = () => {
         <img
           src={network.imageUrl}
           alt={network.name}
-          className="h-12 w-auto object-contain"
+          className="h-13 md:h-16 w-auto object-contain"
           onError={(e) => {
             e.target.style.display = "none";
           }}
@@ -80,9 +116,9 @@ const TrustedNetworksMarquee = () => {
           <InfiniteMovingCards
             items={cardItems}
             direction="left"
-            speed="normal"
+            speed="slow"
             pauseOnHover={true}
-            className="[&_li]:w-[200px] md:[&_li]:w-[250px] [&_li]:h-auto [&_li]:bg-transparent [&_li]:border-0 [&_li]:px-0 [&_li]:py-4"
+            className="[&_li]:w-[200px] md:[&_li]:w-[250px] [&_li]:h-auto [&_li]:bg-transparent [&_li]:border-0 [&_li]:px-0 [&_li]:py-4 [&_ul]:gap-2"
           />
         </div>
       </div>

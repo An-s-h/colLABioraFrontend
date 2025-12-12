@@ -462,6 +462,101 @@ export default function Explore() {
             </motion.div>
           )}
 
+          {/* Guest Info Display - Compact Single Line Profile */}
+          {!user && (guestCondition || guestLocation) && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.25 }}
+              className="mb-4"
+            >
+              <div
+                className="rounded-lg px-4 py-2.5 border-2 shadow-sm"
+                style={{
+                  backgroundColor: "#F5F2F8",
+                  borderColor: "#D0C4E2",
+                }}
+              >
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div
+                      className="p-1.5 rounded-lg shrink-0"
+                      style={{
+                        background: `linear-gradient(135deg, #2F3C96, #474F97)`,
+                      }}
+                    >
+                      <User className="w-4 h-4 text-white" />
+                    </div>
+                    <div
+                      className="px-2.5 py-1 rounded-full text-xs font-semibold shrink-0"
+                      style={{
+                        backgroundColor: "#FFFFFF",
+                        color: "#2F3C96",
+                      }}
+                    >
+                      {isResearcher ? "Researcher" : "Patient"}
+                    </div>
+                    <div className="flex items-center gap-3 flex-1 min-w-0 overflow-hidden">
+                      {guestCondition && (
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <CheckCircle
+                            className="w-4 h-4 shrink-0"
+                            style={{ color: "#10B981" }}
+                          />
+                          <span
+                            className="text-sm font-semibold whitespace-nowrap"
+                            style={{ color: "#2F3C96" }}
+                          >
+                            {guestCondition}
+                          </span>
+                        </div>
+                      )}
+                      {guestLocation && (
+                        <>
+                          {guestCondition && (
+                            <span className="text-gray-400">•</span>
+                          )}
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <MapPin
+                              className="w-4 h-4 shrink-0"
+                              style={{ color: "#3B82F6" }}
+                            />
+                            <span
+                              className="text-sm font-semibold whitespace-nowrap"
+                              style={{ color: "#2F3C96" }}
+                            >
+                              {guestLocation}
+                            </span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <motion.button
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                    onClick={handleEditGuestInfo}
+                    className="p-1.5 rounded-lg hover:bg-white/80 transition-all shrink-0"
+                    style={{ color: "#2F3C96" }}
+                    title="Edit profile"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </motion.button>
+                </div>
+                <div className="flex items-center gap-1.5 pl-11">
+                  <Sparkles
+                    className="w-3.5 h-3.5"
+                    style={{ color: "#D0C4E2" }}
+                  />
+                  <p className="text-xs" style={{ color: "#787878" }}>
+                    This information helps us provide you with personalized
+                    search results.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
           {/* Unified Search Bar */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -570,116 +665,10 @@ export default function Explore() {
             </div>
           </motion.div>
 
-          {/* Guest Info Display - Under Search Bar */}
-          {!user && (guestCondition || guestLocation) && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.35 }}
-              className="mb-8"
-            >
-              <div
-                className="rounded-xl p-4 sm:p-5 border-2 shadow-md"
-                style={{
-                  backgroundColor: "#F0F9FF",
-                  borderColor: "#B8E6FF",
-                }}
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="p-2 rounded-lg"
-                      style={{ backgroundColor: "#FFFFFF" }}
-                    >
-                      <User className="w-4 h-4" style={{ color: "#2F3C96" }} />
-                    </div>
-                    <div>
-                      <h3
-                        className="text-sm font-bold"
-                        style={{ color: "#2F3C96" }}
-                      >
-                        Your Profile
-                      </h3>
-                      <p className="text-xs" style={{ color: "#787878" }}>
-                        {isResearcher ? "Researcher" : "Patient"}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleEditGuestInfo}
-                    className="p-2 rounded-lg hover:bg-white transition-colors"
-                    style={{ color: "#2F3C96" }}
-                    title="Edit profile"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {guestCondition && (
-                    <div className="flex items-start gap-2">
-                      <CheckCircle
-                        className="w-4 h-4 mt-0.5 shrink-0"
-                        style={{ color: "#10B981" }}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p
-                          className="text-xs font-semibold mb-0.5"
-                          style={{ color: "#787878" }}
-                        >
-                          {isResearcher ? "Research Area" : "Condition/Disease"}
-                        </p>
-                        <p
-                          className="text-sm font-medium break-words"
-                          style={{ color: "#2F3C96" }}
-                        >
-                          {guestCondition}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {guestLocation && (
-                    <div className="flex items-start gap-2">
-                      <MapPin
-                        className="w-4 h-4 mt-0.5 shrink-0"
-                        style={{ color: "#10B981" }}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p
-                          className="text-xs font-semibold mb-0.5"
-                          style={{ color: "#787878" }}
-                        >
-                          Location
-                        </p>
-                        <p
-                          className="text-sm font-medium break-words"
-                          style={{ color: "#2F3C96" }}
-                        >
-                          {guestLocation}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div
-                  className="mt-3 pt-3 border-t"
-                  style={{ borderColor: "#B8E6FF" }}
-                >
-                  <p className="text-xs" style={{ color: "#787878" }}>
-                    This information helps us provide you with personalized
-                    search results.
-                  </p>
-                </div>
-              </div>
-            </motion.div>
-          )}
-
           {/* Quick Access Cards */}
 
-          {/* Sign In Encouragement - Enhanced */}
-          {!user && (
+          {/* Sign In Encouragement - Enhanced - Only show when searches are exhausted */}
+          {!user && freeSearches === 0 && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
