@@ -1,21 +1,28 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import Layout from "../components/Layout.jsx";
 import Input from "../components/ui/Input.jsx";
 import Button from "../components/ui/Button.jsx";
 import AnimatedBackgroundDiff from "../components/ui/AnimatedBackgroundDiff.jsx";
+import SmartSearchInput from "../components/SmartSearchInput.jsx";
+import LocationInput from "../components/LocationInput.jsx";
+import { SMART_SUGGESTION_KEYWORDS } from "../utils/smartSuggestions.js";
+import { User, Heart, MapPin, Mail, CheckCircle, Sparkles } from "lucide-react";
 
 export default function OnboardPatient() {
   const [step, setStep] = useState(1);
-  const [username, setUsername] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [conditions, setConditions] = useState("");
+  const [conditionInput, setConditionInput] = useState("");
   const [selectedConditions, setSelectedConditions] = useState([]);
+  const [identifiedConditions, setIdentifiedConditions] = useState([]); // Track auto-identified conditions
+  const [lastExtractedText, setLastExtractedText] = useState(""); // Track what was extracted
   const [gender, setGender] = useState("");
-  const [city, setCity] = useState("");
-  const [country, setCountry] = useState("");
+  const [location, setLocation] = useState("");
   const [isExtracting, setIsExtracting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -26,7 +33,9 @@ export default function OnboardPatient() {
     "Diabetes",
     "Hypertension",
     "Heart Disease",
-    "Cancer",
+    "Prostate Cancer",
+    "Breast Cancer",
+    "Lung Cancer",
     "Asthma",
     "Arthritis",
     "Depression",
@@ -50,38 +59,26 @@ export default function OnboardPatient() {
     "Rheumatoid Arthritis",
   ];
 
-  // Function to properly capitalize medical condition names
   function capitalizeMedicalCondition(condition) {
     if (!condition || typeof condition !== "string") return condition;
-
-    // Trim whitespace
     condition = condition.trim();
     if (!condition) return condition;
 
-    // Split by spaces and process each word
     const words = condition.split(/\s+/);
-    const capitalizedWords = words.map((word, index) => {
-      // Handle empty words
+    const capitalizedWords = words.map((word) => {
       if (!word) return word;
-
-      // Handle words with apostrophes (e.g., "Parkinson's", "Alzheimer's")
       if (word.includes("'")) {
         const parts = word.split("'");
         return parts
-          .map((part, partIndex) => {
+          .map((part) => {
             if (!part) return part;
-            // Capitalize first letter of each part
             return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
           })
           .join("'");
       }
-
-      // Handle acronyms (all caps, like "COPD", "IBD")
       if (word.length <= 4 && word === word.toUpperCase()) {
         return word;
       }
-
-      // Capitalize first letter, lowercase the rest
       return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
     });
 
@@ -91,6 +88,7 @@ export default function OnboardPatient() {
   async function extractConditions(text) {
     if (!text || text.length < 5) return;
     setIsExtracting(true);
+    setLastExtractedText(text);
     const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
     try {
       const res = await fetch(`${base}/api/ai/extract-conditions`, {
@@ -99,14 +97,27 @@ export default function OnboardPatient() {
         body: JSON.stringify({ text }),
       }).then((r) => r.json());
       if (res.conditions?.length > 0) {
-        // Capitalize each extracted condition
         const capitalizedConditions = res.conditions.map(
           capitalizeMedicalCondition
         );
-        setConditions(capitalizedConditions.join(", "));
+        // Add to identified conditions (for display)
+        setIdentifiedConditions((prev) => {
+          const newConditions = capitalizedConditions.filter(
+            (c) => !prev.includes(c)
+          );
+          return [...prev, ...newConditions];
+        });
+        // Also add to selected conditions
+        setSelectedConditions((prev) => {
+          const newConditions = capitalizedConditions.filter(
+            (c) => !prev.includes(c)
+          );
+          return [...prev, ...newConditions];
+        });
+        setConditionInput("");
       }
     } catch (e) {
-      console.error("AI extraction failed", e);
+      console.error("Condition extraction failed", e);
     } finally {
       setIsExtracting(false);
     }
@@ -120,27 +131,52 @@ export default function OnboardPatient() {
         return [...prev, condition];
       }
     });
+    // If removing, also remove from identified if it was there
+    if (selectedConditions.includes(condition)) {
+      setIdentifiedConditions((prev) => prev.filter((c) => c !== condition));
+    }
+  }
+
+  function handleConditionSubmit(value) {
+    const capitalized = capitalizeMedicalCondition(value);
+    if (capitalized && !selectedConditions.includes(capitalized)) {
+      setSelectedConditions((prev) => [...prev, capitalized]);
+      setConditionInput("");
+      // Remove from identified if it was there (since user manually added it)
+      setIdentifiedConditions((prev) => prev.filter((c) => c !== capitalized));
+    }
   }
 
   function getCombinedConditions() {
-    const manualConditions = conditions
-      .split(",")
-      .map((s) => capitalizeMedicalCondition(s.trim()))
-      .filter(Boolean);
-    return [...new Set([...selectedConditions, ...manualConditions])];
+    return [...new Set(selectedConditions)];
   }
 
-  async function handleStart() {
+  function parseLocation(locationString) {
+    if (!locationString) return { city: "", country: "" };
+    const parts = locationString.split(",").map((s) => s.trim());
+    if (parts.length > 1) {
+      return {
+        city: parts[0],
+        country: parts.slice(1).join(", "),
+      };
+    }
+    return { city: parts[0] || "", country: "" };
+  }
+
+  async function handleComplete() {
     setError("");
     if (password !== confirmPassword) return setError("Passwords do not match");
     if (password.length < 6)
       return setError("Password must be at least 6 characters");
+    if (!email) return setError("Email is required");
 
     setLoading(true);
     const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
     try {
       const conditionsArray = getCombinedConditions();
+      const username = `${firstName} ${lastName}`.trim();
+      const locationData = parseLocation(location);
 
       const registerRes = await fetch(`${base}/api/auth/register`, {
         method: "POST",
@@ -170,7 +206,7 @@ export default function OnboardPatient() {
         role: "patient",
         patient: {
           conditions: conditionsArray,
-          location: { city, country },
+          location: locationData,
           gender: gender.trim() || undefined,
         },
       };
@@ -192,348 +228,860 @@ export default function OnboardPatient() {
     }
   }
 
-  const progress = [
-    { id: 1, label: "Email & Password" },
-    { id: 2, label: "Your Name" },
-    { id: 3, label: "Medical Condition" },
-    { id: 4, label: "Location" },
+  const steps = [
+    { id: 1, label: "Your Name", icon: User },
+    { id: 2, label: "Conditions", icon: Heart },
+    { id: 3, label: "Location", icon: MapPin },
+    { id: 4, label: "Account", icon: Mail },
   ];
+
+  const stepVariants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: { opacity: 1, y: 0 },
+    exit: { opacity: 0, y: -20 },
+  };
 
   return (
     <Layout>
-      <div className="relative min-h-screen ">
+      <div className="relative min-h-screen overflow-hidden">
         <AnimatedBackgroundDiff />
 
         <div className="flex justify-center items-center min-h-screen px-4 py-6 relative z-10">
-          <div className="w-full max-w-md bg-white/20 backdrop-blur-xl rounded-2xl shadow-[0_8px_30px_rgb(99,102,241,0.2)] border border-indigo-100 p-6 sm:p-7 space-y-6 transition-all duration-300">
-            <div className="text-center space-y-2">
-              <h1 className="text-2xl font-bold text-indigo-700 tracking-tight">
-                Patient Registration
-              </h1>
-              <p className="text-xs text-indigo-600 font-medium">
-                Step {step} of 4
-              </p>
-              <div className="flex justify-center gap-1 mt-3">
-                {progress.map((p) => (
-                  <div
-                    key={p.id}
-                    className={`h-1.5 w-8 rounded-full transition-all duration-300 ${
-                      p.id <= step
-                        ? "bg-gradient-to-r from-indigo-600 to-blue-600"
-                        : "bg-indigo-100"
-                    }`}
-                  />
-                ))}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.4 }}
+            className="w-full max-w-2xl"
+          >
+            {/* Progress Bar */}
+            <div className="mb-6">
+              <div className="flex items-center justify-center relative">
+                {/* Single centered line */}
+                <div
+                  className="absolute top-6 left-[12%] right-[12%] h-[2px]"
+                  style={{ backgroundColor: "rgba(120, 120, 120, 0.15)" }}
+                />
+                {/* Animated progress line */}
+                <motion.div
+                  className="absolute top-6 left-[12%] h-[2px]"
+                  style={{ backgroundColor: "#2F3C96" }}
+                  initial={{ width: "0%" }}
+                  animate={{
+                    width: `${Math.max(
+                      0,
+                      ((step - 1) / (steps.length - 1)) * 76
+                    )}%`,
+                  }}
+                  transition={{ duration: 0.4, ease: "easeOut" }}
+                />
+
+                <div className="flex items-center justify-between w-full max-w-lg">
+                  {steps.map((s, index) => {
+                    const Icon = s.icon;
+                    const isActive = step === s.id;
+                    const isCompleted = step > s.id;
+                    return (
+                      <div
+                        key={s.id}
+                        className="flex flex-col items-center relative z-10"
+                      >
+                        <div className="relative">
+                          <motion.div
+                            className="w-12 h-12 rounded-full flex items-center justify-center relative z-10"
+                            style={{
+                              backgroundColor:
+                                isCompleted || isActive ? "#2F3C96" : "#F5F5F5",
+                              color:
+                                isCompleted || isActive ? "#FFFFFF" : "#787878",
+                              border: isActive
+                                ? "2px solid #D0C4E2"
+                                : "2px solid transparent",
+                              boxShadow: isActive
+                                ? "0 2px 8px rgba(47, 60, 150, 0.2)"
+                                : isCompleted
+                                ? "0 1px 4px rgba(47, 60, 150, 0.1)"
+                                : "none",
+                            }}
+                            animate={{
+                              backgroundColor:
+                                isCompleted || isActive ? "#2F3C96" : "#F5F5F5",
+                            }}
+                            transition={{ duration: 0.3 }}
+                          >
+                            {isCompleted ? (
+                              <motion.div
+                                initial={{ scale: 0, rotate: -90 }}
+                                animate={{ scale: 1, rotate: 0 }}
+                                transition={{ duration: 0.3, ease: "backOut" }}
+                              >
+                                <CheckCircle size={20} />
+                              </motion.div>
+                            ) : (
+                              <Icon size={20} />
+                            )}
+                          </motion.div>
+                        </div>
+                        <span
+                          className="text-xs font-medium mt-2"
+                          style={{
+                            color:
+                              isActive || isCompleted ? "#2F3C96" : "#787878",
+                          }}
+                        >
+                          {s.label}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
-            {/* Steps */}
-            <div className="space-y-4">
-              {step === 1 && (
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs font-semibold text-gray-700 mb-1.5 block">
-                      Email
-                    </label>
-                    <Input
-                      type="email"
-                      placeholder="your@email.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      onKeyPress={(e) =>
-                        e.key === "Enter" &&
-                        email &&
-                        password &&
-                        confirmPassword &&
-                        setStep(2)
-                      }
-                      className="w-full py-2 px-3 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-gray-700 mb-1.5 block">
-                      Password
-                    </label>
-                    <Input
-                      type="password"
-                      placeholder="Minimum 6 characters"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="w-full py-2 px-3 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-gray-700 mb-1.5 block">
-                      Confirm Password
-                    </label>
-                    <Input
-                      type="password"
-                      placeholder="Re-enter password"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      onKeyPress={(e) =>
-                        e.key === "Enter" &&
-                        email &&
-                        password &&
-                        confirmPassword &&
-                        setStep(2)
-                      }
-                      className="w-full py-2 px-3 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white transition-all"
-                    />
-                  </div>
-                  {error && (
-                    <div className="text-xs text-red-600 py-1.5 px-3 bg-red-50 rounded-lg border border-red-200">
-                      {error}
-                    </div>
-                  )}
-                  <Button
-                    className="w-full bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white rounded-lg py-2.5 font-semibold text-sm shadow-md hover:shadow-lg transition-all transform hover:scale-[1.01] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-                    onClick={() => {
-                      if (email && password && confirmPassword) {
-                        if (password !== confirmPassword)
-                          return setError("Passwords do not match");
-                        if (password.length < 6)
-                          return setError(
-                            "Password must be at least 6 characters"
-                          );
-                        setError("");
-                        setStep(2);
-                      }
-                    }}
+            {/* Main Card */}
+            <motion.div
+              className="bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl border p-4 sm:p-5"
+              style={{
+                borderColor: "#D0C4E2",
+                boxShadow: "0 20px 60px rgba(47, 60, 150, 0.15)",
+              }}
+            >
+              {/* Unified Section Heading */}
+              <div className="text-center mb-4">
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={step}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.25 }}
                   >
-                    Continue →
-                  </Button>
-                </div>
-              )}
-
-              {step === 2 && (
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs font-semibold text-gray-700 mb-1.5 block">
-                      Your Name
-                    </label>
-                    <Input
-                      placeholder="Enter your full name"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      onKeyPress={(e) =>
-                        e.key === "Enter" && username && setStep(3)
-                      }
-                      className="w-full py-2 px-3 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white transition-all"
-                    />
-                  </div>
-                  <div className="flex gap-2 pt-1">
-                    <Button
-                      onClick={() => setStep(1)}
-                      className="flex-1 text-gray-700 hover:bg-gray-100 px-3 py-2 rounded-lg font-semibold text-sm border border-gray-300 transition-colors"
+                    <h2
+                      className="text-xl font-bold mb-1"
+                      style={{ color: "#2F3C96" }}
                     >
-                      Back
-                    </Button>
+                      {step === 1 && "Let's get started"}
+                      {step === 2 && "Medical Conditions"}
+                      {step === 3 && "Your Location"}
+                      {step === 4 && "Create Your Account"}
+                    </h2>
+                    <p className="text-xs" style={{ color: "#787878" }}>
+                      {step === 1 &&
+                        "Tell us your name to personalize your experience"}
+                      {step === 2 &&
+                        "Select or describe your conditions. We'll help identify them automatically."}
+                      {step === 3 &&
+                        "Help us find relevant clinical trials and experts near you"}
+                      {step === 4 &&
+                        "Almost there! Set up your account to get started"}
+                    </p>
+                  </motion.div>
+                </AnimatePresence>
+              </div>
+
+              <AnimatePresence mode="wait">
+                {/* Step 1: Name */}
+                {step === 1 && (
+                  <motion.div
+                    key="step1"
+                    variants={stepVariants}
+                    initial="hidden"
+                    animate="visible"
+                    exit="exit"
+                    transition={{ duration: 0.3 }}
+                    className="space-y-3"
+                  >
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label
+                          className="block text-xs font-semibold mb-1.5"
+                          style={{ color: "#2F3C96" }}
+                        >
+                          First Name
+                        </label>
+                        <Input
+                          placeholder="John"
+                          value={firstName}
+                          onChange={(e) => setFirstName(e.target.value)}
+                          onKeyPress={(e) =>
+                            e.key === "Enter" &&
+                            firstName &&
+                            lastName &&
+                            setStep(2)
+                          }
+                          className="w-full py-2 px-3 text-sm border rounded-lg transition-all focus:outline-none focus:ring-2"
+                          style={{
+                            borderColor: "#E8E8E8",
+                            color: "#2F3C96",
+                            "--tw-ring-color": "#D0C4E2",
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label
+                          className="block text-xs font-semibold mb-1.5"
+                          style={{ color: "#2F3C96" }}
+                        >
+                          Last Name
+                        </label>
+                        <Input
+                          placeholder="Doe"
+                          value={lastName}
+                          onChange={(e) => setLastName(e.target.value)}
+                          onKeyPress={(e) =>
+                            e.key === "Enter" &&
+                            firstName &&
+                            lastName &&
+                            setStep(2)
+                          }
+                          className="w-full py-2 px-3 text-sm border rounded-lg transition-all focus:outline-none focus:ring-2"
+                          style={{
+                            borderColor: "#E8E8E8",
+                            color: "#2F3C96",
+                            "--tw-ring-color": "#D0C4E2",
+                          }}
+                        />
+                      </div>
+                    </div>
+
                     <Button
-                      className="flex-1 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white rounded-lg px-3 py-2 font-semibold text-sm shadow-md hover:shadow-lg transition-all transform hover:scale-[1.01] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-                      onClick={() => username && setStep(3)}
-                      disabled={!username}
+                      onClick={() => firstName && lastName && setStep(2)}
+                      disabled={!firstName || !lastName}
+                      className="w-full py-2 rounded-lg font-semibold text-sm transition-all transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                      style={{
+                        backgroundColor: "#2F3C96",
+                        color: "#FFFFFF",
+                      }}
                     >
                       Continue →
                     </Button>
-                  </div>
-                </div>
-              )}
+                  </motion.div>
+                )}
 
-              {step === 3 && (
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs font-semibold text-gray-700 mb-2 block">
-                      Medical Conditions
-                    </label>
-
-                    {/* Selectable Common Conditions */}
-                    <div className="mb-3">
-                      <p className="text-xs text-gray-600 mb-2 font-medium">
-                        Select from common conditions:
+                {/* Step 2: Conditions */}
+                {step === 2 && (
+                  <motion.div
+                    key="step2"
+                    variants={stepVariants}
+                    initial="hidden"
+                    animate="visible"
+                    exit="exit"
+                    transition={{ duration: 0.3 }}
+                    className="space-y-3"
+                  >
+                    {/* Search Input - Can't find yours? */}
+                    <div>
+                      <p
+                        className="text-xs font-medium uppercase tracking-wide mb-2"
+                        style={{ color: "#787878" }}
+                      >
+                        Can't find yours?
                       </p>
-                      <div
-                        className="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-2 bg-gray-50 rounded-lg border border-gray-200 condition-selector"
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
+                          <SmartSearchInput
+                            value={conditionInput}
+                            onChange={setConditionInput}
+                            onSubmit={(value) => {
+                              if (value && value.trim()) {
+                                const trimmed = value.trim();
+                                // Check if it's a direct condition match
+                                const exactMatch = commonConditions.find(
+                                  (c) =>
+                                    c.toLowerCase() === trimmed.toLowerCase()
+                                );
+                                if (exactMatch) {
+                                  handleConditionSubmit(exactMatch);
+                                } else {
+                                  // Direct condition name, add it
+                                  handleConditionSubmit(trimmed);
+                                }
+                              }
+                            }}
+                            placeholder="Search or describe symptoms..."
+                            extraTerms={[
+                              ...commonConditions,
+                              ...SMART_SUGGESTION_KEYWORDS,
+                            ]}
+                            maxSuggestions={8}
+                            autoSubmitOnSelect={true}
+                            inputClassName="w-full py-2.5 px-4 text-sm border rounded-xl transition-all focus:outline-none focus:ring-2"
+                          />
+                          {isExtracting && (
+                            <motion.div
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                              className="absolute right-3 top-2.5 flex items-center gap-1.5"
+                            >
+                              <Sparkles
+                                size={12}
+                                className="animate-pulse"
+                                style={{ color: "#2F3C96" }}
+                              />
+                            </motion.div>
+                          )}
+                        </div>
+                        <Button
+                          onClick={() => {
+                            if (
+                              conditionInput &&
+                              conditionInput.trim().length >= 3
+                            ) {
+                              const trimmed = conditionInput.trim();
+                              // Check if it looks like symptoms
+                              const symptomKeywords = [
+                                "pain",
+                                "ache",
+                                "pressure",
+                                "high",
+                                "low",
+                                "difficulty",
+                                "trouble",
+                                "issue",
+                                "problem",
+                                "feeling",
+                                "symptom",
+                                "bp",
+                                "blood pressure",
+                                "breathing",
+                                "chest",
+                                "headache",
+                              ];
+                              const looksLikeSymptom =
+                                symptomKeywords.some((keyword) =>
+                                  trimmed.toLowerCase().includes(keyword)
+                                ) || trimmed.length > 15;
+
+                              if (looksLikeSymptom) {
+                                extractConditions(trimmed);
+                              } else {
+                                handleConditionSubmit(trimmed);
+                              }
+                            }
+                          }}
+                          disabled={
+                            !conditionInput ||
+                            conditionInput.trim().length < 3 ||
+                            isExtracting
+                          }
+                          className="px-4 py-2.5 rounded-xl font-semibold text-sm transition-all disabled:opacity-40"
+                          style={{
+                            backgroundColor: "#2F3C96",
+                            color: "#FFFFFF",
+                          }}
+                        >
+                          Add
+                        </Button>
+                      </div>
+                      <p
+                        className="text-xs mt-2 flex items-center gap-1"
+                        style={{ color: "#787878" }}
+                      >
+                        <Sparkles size={10} />
+                        We can identify conditions from your symptoms (e.g.,
+                        "trouble breathing" → Asthma)
+                      </p>
+                    </div>
+
+                    {/* All Selected Conditions Summary */}
+                    {getCombinedConditions().length > 0 && (
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="p-3 rounded-xl border"
                         style={{
-                          scrollbarWidth: "none",
-                          msOverflowStyle: "none",
+                          backgroundColor: "#F5F5F5",
+                          borderColor: "#E8E8E8",
+                        }}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <p
+                            className="text-xs font-semibold"
+                            style={{ color: "#2F3C96" }}
+                          >
+                            All Your Conditions (
+                            {getCombinedConditions().length})
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {getCombinedConditions().map((condition, idx) => {
+                            const isIdentified =
+                              identifiedConditions.includes(condition);
+                            return (
+                              <motion.span
+                                key={idx}
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border"
+                                style={{
+                                  backgroundColor: isIdentified
+                                    ? "rgba(208, 196, 226, 0.2)"
+                                    : "#FFFFFF",
+                                  color: "#2F3C96",
+                                  borderColor: isIdentified
+                                    ? "#D0C4E2"
+                                    : "#E8E8E8",
+                                }}
+                              >
+                                {isIdentified && (
+                                  <Sparkles
+                                    size={9}
+                                    style={{ color: "#2F3C96" }}
+                                  />
+                                )}
+                                {condition}
+                                <button
+                                  type="button"
+                                  onClick={() => toggleCondition(condition)}
+                                  className="ml-1 hover:opacity-70 transition-opacity"
+                                  style={{ color: "#787878" }}
+                                >
+                                  ×
+                                </button>
+                              </motion.span>
+                            );
+                          })}
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {/* Quick Select */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2.5">
+                        <p
+                          className="text-sm font-semibold"
+                          style={{ color: "#2F3C96" }}
+                        >
+                          Quick Select
+                        </p>
+                        <span className="text-xs" style={{ color: "#787878" }}>
+                          {selectedConditions.length} selected
+                        </span>
+                      </div>
+                      <div
+                        className="flex flex-wrap gap-2 max-h-40 overflow-y-auto p-3 rounded-xl border"
+                        style={{
+                          backgroundColor: "#F5F5F5",
+                          borderColor: "#E8E8E8",
+                          scrollbarWidth: "thin",
+                          scrollbarColor: "#D0C4E2 #F5F5F5",
                         }}
                       >
                         {commonConditions.map((condition) => {
                           const isSelected =
                             selectedConditions.includes(condition);
                           return (
-                            <button
+                            <motion.button
                               key={condition}
                               type="button"
                               onClick={() => toggleCondition(condition)}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
-                                isSelected
-                                  ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
-                                  : "bg-white text-gray-700 border-gray-300 hover:border-indigo-400 hover:bg-indigo-50"
-                              }`}
+                              whileHover={{ scale: 1.05, y: -2 }}
+                              whileTap={{ scale: 0.95 }}
+                              className="px-3 py-2 rounded-lg text-xs font-semibold transition-all border-2 shadow-sm relative overflow-hidden"
+                              style={{
+                                backgroundColor: isSelected
+                                  ? "#2F3C96"
+                                  : "#FFFFFF",
+                                color: isSelected ? "#FFFFFF" : "#2F3C96",
+                                borderColor: isSelected ? "#2F3C96" : "#D0C4E2",
+                                boxShadow: isSelected
+                                  ? "0 4px 12px rgba(47, 60, 150, 0.25)"
+                                  : "0 2px 4px rgba(0, 0, 0, 0.05)",
+                              }}
                             >
+                              {isSelected && (
+                                <motion.span
+                                  initial={{ scale: 0 }}
+                                  animate={{ scale: 1 }}
+                                  className="absolute -top-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center"
+                                  style={{ backgroundColor: "#D0C4E2" }}
+                                >
+                                  <CheckCircle
+                                    size={12}
+                                    style={{ color: "#2F3C96" }}
+                                  />
+                                </motion.span>
+                              )}
                               {condition}
-                            </button>
+                            </motion.button>
                           );
                         })}
                       </div>
                     </div>
 
-                    {/* Manual Input */}
-                    <div className="relative">
-                      <Input
-                        placeholder="Or type your conditions (e.g. chest pain, breathing issues...)"
-                        value={conditions}
-                        onChange={(e) => {
-                          // Format conditions as user types (on comma or blur)
-                          const inputValue = e.target.value;
-                          setConditions(inputValue);
+                    <div className="flex gap-2.5">
+                      <Button
+                        onClick={() => setStep(1)}
+                        className="flex-1 py-2 rounded-lg font-semibold text-sm border transition-all"
+                        style={{
+                          backgroundColor: "#FFFFFF",
+                          color: "#787878",
+                          borderColor: "#E8E8E8",
                         }}
-                        onBlur={(e) => {
-                          const inputValue = e.target.value;
-                          if (inputValue) {
-                            // Capitalize each condition when user leaves the field
-                            const formattedConditions = inputValue
-                              .split(",")
-                              .map((condition) =>
-                                capitalizeMedicalCondition(condition.trim())
-                              )
-                              .join(", ");
-                            setConditions(formattedConditions);
+                      >
+                        Back
+                      </Button>
+                      <Button
+                        onClick={() => setStep(3)}
+                        className="flex-1 py-2 rounded-lg font-semibold text-sm transition-all transform hover:scale-[1.02]"
+                        style={{
+                          backgroundColor: "#2F3C96",
+                          color: "#FFFFFF",
+                        }}
+                      >
+                        Continue →
+                      </Button>
+                    </div>
+                  </motion.div>
+                )}
 
-                            // Extract conditions if text is long enough
-                            if (inputValue.length >= 5) {
-                              extractConditions(formattedConditions);
-                            }
-                          }
+                {/* Step 3: Location */}
+                {step === 3 && (
+                  <motion.div
+                    key="step3"
+                    variants={stepVariants}
+                    initial="hidden"
+                    animate="visible"
+                    exit="exit"
+                    transition={{ duration: 0.3 }}
+                    className="space-y-3"
+                  >
+                    <div>
+                      <label
+                        className="block text-xs font-semibold mb-1.5"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        Location
+                      </label>
+                      {/* <LocationInput
+                        value={location}
+                        onChange={setLocation}
+                        placeholder="e.g. New York, USA or City, Country"
+                        inputClassName="w-full py-2 px-3 text-sm border rounded-lg transition-all focus:outline-none focus:ring-2"
+                      /> */}
+                      <Input
+                        value={location}
+                        onChange={(e) => setLocation(e.target.value)}
+                        placeholder="e.g. New York, USA or City, Country"
+                        className="w-full py-2 px-3 text-sm border rounded-lg transition-all focus:outline-none focus:ring-2"
+                        style={{
+                          borderColor: "#E8E8E8",
+                          color: "#2F3C96",
+                          "--tw-ring-color": "#D0C4E2",
                         }}
-                        className="w-full py-2 px-3 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white transition-all"
                       />
-                      {isExtracting && (
-                        <span className="absolute right-3 top-2 text-xs text-indigo-600 font-medium animate-pulse">
-                          Extracting…
-                        </span>
-                      )}
+                      {/* <p className="text-xs mt-2" style={{ color: "#787878" }}>
+                        Type to see location suggestions
+                      </p> */}
                     </div>
 
-                    {/* Selected Conditions Display */}
-                    {getCombinedConditions().length > 0 && (
-                      <div className="mt-2 p-2 bg-indigo-50 rounded-lg border border-indigo-200">
-                        <p className="text-xs font-semibold text-indigo-700 mb-1.5">
-                          Selected Conditions:
-                        </p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {getCombinedConditions().map((condition, idx) => (
-                            <span
-                              key={idx}
-                              className="inline-flex items-center gap-1 px-2 py-1 bg-indigo-100 text-indigo-700 rounded-md text-xs font-medium border border-indigo-200"
-                            >
-                              {condition}
-                              {selectedConditions.includes(condition) && (
-                                <button
-                                  type="button"
-                                  onClick={() => toggleCondition(condition)}
-                                  className="ml-0.5 hover:text-indigo-900"
-                                >
-                                  ×
-                                </button>
-                              )}
-                            </span>
-                          ))}
+                    <div>
+                      <label
+                        className="block text-xs font-semibold mb-1.5"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        Gender (Optional)
+                      </label>
+                      <div className="relative">
+                        <select
+                          value={gender}
+                          onChange={(e) => setGender(e.target.value)}
+                          className="w-full py-2 px-3 text-sm border rounded-lg transition-all focus:outline-none focus:ring-2 appearance-none cursor-pointer"
+                          style={{
+                            borderColor: gender ? "#2F3C96" : "#E8E8E8",
+                            color: gender ? "#2F3C96" : "#787878",
+                            backgroundColor: "#FFFFFF",
+                            "--tw-ring-color": "#D0C4E2",
+                            paddingRight: "2.5rem",
+                          }}
+                        >
+                          <option value="">Select gender</option>
+                          <option>Male</option>
+                          <option>Female</option>
+                          <option>Non-binary</option>
+                          <option>Prefer not to say</option>
+                        </select>
+                        <div
+                          className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                          style={{ color: "#787878" }}
+                        >
+                          <svg
+                            width="12"
+                            height="12"
+                            viewBox="0 0 12 12"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <path
+                              d="M2 4L6 8L10 4"
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
                         </div>
                       </div>
+                    </div>
+
+                    {error && (
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="p-3 rounded-lg border"
+                        style={{
+                          backgroundColor: "rgba(239, 68, 68, 0.1)",
+                          borderColor: "rgba(239, 68, 68, 0.3)",
+                          color: "#DC2626",
+                        }}
+                      >
+                        {error}
+                      </motion.div>
                     )}
 
-                    <p className="text-xs text-indigo-600 mt-1.5">
-                      Select conditions above or type your own. AI will
-                      automatically identify conditions from text.
-                    </p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-gray-700 mb-1.5 block">
-                      Gender
-                    </label>
-                    <select
-                      value={gender}
-                      onChange={(e) => setGender(e.target.value)}
-                      className="w-full py-2 px-3 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white transition-all"
-                    >
-                      <option value="">Select gender</option>
-                      <option>Male</option>
-                      <option>Female</option>
-                      <option>Non-binary</option>
-                      <option>Prefer not to say</option>
-                    </select>
-                  </div>
-                  <div className="flex gap-2 pt-1">
-                    <Button
-                      onClick={() => setStep(2)}
-                      className="flex-1 text-gray-700 hover:bg-gray-100 px-3 py-2 rounded-lg font-semibold text-sm border border-gray-300 transition-colors"
-                    >
-                      Back
-                    </Button>
-                    <Button
-                      className="flex-1 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white rounded-lg px-3 py-2 font-semibold text-sm shadow-md hover:shadow-lg transition-all transform hover:scale-[1.01]"
-                      onClick={() => setStep(4)}
-                    >
-                      Continue →
-                    </Button>
-                  </div>
-                </div>
-              )}
+                    <div className="flex gap-2.5">
+                      <Button
+                        onClick={() => setStep(2)}
+                        className="flex-1 py-2 rounded-lg font-semibold text-sm border transition-all"
+                        style={{
+                          backgroundColor: "#FFFFFF",
+                          color: "#787878",
+                          borderColor: "#E8E8E8",
+                        }}
+                      >
+                        Back
+                      </Button>
+                      <Button
+                        onClick={() => setStep(4)}
+                        className="flex-1 py-2 rounded-lg font-semibold text-sm transition-all transform hover:scale-[1.02]"
+                        style={{
+                          backgroundColor: "#2F3C96",
+                          color: "#FFFFFF",
+                        }}
+                      >
+                        Continue →
+                      </Button>
+                    </div>
+                  </motion.div>
+                )}
 
-              {step === 4 && (
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs font-semibold text-gray-700 mb-1.5 block">
-                      Location
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
+                {/* Step 4: Email & Password */}
+                {step === 4 && (
+                  <motion.div
+                    key="step4"
+                    variants={stepVariants}
+                    initial="hidden"
+                    animate="visible"
+                    exit="exit"
+                    transition={{ duration: 0.3 }}
+                    className="space-y-3"
+                  >
+                    {/* Social Sign-In Options */}
+                    <div className="space-y-2.5">
+                      <p
+                        className="text-xs text-center font-medium"
+                        style={{ color: "#787878" }}
+                      >
+                        Or sign up with
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <motion.button
+                          type="button"
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          className="flex items-center justify-center gap-2 py-2 px-3 rounded-lg border transition-all"
+                          style={{
+                            backgroundColor: "#FFFFFF",
+                            borderColor: "#E8E8E8",
+                            color: "#2F3C96",
+                          }}
+                          onClick={() => {
+                            // Placeholder for Google sign-in
+                            console.log("Google sign-in clicked");
+                          }}
+                        >
+                          <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <path
+                              d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                              fill="#4285F4"
+                            />
+                            <path
+                              d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                              fill="#34A853"
+                            />
+                            <path
+                              d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                              fill="#FBBC05"
+                            />
+                            <path
+                              d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                              fill="#EA4335"
+                            />
+                          </svg>
+                          <span className="text-xs font-medium">Google</span>
+                        </motion.button>
+                        <motion.button
+                          type="button"
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          className="flex items-center justify-center gap-2 py-2 px-3 rounded-lg border transition-all"
+                          style={{
+                            backgroundColor: "#FFFFFF",
+                            borderColor: "#E8E8E8",
+                            color: "#2F3C96",
+                          }}
+                          onClick={() => {
+                            // Placeholder for Outlook sign-in
+                            console.log("Outlook sign-in clicked");
+                          }}
+                        >
+                          <Mail size={16} style={{ color: "#0078D4" }} />
+                          <span className="text-xs font-medium">Outlook</span>
+                        </motion.button>
+                      </div>
+                      <div className="relative my-3">
+                        <div
+                          className="absolute inset-0 flex items-center"
+                          style={{ borderColor: "#E8E8E8" }}
+                        >
+                          <div
+                            className="w-full border-t"
+                            style={{ borderColor: "#E8E8E8" }}
+                          />
+                        </div>
+                        <div className="relative flex justify-center text-xs">
+                          <span
+                            className="px-2 bg-white"
+                            style={{ color: "#787878" }}
+                          >
+                            Or continue with email
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label
+                        className="block text-xs font-semibold mb-1.5"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        Email
+                      </label>
                       <Input
-                        placeholder="City"
-                        value={city}
-                        onChange={(e) => setCity(e.target.value)}
-                        onKeyPress={(e) =>
-                          e.key === "Enter" && !loading && handleStart()
-                        }
-                        className="w-full py-2 px-3 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white transition-all"
-                      />
-                      <Input
-                        placeholder="Country"
-                        value={country}
-                        onChange={(e) => setCountry(e.target.value)}
-                        onKeyPress={(e) =>
-                          e.key === "Enter" && !loading && handleStart()
-                        }
-                        className="w-full py-2 px-3 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white transition-all"
+                        type="email"
+                        placeholder="your@email.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="w-full py-2 px-3 text-sm border rounded-lg transition-all focus:outline-none focus:ring-2"
+                        style={{
+                          borderColor: "#E8E8E8",
+                          color: "#2F3C96",
+                          "--tw-ring-color": "#D0C4E2",
+                        }}
                       />
                     </div>
-                  </div>
-                  {error && (
-                    <div className="text-xs text-red-600 py-1.5 px-3 bg-red-50 rounded-lg border border-red-200">
-                      {error}
+
+                    <div>
+                      <label
+                        className="block text-xs font-semibold mb-1.5"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        Password
+                      </label>
+                      <Input
+                        type="password"
+                        placeholder="Minimum 6 characters"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="w-full py-2 px-3 text-sm border rounded-lg transition-all focus:outline-none focus:ring-2"
+                        style={{
+                          borderColor: "#E8E8E8",
+                          color: "#2F3C96",
+                          "--tw-ring-color": "#D0C4E2",
+                        }}
+                      />
                     </div>
-                  )}
-                  <div className="flex gap-2 pt-1">
-                    <Button
-                      onClick={() => setStep(3)}
-                      className="flex-1 text-gray-700 hover:bg-gray-100 px-3 py-2 rounded-lg font-semibold text-sm border border-gray-300 transition-colors"
-                    >
-                      Back
-                    </Button>
-                    <Button
-                      className="flex-1 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white rounded-lg px-3 py-2 font-semibold text-sm shadow-md hover:shadow-lg transition-all transform hover:scale-[1.01] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-                      onClick={handleStart}
-                      disabled={loading}
-                    >
-                      {loading ? "Creating…" : "Complete →"}
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+
+                    <div>
+                      <label
+                        className="block text-xs font-semibold mb-1.5"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        Confirm Password
+                      </label>
+                      <Input
+                        type="password"
+                        placeholder="Re-enter password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        onKeyPress={(e) =>
+                          e.key === "Enter" &&
+                          email &&
+                          password &&
+                          confirmPassword &&
+                          !loading &&
+                          handleComplete()
+                        }
+                        className="w-full py-2 px-3 text-sm border rounded-lg transition-all focus:outline-none focus:ring-2"
+                        style={{
+                          borderColor: "#E8E8E8",
+                          color: "#2F3C96",
+                          "--tw-ring-color": "#D0C4E2",
+                        }}
+                      />
+                    </div>
+
+                    {error && (
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="p-3 rounded-lg border"
+                        style={{
+                          backgroundColor: "rgba(239, 68, 68, 0.1)",
+                          borderColor: "rgba(239, 68, 68, 0.3)",
+                          color: "#DC2626",
+                        }}
+                      >
+                        {error}
+                      </motion.div>
+                    )}
+
+                    <div className="flex gap-2.5">
+                      <Button
+                        onClick={() => setStep(3)}
+                        className="flex-1 py-2 rounded-lg font-semibold text-sm border transition-all"
+                        style={{
+                          backgroundColor: "#FFFFFF",
+                          color: "#787878",
+                          borderColor: "#E8E8E8",
+                        }}
+                      >
+                        Back
+                      </Button>
+                      <Button
+                        onClick={handleComplete}
+                        disabled={
+                          loading || !email || !password || !confirmPassword
+                        }
+                        className="flex-1 py-2 rounded-lg font-semibold text-sm transition-all transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                        style={{
+                          backgroundColor: "#2F3C96",
+                          color: "#FFFFFF",
+                        }}
+                      >
+                        {loading ? "Creating..." : "Complete →"}
+                      </Button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+          </motion.div>
         </div>
       </div>
 
