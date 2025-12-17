@@ -5,11 +5,11 @@ import Layout from "../components/Layout.jsx";
 import Input from "../components/ui/Input.jsx";
 import Button from "../components/ui/Button.jsx";
 import AnimatedBackgroundDiff from "../components/ui/AnimatedBackgroundDiff.jsx";
+import { Mail } from "lucide-react";
 
 export default function SignIn() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("patient");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const navigate = useNavigate();
@@ -31,7 +31,6 @@ export default function SignIn() {
         body: JSON.stringify({
           email: email.trim(),
           password,
-          role,
         }),
       });
 
@@ -50,8 +49,9 @@ export default function SignIn() {
       // Dispatch login event to update navbar
       window.dispatchEvent(new Event("login"));
 
-      // Redirect to dashboard
-      navigate(`/dashboard/${role}`);
+      // Redirect to dashboard - role will be auto-detected from user data
+      const userRole = data.user?.role || "patient";
+      navigate(`/dashboard/${userRole}`);
     } catch (e) {
       setError("Failed to sign in. Please try again.");
       setLoading(false);
@@ -68,7 +68,8 @@ export default function SignIn() {
             className="w-full max-w-md bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl border p-5 sm:p-6 space-y-4 transition-all duration-300"
             style={{
               borderColor: "#D0C4E2",
-              boxShadow: "0 20px 60px rgba(47, 60, 150, 0.15)",
+              boxShadow: "0 20px 60px rgba(208, 196, 226, 0.25)",
+              backgroundColor: "rgba(255, 255, 255, 0.98)",
             }}
           >
             {/* Header */}
@@ -82,6 +83,143 @@ export default function SignIn() {
               <p className="text-xs font-medium" style={{ color: "#787878" }}>
                 Resume your session
               </p>
+            </div>
+
+            {/* Social Sign-In Options */}
+            <div className="space-y-2.5">
+              <p
+                className="text-xs text-center font-medium"
+                style={{ color: "#787878" }}
+              >
+                Sign in with
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                <motion.button
+                  type="button"
+                  whileHover={{
+                    scale: 1.02,
+                    backgroundColor: "rgba(208, 196, 226, 0.15)",
+                  }}
+                  whileTap={{ scale: 0.98 }}
+                  className="flex flex-col items-center justify-center gap-1.5 py-2 px-2 rounded-lg border transition-all"
+                  style={{
+                    backgroundColor: "rgba(208, 196, 226, 0.08)",
+                    borderColor: "#D0C4E2",
+                    color: "#2F3C96",
+                  }}
+                  onClick={() => {
+                    // Placeholder for Google sign-in
+                    console.log("Google sign-in clicked");
+                  }}
+                >
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                      fill="#4285F4"
+                    />
+                    <path
+                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                      fill="#34A853"
+                    />
+                    <path
+                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                      fill="#FBBC05"
+                    />
+                    <path
+                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                      fill="#EA4335"
+                    />
+                  </svg>
+                  <span className="text-[10px] font-medium leading-tight">
+                    Google
+                  </span>
+                </motion.button>
+                <motion.button
+                  type="button"
+                  whileHover={{
+                    scale: 1.02,
+                    backgroundColor: "rgba(208, 196, 226, 0.15)",
+                  }}
+                  whileTap={{ scale: 0.98 }}
+                  className="flex flex-col items-center justify-center gap-1.5 py-2 px-2 rounded-lg border transition-all"
+                  style={{
+                    backgroundColor: "rgba(208, 196, 226, 0.08)",
+                    borderColor: "#D0C4E2",
+                    color: "#2F3C96",
+                  }}
+                  onClick={() => {
+                    // Placeholder for Outlook sign-in
+                    console.log("Outlook sign-in clicked");
+                  }}
+                >
+                  <Mail size={18} style={{ color: "#0078D4" }} />
+                  <span className="text-[10px] font-medium leading-tight">
+                    Outlook
+                  </span>
+                </motion.button>
+                <motion.button
+                  type="button"
+                  whileHover={{
+                    scale: 1.02,
+                    backgroundColor: "rgba(208, 196, 226, 0.15)",
+                  }}
+                  whileTap={{ scale: 0.98 }}
+                  className="flex flex-col items-center justify-center gap-1.5 py-2 px-2 rounded-lg border transition-all"
+                  style={{
+                    backgroundColor: "rgba(208, 196, 226, 0.08)",
+                    borderColor: "#D0C4E2",
+                    color: "#2F3C96",
+                  }}
+                  onClick={() => {
+                    // Placeholder for Apple sign-in
+                    console.log("Apple sign-in clicked");
+                  }}
+                >
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"
+                      fill="#000000"
+                    />
+                  </svg>
+                  <span className="text-[10px] font-medium leading-tight">
+                    Apple
+                  </span>
+                </motion.button>
+              </div>
+              <div className="relative my-3">
+                <div
+                  className="absolute inset-0 flex items-center"
+                  style={{ borderColor: "#E8E8E8" }}
+                >
+                  <div
+                    className="w-full border-t"
+                    style={{ borderColor: "#E8E8E8" }}
+                  />
+                </div>
+                <div className="relative flex justify-center text-xs">
+                  <span
+                    className="px-2"
+                    style={{
+                      color: "#787878",
+                      backgroundColor: "rgba(255, 255, 255, 0.98)",
+                    }}
+                  >
+                    Or continue with email
+                  </span>
+                </div>
+              </div>
             </div>
 
             {/* Form */}
@@ -132,43 +270,6 @@ export default function SignIn() {
                 />
               </div>
 
-              <div>
-                <label
-                  className="text-xs font-semibold mb-1.5 block"
-                  style={{ color: "#2F3C96" }}
-                >
-                  I am a
-                </label>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setRole("patient")}
-                    className="flex-1 py-2 px-3 rounded-lg font-semibold text-sm transition-all"
-                    style={{
-                      backgroundColor:
-                        role === "patient" ? "#2F3C96" : "#F5F5F5",
-                      color: role === "patient" ? "#FFFFFF" : "#787878",
-                      border:
-                        role === "patient" ? "none" : "1.5px solid #E8E8E8",
-                    }}
-                  >
-                    Patient
-                  </button>
-                  <button
-                    onClick={() => setRole("researcher")}
-                    className="flex-1 py-2 px-3 rounded-lg font-semibold text-sm transition-all"
-                    style={{
-                      backgroundColor:
-                        role === "researcher" ? "#2F3C96" : "#F5F5F5",
-                      color: role === "researcher" ? "#FFFFFF" : "#787878",
-                      border:
-                        role === "researcher" ? "none" : "1.5px solid #E8E8E8",
-                    }}
-                  >
-                    Researcher
-                  </button>
-                </div>
-              </div>
-
               {error && (
                 <div
                   className="text-xs py-1.5 px-3 rounded-lg border"
@@ -190,6 +291,17 @@ export default function SignIn() {
                   backgroundColor: "#2F3C96",
                   color: "#FFFFFF",
                 }}
+                onMouseEnter={(e) => {
+                  if (!e.currentTarget.disabled) {
+                    e.currentTarget.style.backgroundColor = "#474F97";
+                    e.currentTarget.style.boxShadow =
+                      "0 4px 12px rgba(208, 196, 226, 0.4)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = "#2F3C96";
+                  e.currentTarget.style.boxShadow = "none";
+                }}
               >
                 {loading ? "Signing in..." : "Sign In →"}
               </Button>
@@ -207,15 +319,15 @@ export default function SignIn() {
                   transition={{ duration: 0.3, delay: 0.1 }}
                   whileHover={{
                     scale: 1.02,
-                    backgroundColor: "rgba(47, 60, 150, 0.05)",
+                    backgroundColor: "rgba(208, 196, 226, 0.2)",
                     borderColor: "#D0C4E2",
                   }}
                   whileTap={{ scale: 0.99 }}
                   className="flex-1 py-2 px-3 rounded-lg font-semibold text-xs transition-all border"
                   style={{
-                    backgroundColor: "#F5F5F5",
+                    backgroundColor: "rgba(208, 196, 226, 0.1)",
                     color: "#2F3C96",
-                    borderColor: "#E8E8E8",
+                    borderColor: "#D0C4E2",
                   }}
                 >
                   Sign up as Patient
@@ -227,15 +339,15 @@ export default function SignIn() {
                   transition={{ duration: 0.3, delay: 0.2 }}
                   whileHover={{
                     scale: 1.02,
-                    backgroundColor: "rgba(47, 60, 150, 0.05)",
+                    backgroundColor: "rgba(208, 196, 226, 0.2)",
                     borderColor: "#D0C4E2",
                   }}
                   whileTap={{ scale: 0.99 }}
                   className="flex-1 py-2 px-3 rounded-lg font-semibold text-xs transition-all border"
                   style={{
-                    backgroundColor: "#F5F5F5",
+                    backgroundColor: "rgba(208, 196, 226, 0.1)",
                     color: "#2F3C96",
-                    borderColor: "#E8E8E8",
+                    borderColor: "#D0C4E2",
                   }}
                 >
                   Sign up as Researcher

@@ -493,6 +493,13 @@ export default function LocationInput({
             className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
             style={{ color: "#D0C4E2" }}
           />
+          {isLoading && (
+            <Loader2
+              size={16}
+              className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none animate-spin"
+              style={{ color: "#2F3C96" }}
+            />
+          )}
           <input
             ref={inputRef}
             type="text"
@@ -505,7 +512,8 @@ export default function LocationInput({
             disabled={disabled}
             name={name}
             className={clsx(
-              "w-full rounded-xl border bg-white pl-9 pr-3 py-2.5 text-sm transition-all focus:outline-none focus:ring-2",
+              "w-full rounded-xl border bg-white pl-9 py-2.5 text-sm transition-all focus:outline-none focus:ring-2",
+              isLoading ? "pr-9" : "pr-3",
               inputClassName
             )}
             style={{

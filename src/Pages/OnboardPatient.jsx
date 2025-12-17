@@ -8,7 +8,17 @@ import AnimatedBackgroundDiff from "../components/ui/AnimatedBackgroundDiff.jsx"
 import SmartSearchInput from "../components/SmartSearchInput.jsx";
 import LocationInput from "../components/LocationInput.jsx";
 import { SMART_SUGGESTION_KEYWORDS } from "../utils/smartSuggestions.js";
-import { User, Heart, MapPin, Mail, CheckCircle, Sparkles } from "lucide-react";
+import {
+  User,
+  Heart,
+  MapPin,
+  Mail,
+  CheckCircle,
+  Sparkles,
+  ChevronRight,
+  X,
+  ChevronDown,
+} from "lucide-react";
 
 export default function OnboardPatient() {
   const [step, setStep] = useState(1);
@@ -26,6 +36,9 @@ export default function OnboardPatient() {
   const [isExtracting, setIsExtracting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [isGenderDropdownOpen, setIsGenderDropdownOpen] = useState(false);
+  const [isQuickSelectOpen, setIsQuickSelectOpen] = useState(false);
+  const [showAllConditions, setShowAllConditions] = useState(false);
   const navigate = useNavigate();
 
   // Common medical conditions
@@ -241,6 +254,26 @@ export default function OnboardPatient() {
     exit: { opacity: 0, y: -20 },
   };
 
+  // Close gender dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        isGenderDropdownOpen &&
+        !event.target.closest("[data-gender-dropdown]")
+      ) {
+        setIsGenderDropdownOpen(false);
+      }
+    };
+
+    if (isGenderDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isGenderDropdownOpen]);
+
   return (
     <Layout>
       <div className="relative min-h-screen overflow-hidden">
@@ -297,7 +330,7 @@ export default function OnboardPatient() {
                                 ? "2px solid #D0C4E2"
                                 : "2px solid transparent",
                               boxShadow: isActive
-                                ? "0 2px 8px rgba(47, 60, 150, 0.2)"
+                                ? "0 2px 8px rgba(208, 196, 226, 0.4)"
                                 : isCompleted
                                 ? "0 1px 4px rgba(47, 60, 150, 0.1)"
                                 : "none",
@@ -342,7 +375,8 @@ export default function OnboardPatient() {
               className="bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl border p-4 sm:p-5"
               style={{
                 borderColor: "#D0C4E2",
-                boxShadow: "0 20px 60px rgba(47, 60, 150, 0.15)",
+                boxShadow: "0 20px 60px rgba(208, 196, 226, 0.25)",
+                backgroundColor: "rgba(255, 255, 255, 0.98)",
               }}
             >
               {/* Unified Section Heading */}
@@ -451,9 +485,40 @@ export default function OnboardPatient() {
                         backgroundColor: "#2F3C96",
                         color: "#FFFFFF",
                       }}
+                      onMouseEnter={(e) => {
+                        if (!e.currentTarget.disabled) {
+                          e.currentTarget.style.backgroundColor = "#474F97";
+                          e.currentTarget.style.boxShadow =
+                            "0 4px 12px rgba(208, 196, 226, 0.4)";
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = "#2F3C96";
+                        e.currentTarget.style.boxShadow = "none";
+                      }}
                     >
                       Continue →
                     </Button>
+
+                    {/* Researcher redirect */}
+                    <div
+                      className="pt-2 mt-3 border-t"
+                      style={{ borderColor: "#E8E8E8" }}
+                    >
+                      <p
+                        className="text-[10px] text-center"
+                        style={{ color: "#787878", opacity: 0.8 }}
+                      >
+                        Are you a researcher?{" "}
+                        <button
+                          onClick={() => navigate("/onboard/researcher")}
+                          className="font-semibold underline hover:opacity-80 transition-opacity"
+                          style={{ color: "#2F3C96" }}
+                        >
+                          Sign up here
+                        </button>
+                      </p>
+                    </div>
                   </motion.div>
                 )}
 
@@ -466,16 +531,10 @@ export default function OnboardPatient() {
                     animate="visible"
                     exit="exit"
                     transition={{ duration: 0.3 }}
-                    className="space-y-3"
+                    className="space-y-4"
                   >
-                    {/* Search Input - Can't find yours? */}
-                    <div>
-                      <p
-                        className="text-xs font-medium uppercase tracking-wide mb-2"
-                        style={{ color: "#787878" }}
-                      >
-                        Can't find yours?
-                      </p>
+                    {/* Search Input */}
+                    <div className="space-y-2">
                       <div className="flex gap-2">
                         <div className="relative flex-1">
                           <SmartSearchInput
@@ -492,8 +551,35 @@ export default function OnboardPatient() {
                                 if (exactMatch) {
                                   handleConditionSubmit(exactMatch);
                                 } else {
-                                  // Direct condition name, add it
-                                  handleConditionSubmit(trimmed);
+                                  // Check if it looks like symptoms
+                                  const symptomKeywords = [
+                                    "pain",
+                                    "ache",
+                                    "pressure",
+                                    "high",
+                                    "low",
+                                    "difficulty",
+                                    "trouble",
+                                    "issue",
+                                    "problem",
+                                    "feeling",
+                                    "symptom",
+                                    "bp",
+                                    "blood pressure",
+                                    "breathing",
+                                    "chest",
+                                    "headache",
+                                  ];
+                                  const looksLikeSymptom =
+                                    symptomKeywords.some((keyword) =>
+                                      trimmed.toLowerCase().includes(keyword)
+                                    ) || trimmed.length > 15;
+
+                                  if (looksLikeSymptom) {
+                                    extractConditions(trimmed);
+                                  } else {
+                                    handleConditionSubmit(trimmed);
+                                  }
                                 }
                               }
                             }}
@@ -520,89 +606,61 @@ export default function OnboardPatient() {
                             </motion.div>
                           )}
                         </div>
-                        <Button
-                          onClick={() => {
-                            if (
-                              conditionInput &&
-                              conditionInput.trim().length >= 3
-                            ) {
-                              const trimmed = conditionInput.trim();
-                              // Check if it looks like symptoms
-                              const symptomKeywords = [
-                                "pain",
-                                "ache",
-                                "pressure",
-                                "high",
-                                "low",
-                                "difficulty",
-                                "trouble",
-                                "issue",
-                                "problem",
-                                "feeling",
-                                "symptom",
-                                "bp",
-                                "blood pressure",
-                                "breathing",
-                                "chest",
-                                "headache",
-                              ];
-                              const looksLikeSymptom =
-                                symptomKeywords.some((keyword) =>
-                                  trimmed.toLowerCase().includes(keyword)
-                                ) || trimmed.length > 15;
+                        {/* Only show Add button when typing something unusual (not matching suggestions) */}
+                        {conditionInput &&
+                          conditionInput.trim().length >= 3 &&
+                          !commonConditions.some(
+                            (c) =>
+                              c.toLowerCase() ===
+                              conditionInput.trim().toLowerCase()
+                          ) && (
+                            <Button
+                              onClick={() => {
+                                const trimmed = conditionInput.trim();
+                                // Check if it looks like symptoms
+                                const symptomKeywords = [
+                                  "pain",
+                                  "ache",
+                                  "pressure",
+                                  "high",
+                                  "low",
+                                  "difficulty",
+                                  "trouble",
+                                  "issue",
+                                  "problem",
+                                  "feeling",
+                                  "symptom",
+                                  "bp",
+                                  "blood pressure",
+                                  "breathing",
+                                  "chest",
+                                  "headache",
+                                ];
+                                const looksLikeSymptom =
+                                  symptomKeywords.some((keyword) =>
+                                    trimmed.toLowerCase().includes(keyword)
+                                  ) || trimmed.length > 15;
 
-                              if (looksLikeSymptom) {
-                                extractConditions(trimmed);
-                              } else {
-                                handleConditionSubmit(trimmed);
-                              }
-                            }
-                          }}
-                          disabled={
-                            !conditionInput ||
-                            conditionInput.trim().length < 3 ||
-                            isExtracting
-                          }
-                          className="px-4 py-2.5 rounded-xl font-semibold text-sm transition-all disabled:opacity-40"
-                          style={{
-                            backgroundColor: "#2F3C96",
-                            color: "#FFFFFF",
-                          }}
-                        >
-                          Add
-                        </Button>
+                                if (looksLikeSymptom) {
+                                  extractConditions(trimmed);
+                                } else {
+                                  handleConditionSubmit(trimmed);
+                                }
+                              }}
+                              disabled={isExtracting}
+                              className="px-4 py-2.5 rounded-xl font-semibold text-sm transition-all disabled:opacity-40"
+                              style={{
+                                backgroundColor: "#2F3C96",
+                                color: "#FFFFFF",
+                              }}
+                            >
+                              Add
+                            </Button>
+                          )}
                       </div>
-                      <p
-                        className="text-xs mt-2 flex items-center gap-1"
-                        style={{ color: "#787878" }}
-                      >
-                        <Sparkles size={10} />
-                        We can identify conditions from your symptoms (e.g.,
-                        "trouble breathing" → Asthma)
-                      </p>
-                    </div>
-
-                    {/* All Selected Conditions Summary */}
-                    {getCombinedConditions().length > 0 && (
-                      <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        className="p-3 rounded-xl border"
-                        style={{
-                          backgroundColor: "#F5F5F5",
-                          borderColor: "#E8E8E8",
-                        }}
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <p
-                            className="text-xs font-semibold"
-                            style={{ color: "#2F3C96" }}
-                          >
-                            All Your Conditions (
-                            {getCombinedConditions().length})
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap gap-1.5">
+                      {/* Inline Selected Conditions Chips */}
+                      {getCombinedConditions().length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pt-1">
                           {getCombinedConditions().map((condition, idx) => {
                             const isIdentified =
                               identifiedConditions.includes(condition);
@@ -611,125 +669,208 @@ export default function OnboardPatient() {
                                 key={idx}
                                 initial={{ scale: 0 }}
                                 animate={{ scale: 1 }}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border"
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
                                 style={{
                                   backgroundColor: isIdentified
                                     ? "rgba(208, 196, 226, 0.2)"
-                                    : "#FFFFFF",
+                                    : "rgba(208, 196, 226, 0.1)",
                                   color: "#2F3C96",
-                                  borderColor: isIdentified
-                                    ? "#D0C4E2"
-                                    : "#E8E8E8",
                                 }}
                               >
                                 {isIdentified && (
                                   <Sparkles
-                                    size={9}
+                                    size={8}
                                     style={{ color: "#2F3C96" }}
                                   />
                                 )}
                                 {condition}
                                 <button
                                   type="button"
-                                  onClick={() => toggleCondition(condition)}
-                                  className="ml-1 hover:opacity-70 transition-opacity"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleCondition(condition);
+                                  }}
+                                  className="ml-0.5 hover:opacity-70 transition-opacity"
                                   style={{ color: "#787878" }}
                                 >
-                                  ×
+                                  <X size={10} />
                                 </button>
                               </motion.span>
                             );
                           })}
                         </div>
-                      </motion.div>
-                    )}
-
-                    {/* Quick Select */}
-                    <div>
-                      <div className="flex items-center justify-between mb-2.5">
-                        <p
-                          className="text-sm font-semibold"
-                          style={{ color: "#2F3C96" }}
-                        >
-                          Quick Select
-                        </p>
-                        <span className="text-xs" style={{ color: "#787878" }}>
-                          {selectedConditions.length} selected
-                        </span>
-                      </div>
-                      <div
-                        className="flex flex-wrap gap-2 max-h-40 overflow-y-auto p-3 rounded-xl border"
-                        style={{
-                          backgroundColor: "#F5F5F5",
-                          borderColor: "#E8E8E8",
-                          scrollbarWidth: "thin",
-                          scrollbarColor: "#D0C4E2 #F5F5F5",
-                        }}
+                      )}
+                      {/* Softer helper text */}
+                      <p
+                        className="text-[10px] flex items-center gap-1"
+                        style={{ color: "#787878", opacity: 0.7 }}
                       >
-                        {commonConditions.map((condition) => {
-                          const isSelected =
-                            selectedConditions.includes(condition);
-                          return (
-                            <motion.button
-                              key={condition}
-                              type="button"
-                              onClick={() => toggleCondition(condition)}
-                              whileHover={{ scale: 1.05, y: -2 }}
-                              whileTap={{ scale: 0.95 }}
-                              className="px-3 py-2 rounded-lg text-xs font-semibold transition-all border-2 shadow-sm relative overflow-hidden"
-                              style={{
-                                backgroundColor: isSelected
-                                  ? "#2F3C96"
-                                  : "#FFFFFF",
-                                color: isSelected ? "#FFFFFF" : "#2F3C96",
-                                borderColor: isSelected ? "#2F3C96" : "#D0C4E2",
-                                boxShadow: isSelected
-                                  ? "0 4px 12px rgba(47, 60, 150, 0.25)"
-                                  : "0 2px 4px rgba(0, 0, 0, 0.05)",
-                              }}
-                            >
-                              {isSelected && (
-                                <motion.span
-                                  initial={{ scale: 0 }}
-                                  animate={{ scale: 1 }}
-                                  className="absolute -top-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center"
-                                  style={{ backgroundColor: "#D0C4E2" }}
-                                >
-                                  <CheckCircle
-                                    size={12}
-                                    style={{ color: "#2F3C96" }}
-                                  />
-                                </motion.span>
-                              )}
-                              {condition}
-                            </motion.button>
-                          );
-                        })}
-                      </div>
+                        <Sparkles size={8} />
+                        You can describe symptoms if you're unsure of the
+                        condition
+                      </p>
                     </div>
 
-                    <div className="flex gap-2.5">
-                      <Button
-                        onClick={() => setStep(1)}
-                        className="flex-1 py-2 rounded-lg font-semibold text-sm border transition-all"
+                    {/* Collapsible Quick Select */}
+                    <div className="pt-1">
+                      <motion.button
+                        type="button"
+                        onClick={() => setIsQuickSelectOpen(!isQuickSelectOpen)}
+                        className="w-full flex items-center justify-between py-2.5 px-3 rounded-lg transition-all border cursor-pointer"
                         style={{
-                          backgroundColor: "#FFFFFF",
-                          color: "#787878",
-                          borderColor: "#E8E8E8",
+                          backgroundColor: isQuickSelectOpen
+                            ? "rgba(208, 196, 226, 0.1)"
+                            : "rgba(208, 196, 226, 0.05)",
+                          borderColor: isQuickSelectOpen
+                            ? "#D0C4E2"
+                            : "rgba(208, 196, 226, 0.3)",
+                          color: "#2F3C96",
                         }}
-                      >
-                        Back
-                      </Button>
-                      <Button
-                        onClick={() => setStep(3)}
-                        className="flex-1 py-2 rounded-lg font-semibold text-sm transition-all transform hover:scale-[1.02]"
-                        style={{
-                          backgroundColor: "#2F3C96",
-                          color: "#FFFFFF",
+                        whileHover={{
+                          backgroundColor: "rgba(208, 196, 226, 0.15)",
+                          borderColor: "#D0C4E2",
                         }}
+                        whileTap={{ scale: 0.98 }}
                       >
-                        Continue →
-                      </Button>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold">
+                            Common conditions
+                          </span>
+                          {selectedConditions.length > 0 && (
+                            <span
+                              className="text-[10px] px-1.5 py-0.5 rounded-full"
+                              style={{
+                                backgroundColor: "#2F3C96",
+                                color: "#FFFFFF",
+                              }}
+                            >
+                              {selectedConditions.length}
+                            </span>
+                          )}
+                          {!isQuickSelectOpen && (
+                            <span
+                              className="text-[10px] font-normal"
+                              style={{ color: "#787878", opacity: 0.7 }}
+                            >
+                              (Click to expand)
+                            </span>
+                          )}
+                        </div>
+                        <motion.div
+                          animate={{ rotate: isQuickSelectOpen ? 90 : 0 }}
+                          transition={{ duration: 0.2 }}
+                          style={{ color: "#2F3C96" }}
+                        >
+                          <ChevronRight size={16} />
+                        </motion.div>
+                      </motion.button>
+
+                      <AnimatePresence>
+                        {isQuickSelectOpen && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: "auto", opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="overflow-hidden"
+                          >
+                            <div className="pt-2 space-y-2">
+                              <div className="flex flex-wrap gap-2">
+                                {(showAllConditions
+                                  ? commonConditions
+                                  : commonConditions.slice(0, 8)
+                                ).map((condition) => {
+                                  const isSelected =
+                                    selectedConditions.includes(condition);
+                                  return (
+                                    <motion.button
+                                      key={condition}
+                                      type="button"
+                                      onClick={() => toggleCondition(condition)}
+                                      whileHover={{ scale: 1.02 }}
+                                      whileTap={{ scale: 0.98 }}
+                                      className="px-2.5 py-1 rounded-lg text-xs font-medium transition-all border"
+                                      style={{
+                                        backgroundColor: isSelected
+                                          ? "#2F3C96"
+                                          : "transparent",
+                                        color: isSelected
+                                          ? "#FFFFFF"
+                                          : "#787878",
+                                        borderColor: isSelected
+                                          ? "#2F3C96"
+                                          : "rgba(208, 196, 226, 0.2)",
+                                      }}
+                                    >
+                                      {condition}
+                                    </motion.button>
+                                  );
+                                })}
+                              </div>
+                              {commonConditions.length > 8 && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setShowAllConditions(!showAllConditions)
+                                  }
+                                  className="text-xs font-medium px-3 py-1.5 rounded-lg transition-all"
+                                  style={{
+                                    color: "#2F3C96",
+                                    backgroundColor: "rgba(208, 196, 226, 0.1)",
+                                  }}
+                                >
+                                  {showAllConditions
+                                    ? "Show less"
+                                    : `Show ${
+                                        commonConditions.length - 8
+                                      } more`}
+                                </button>
+                              )}
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+
+                    <div className="space-y-2 pt-1">
+                      <div className="flex gap-2.5">
+                        <Button
+                          onClick={() => setStep(1)}
+                          className="flex-1 py-2 rounded-lg font-semibold text-sm border transition-all"
+                          style={{
+                            backgroundColor: "#FFFFFF",
+                            color: "#787878",
+                            borderColor: "#E8E8E8",
+                          }}
+                        >
+                          Back
+                        </Button>
+                        <Button
+                          onClick={() => setStep(3)}
+                          className="flex-1 py-2 rounded-lg font-semibold text-sm transition-all transform hover:scale-[1.02]"
+                          style={{
+                            backgroundColor: "#2F3C96",
+                            color: "#FFFFFF",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = "#474F97";
+                            e.currentTarget.style.boxShadow =
+                              "0 4px 12px rgba(208, 196, 226, 0.4)";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = "#2F3C96";
+                            e.currentTarget.style.boxShadow = "none";
+                          }}
+                        >
+                          Continue →
+                        </Button>
+                      </div>
+                      <p
+                        className="text-[10px] text-center"
+                        style={{ color: "#787878", opacity: 0.7 }}
+                      >
+                        You can edit this later
+                      </p>
                     </div>
                   </motion.div>
                 )}
@@ -752,26 +893,15 @@ export default function OnboardPatient() {
                       >
                         Location
                       </label>
-                      {/* <LocationInput
+                      <LocationInput
                         value={location}
                         onChange={setLocation}
                         placeholder="e.g. New York, USA or City, Country"
                         inputClassName="w-full py-2 px-3 text-sm border rounded-lg transition-all focus:outline-none focus:ring-2"
-                      /> */}
-                      <Input
-                        value={location}
-                        onChange={(e) => setLocation(e.target.value)}
-                        placeholder="e.g. New York, USA or City, Country"
-                        className="w-full py-2 px-3 text-sm border rounded-lg transition-all focus:outline-none focus:ring-2"
-                        style={{
-                          borderColor: "#E8E8E8",
-                          color: "#2F3C96",
-                          "--tw-ring-color": "#D0C4E2",
-                        }}
                       />
-                      {/* <p className="text-xs mt-2" style={{ color: "#787878" }}>
+                      <p className="text-xs mt-2" style={{ color: "#787878" }}>
                         Type to see location suggestions
-                      </p> */}
+                      </p>
                     </div>
 
                     <div>
@@ -781,45 +911,139 @@ export default function OnboardPatient() {
                       >
                         Gender (Optional)
                       </label>
-                      <div className="relative">
-                        <select
-                          value={gender}
-                          onChange={(e) => setGender(e.target.value)}
-                          className="w-full py-2 px-3 text-sm border rounded-lg transition-all focus:outline-none focus:ring-2 appearance-none cursor-pointer"
+                      <div className="relative" data-gender-dropdown>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setIsGenderDropdownOpen(!isGenderDropdownOpen)
+                          }
+                          className="w-full py-2.5 px-3.5 text-sm border rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 flex items-center justify-between cursor-pointer"
                           style={{
-                            borderColor: gender ? "#2F3C96" : "#E8E8E8",
+                            borderColor: isGenderDropdownOpen
+                              ? "#D0C4E2"
+                              : gender
+                              ? "#2F3C96"
+                              : "#E8E8E8",
                             color: gender ? "#2F3C96" : "#787878",
-                            backgroundColor: "#FFFFFF",
+                            backgroundColor: isGenderDropdownOpen
+                              ? "rgba(208, 196, 226, 0.08)"
+                              : gender
+                              ? "rgba(208, 196, 226, 0.05)"
+                              : "#FFFFFF",
                             "--tw-ring-color": "#D0C4E2",
-                            paddingRight: "2.5rem",
+                            boxShadow: isGenderDropdownOpen
+                              ? "0 2px 6px rgba(208, 196, 226, 0.25)"
+                              : gender
+                              ? "0 1px 3px rgba(208, 196, 226, 0.2)"
+                              : "none",
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!isGenderDropdownOpen) {
+                              e.currentTarget.style.borderColor = "#D0C4E2";
+                              e.currentTarget.style.backgroundColor = gender
+                                ? "rgba(208, 196, 226, 0.1)"
+                                : "rgba(208, 196, 226, 0.05)";
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isGenderDropdownOpen) {
+                              e.currentTarget.style.borderColor = gender
+                                ? "#2F3C96"
+                                : "#E8E8E8";
+                              e.currentTarget.style.backgroundColor = gender
+                                ? "rgba(208, 196, 226, 0.05)"
+                                : "#FFFFFF";
+                            }
                           }}
                         >
-                          <option value="">Select gender</option>
-                          <option>Male</option>
-                          <option>Female</option>
-                          <option>Non-binary</option>
-                          <option>Prefer not to say</option>
-                        </select>
-                        <div
-                          className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"
-                          style={{ color: "#787878" }}
-                        >
-                          <svg
-                            width="12"
-                            height="12"
-                            viewBox="0 0 12 12"
-                            fill="none"
-                            xmlns="http://www.w3.org/2000/svg"
+                          <span>{gender || "Select gender"}</span>
+                          <motion.div
+                            animate={{
+                              rotate: isGenderDropdownOpen ? 180 : 0,
+                            }}
+                            transition={{ duration: 0.2 }}
                           >
-                            <path
-                              d="M2 4L6 8L10 4"
-                              stroke="currentColor"
-                              strokeWidth="1.5"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
+                            <ChevronDown
+                              size={16}
+                              style={{
+                                color: gender ? "#2F3C96" : "#787878",
+                              }}
                             />
-                          </svg>
-                        </div>
+                          </motion.div>
+                        </button>
+
+                        <AnimatePresence>
+                          {isGenderDropdownOpen && (
+                            <motion.div
+                              initial={{ opacity: 0, y: -10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -10 }}
+                              transition={{ duration: 0.2 }}
+                              className="absolute z-50 w-full mt-1 bg-white rounded-xl border shadow-xl overflow-hidden"
+                              style={{
+                                borderColor: "#D0C4E2",
+                                boxShadow:
+                                  "0 8px 24px rgba(208, 196, 226, 0.2)",
+                              }}
+                            >
+                              {[
+                                { value: "", label: "Select gender" },
+                                { value: "Male", label: "Male" },
+                                { value: "Female", label: "Female" },
+                                { value: "Non-binary", label: "Non-binary" },
+                                {
+                                  value: "Prefer not to say",
+                                  label: "Prefer not to say",
+                                },
+                              ].map((option) => {
+                                const isSelected = gender === option.value;
+                                return (
+                                  <motion.button
+                                    key={option.value}
+                                    type="button"
+                                    onClick={() => {
+                                      setGender(option.value);
+                                      setIsGenderDropdownOpen(false);
+                                    }}
+                                    className="w-full text-left px-3.5 py-2.5 text-sm transition-all duration-150 flex items-center justify-between"
+                                    style={{
+                                      backgroundColor: isSelected
+                                        ? "rgba(208, 196, 226, 0.15)"
+                                        : "transparent",
+                                      color: isSelected ? "#2F3C96" : "#787878",
+                                    }}
+                                    whileHover={{
+                                      backgroundColor: isSelected
+                                        ? "rgba(208, 196, 226, 0.2)"
+                                        : "rgba(208, 196, 226, 0.08)",
+                                    }}
+                                    whileTap={{ scale: 0.98 }}
+                                  >
+                                    <span className="font-medium">
+                                      {option.label}
+                                    </span>
+                                    {isSelected && (
+                                      <motion.div
+                                        initial={{ scale: 0 }}
+                                        animate={{ scale: 1 }}
+                                        transition={{
+                                          type: "spring",
+                                          stiffness: 500,
+                                          damping: 30,
+                                        }}
+                                      >
+                                        <CheckCircle
+                                          size={16}
+                                          style={{ color: "#2F3C96" }}
+                                        />
+                                      </motion.div>
+                                    )}
+                                  </motion.button>
+                                );
+                              })}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </div>
                     </div>
 
@@ -857,6 +1081,15 @@ export default function OnboardPatient() {
                           backgroundColor: "#2F3C96",
                           color: "#FFFFFF",
                         }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = "#474F97";
+                          e.currentTarget.style.boxShadow =
+                            "0 4px 12px rgba(208, 196, 226, 0.4)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = "#2F3C96";
+                          e.currentTarget.style.boxShadow = "none";
+                        }}
                       >
                         Continue →
                       </Button>
@@ -875,96 +1108,6 @@ export default function OnboardPatient() {
                     transition={{ duration: 0.3 }}
                     className="space-y-3"
                   >
-                    {/* Social Sign-In Options */}
-                    <div className="space-y-2.5">
-                      <p
-                        className="text-xs text-center font-medium"
-                        style={{ color: "#787878" }}
-                      >
-                        Or sign up with
-                      </p>
-                      <div className="grid grid-cols-2 gap-2">
-                        <motion.button
-                          type="button"
-                          whileHover={{ scale: 1.02 }}
-                          whileTap={{ scale: 0.98 }}
-                          className="flex items-center justify-center gap-2 py-2 px-3 rounded-lg border transition-all"
-                          style={{
-                            backgroundColor: "#FFFFFF",
-                            borderColor: "#E8E8E8",
-                            color: "#2F3C96",
-                          }}
-                          onClick={() => {
-                            // Placeholder for Google sign-in
-                            console.log("Google sign-in clicked");
-                          }}
-                        >
-                          <svg
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            xmlns="http://www.w3.org/2000/svg"
-                          >
-                            <path
-                              d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                              fill="#4285F4"
-                            />
-                            <path
-                              d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                              fill="#34A853"
-                            />
-                            <path
-                              d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                              fill="#FBBC05"
-                            />
-                            <path
-                              d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                              fill="#EA4335"
-                            />
-                          </svg>
-                          <span className="text-xs font-medium">Google</span>
-                        </motion.button>
-                        <motion.button
-                          type="button"
-                          whileHover={{ scale: 1.02 }}
-                          whileTap={{ scale: 0.98 }}
-                          className="flex items-center justify-center gap-2 py-2 px-3 rounded-lg border transition-all"
-                          style={{
-                            backgroundColor: "#FFFFFF",
-                            borderColor: "#E8E8E8",
-                            color: "#2F3C96",
-                          }}
-                          onClick={() => {
-                            // Placeholder for Outlook sign-in
-                            console.log("Outlook sign-in clicked");
-                          }}
-                        >
-                          <Mail size={16} style={{ color: "#0078D4" }} />
-                          <span className="text-xs font-medium">Outlook</span>
-                        </motion.button>
-                      </div>
-                      <div className="relative my-3">
-                        <div
-                          className="absolute inset-0 flex items-center"
-                          style={{ borderColor: "#E8E8E8" }}
-                        >
-                          <div
-                            className="w-full border-t"
-                            style={{ borderColor: "#E8E8E8" }}
-                          />
-                        </div>
-                        <div className="relative flex justify-center text-xs">
-                          <span
-                            className="px-2 bg-white"
-                            style={{ color: "#787878" }}
-                          >
-                            Or continue with email
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
                     <div>
                       <label
                         className="block text-xs font-semibold mb-1.5"
@@ -1051,6 +1194,28 @@ export default function OnboardPatient() {
                       </motion.div>
                     )}
 
+                    <p
+                      className="text-xs text-center"
+                      style={{ color: "#787878" }}
+                    >
+                      By signing up, you agree to our{" "}
+                      <a
+                        href="/terms"
+                        className="underline hover:opacity-80 transition-opacity"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        Terms of Service
+                      </a>{" "}
+                      and{" "}
+                      <a
+                        href="/privacy"
+                        className="underline hover:opacity-80 transition-opacity"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        Privacy Policy
+                      </a>
+                    </p>
+
                     <div className="flex gap-2.5">
                       <Button
                         onClick={() => setStep(3)}
@@ -1073,9 +1238,145 @@ export default function OnboardPatient() {
                           backgroundColor: "#2F3C96",
                           color: "#FFFFFF",
                         }}
+                        onMouseEnter={(e) => {
+                          if (!e.currentTarget.disabled) {
+                            e.currentTarget.style.backgroundColor = "#474F97";
+                            e.currentTarget.style.boxShadow =
+                              "0 4px 12px rgba(208, 196, 226, 0.4)";
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = "#2F3C96";
+                          e.currentTarget.style.boxShadow = "none";
+                        }}
                       >
                         {loading ? "Creating..." : "Complete →"}
                       </Button>
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* Social Sign-In Options - Outside Step 4 */}
+                {step === 4 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, delay: 0.1 }}
+                    className="mt-4 pt-4 border-t"
+                    style={{ borderColor: "#E8E8E8" }}
+                  >
+                    <div className="space-y-2.5">
+                      <p
+                        className="text-xs text-center font-medium"
+                        style={{ color: "#787878" }}
+                      >
+                        Or sign up with
+                      </p>
+                      <div className="grid grid-cols-3 gap-2">
+                        <motion.button
+                          type="button"
+                          whileHover={{
+                            scale: 1.02,
+                            backgroundColor: "rgba(208, 196, 226, 0.15)",
+                          }}
+                          whileTap={{ scale: 0.98 }}
+                          className="flex flex-col items-center justify-center gap-1.5 py-2 px-2 rounded-lg border transition-all"
+                          style={{
+                            backgroundColor: "rgba(208, 196, 226, 0.08)",
+                            borderColor: "#D0C4E2",
+                            color: "#2F3C96",
+                          }}
+                          onClick={() => {
+                            // Placeholder for Google sign-in
+                            console.log("Google sign-in clicked");
+                          }}
+                        >
+                          <svg
+                            width="18"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <path
+                              d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                              fill="#4285F4"
+                            />
+                            <path
+                              d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                              fill="#34A853"
+                            />
+                            <path
+                              d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                              fill="#FBBC05"
+                            />
+                            <path
+                              d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                              fill="#EA4335"
+                            />
+                          </svg>
+                          <span className="text-[10px] font-medium leading-tight">
+                            Google
+                          </span>
+                        </motion.button>
+                        <motion.button
+                          type="button"
+                          whileHover={{
+                            scale: 1.02,
+                            backgroundColor: "rgba(208, 196, 226, 0.15)",
+                          }}
+                          whileTap={{ scale: 0.98 }}
+                          className="flex flex-col items-center justify-center gap-1.5 py-2 px-2 rounded-lg border transition-all"
+                          style={{
+                            backgroundColor: "rgba(208, 196, 226, 0.08)",
+                            borderColor: "#D0C4E2",
+                            color: "#2F3C96",
+                          }}
+                          onClick={() => {
+                            // Placeholder for Outlook sign-in
+                            console.log("Outlook sign-in clicked");
+                          }}
+                        >
+                          <Mail size={18} style={{ color: "#0078D4" }} />
+                          <span className="text-[10px] font-medium leading-tight">
+                            Outlook
+                          </span>
+                        </motion.button>
+                        <motion.button
+                          type="button"
+                          whileHover={{
+                            scale: 1.02,
+                            backgroundColor: "rgba(208, 196, 226, 0.15)",
+                          }}
+                          whileTap={{ scale: 0.98 }}
+                          className="flex flex-col items-center justify-center gap-1.5 py-2 px-2 rounded-lg border transition-all"
+                          style={{
+                            backgroundColor: "rgba(208, 196, 226, 0.08)",
+                            borderColor: "#D0C4E2",
+                            color: "#2F3C96",
+                          }}
+                          onClick={() => {
+                            // Placeholder for Apple sign-in
+                            console.log("Apple sign-in clicked");
+                          }}
+                        >
+                          <svg
+                            width="18"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <path
+                              d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"
+                              fill="#000000"
+                            />
+                          </svg>
+                          <span className="text-[10px] font-medium leading-tight">
+                            Apple
+                          </span>
+                        </motion.button>
+                      </div>
                     </div>
                   </motion.div>
                 )}
