@@ -10,6 +10,7 @@ import { Mail } from "lucide-react";
 export default function SignIn() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [role, setRole] = useState("patient"); // "patient" or "researcher"
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const navigate = useNavigate();
@@ -17,6 +18,11 @@ export default function SignIn() {
   async function handleSignIn() {
     if (!email.trim() || !password.trim()) {
       setError("Please enter your email and password");
+      return;
+    }
+
+    if (!role) {
+      setError("Please select your role");
       return;
     }
 
@@ -31,6 +37,7 @@ export default function SignIn() {
         body: JSON.stringify({
           email: email.trim(),
           password,
+          role,
         }),
       });
 
@@ -219,6 +226,52 @@ export default function SignIn() {
                     Or continue with email
                   </span>
                 </div>
+              </div>
+            </div>
+
+            {/* Role Selection */}
+            <div className="space-y-2">
+              <label
+                className="text-xs font-semibold mb-1.5 block"
+                style={{ color: "#2F3C96" }}
+              >
+                I am a
+              </label>
+              <div className="flex gap-2">
+                <motion.button
+                  type="button"
+                  onClick={() => setRole("patient")}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="flex-1 py-2.5 px-3 rounded-lg font-semibold text-xs transition-all border"
+                  style={{
+                    backgroundColor:
+                      role === "patient"
+                        ? "#2F3C96"
+                        : "rgba(208, 196, 226, 0.1)",
+                    color: role === "patient" ? "#FFFFFF" : "#2F3C96",
+                    borderColor: role === "patient" ? "#2F3C96" : "#D0C4E2",
+                  }}
+                >
+                  Patient
+                </motion.button>
+                <motion.button
+                  type="button"
+                  onClick={() => setRole("researcher")}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="flex-1 py-2.5 px-3 rounded-lg font-semibold text-xs transition-all border"
+                  style={{
+                    backgroundColor:
+                      role === "researcher"
+                        ? "#2F3C96"
+                        : "rgba(208, 196, 226, 0.1)",
+                    color: role === "researcher" ? "#FFFFFF" : "#2F3C96",
+                    borderColor: role === "researcher" ? "#2F3C96" : "#D0C4E2",
+                  }}
+                >
+                  Researcher
+                </motion.button>
               </div>
             </div>
 
