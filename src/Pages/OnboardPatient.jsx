@@ -51,7 +51,7 @@ export default function OnboardPatient() {
   // Auth0 social login
   const {
     loginWithGoogle,
-    loginWithMicrosoft,
+    // loginWithMicrosoft,
     loginWithFacebook,
     loginWithApple,
     isConfigured: isAuth0Configured,
@@ -235,9 +235,9 @@ export default function OnboardPatient() {
     try {
       if (provider === "google") {
         await loginWithGoogle({ onboardingData, screenHint: "signup" });
-      } else if (provider === "microsoft") {
+      } /* else if (provider === "microsoft") {
         await loginWithMicrosoft({ onboardingData, screenHint: "signup" });
-      } else if (provider === "facebook") {
+      } */ else if (provider === "facebook") {
         await loginWithFacebook({ onboardingData, screenHint: "signup" });
       } else if (provider === "apple") {
         await loginWithApple({ onboardingData, screenHint: "signup" });
@@ -1276,7 +1276,7 @@ export default function OnboardPatient() {
                         >
                           Sign up with
                         </p>
-                        <div className="grid grid-cols-4 gap-1.5">
+                        <div className="grid grid-cols-3 gap-1.5">
                           {/* Google Button */}
                           <motion.button
                             type="button"
@@ -1348,8 +1348,8 @@ export default function OnboardPatient() {
                             </span>
                           </motion.button>
 
-                          {/* Microsoft/Outlook Button */}
-                          <motion.button
+                          {/* Microsoft/Outlook Button - Commented out for now */}
+                          {/* <motion.button
                             type="button"
                             disabled={
                               socialLoginLoading !== null || !agreedToTerms
@@ -1417,7 +1417,7 @@ export default function OnboardPatient() {
                             <span className="text-[8px] font-medium leading-tight">
                               Outlook
                             </span>
-                          </motion.button>
+                          </motion.button> */}
 
                           {/* Facebook Button */}
                           <motion.button

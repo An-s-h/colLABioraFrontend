@@ -18,7 +18,7 @@ export default function SignIn() {
   const navigate = useNavigate();
   
   // Auth0 social login
-  const { loginWithGoogle, loginWithMicrosoft, loginWithFacebook, loginWithApple, isConfigured: isAuth0Configured } = useAuth0Social();
+  const { loginWithGoogle, /* loginWithMicrosoft, */ loginWithFacebook, loginWithApple, isConfigured: isAuth0Configured } = useAuth0Social();
 
   // Handle social login
   async function handleSocialLogin(provider) {
@@ -30,9 +30,9 @@ export default function SignIn() {
     try {
       if (provider === "google") {
         await loginWithGoogle({ screenHint: "login" });
-      } else if (provider === "microsoft") {
+      } /* else if (provider === "microsoft") {
         await loginWithMicrosoft({ screenHint: "login" });
-      } else if (provider === "facebook") {
+      } */ else if (provider === "facebook") {
         await loginWithFacebook({ screenHint: "login" });
       } else if (provider === "apple") {
         await loginWithApple({ screenHint: "login" });
@@ -130,7 +130,7 @@ export default function SignIn() {
               >
                 Sign in with
               </p>
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <motion.button
                   type="button"
                   disabled={socialLoginLoading !== null}
@@ -187,7 +187,8 @@ export default function SignIn() {
                     Google
                   </span>
                 </motion.button>
-                <motion.button
+                {/* Microsoft/Outlook Button - Commented out for now */}
+                {/* <motion.button
                   type="button"
                   disabled={socialLoginLoading !== null}
                   whileHover={{
@@ -230,7 +231,7 @@ export default function SignIn() {
                   <span className="text-[10px] font-medium leading-tight">
                     Outlook
                   </span>
-                </motion.button>
+                </motion.button> */}
                 <motion.button
                   type="button"
                   disabled={socialLoginLoading !== null}
