@@ -52,6 +52,7 @@ export default function OnboardPatient() {
   const {
     loginWithGoogle,
     loginWithMicrosoft,
+    loginWithFacebook,
     loginWithApple,
     isConfigured: isAuth0Configured,
   } = useAuth0Social();
@@ -236,6 +237,8 @@ export default function OnboardPatient() {
         await loginWithGoogle({ onboardingData, screenHint: "signup" });
       } else if (provider === "microsoft") {
         await loginWithMicrosoft({ onboardingData, screenHint: "signup" });
+      } else if (provider === "facebook") {
+        await loginWithFacebook({ onboardingData, screenHint: "signup" });
       } else if (provider === "apple") {
         await loginWithApple({ onboardingData, screenHint: "signup" });
       }
@@ -1273,7 +1276,7 @@ export default function OnboardPatient() {
                         >
                           Sign up with
                         </p>
-                        <div className="grid grid-cols-3 gap-1.5">
+                        <div className="grid grid-cols-4 gap-1.5">
                           {/* Google Button */}
                           <motion.button
                             type="button"
@@ -1413,6 +1416,65 @@ export default function OnboardPatient() {
                             )}
                             <span className="text-[8px] font-medium leading-tight">
                               Outlook
+                            </span>
+                          </motion.button>
+
+                          {/* Facebook Button */}
+                          <motion.button
+                            type="button"
+                            disabled={
+                              socialLoginLoading !== null || !agreedToTerms
+                            }
+                            whileHover={{
+                              scale:
+                                socialLoginLoading || !agreedToTerms ? 1 : 1.02,
+                              backgroundColor:
+                                socialLoginLoading || !agreedToTerms
+                                  ? "rgba(208, 196, 226, 0.08)"
+                                  : "rgba(208, 196, 226, 0.15)",
+                            }}
+                            whileTap={{
+                              scale:
+                                socialLoginLoading || !agreedToTerms ? 1 : 0.98,
+                            }}
+                            className="flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-lg border transition-all disabled:opacity-50"
+                            style={{
+                              backgroundColor: "rgba(208, 196, 226, 0.08)",
+                              borderColor: "#D0C4E2",
+                              color: "#2F3C96",
+                            }}
+                            onClick={() => handleSocialLogin("facebook")}
+                          >
+                            {socialLoginLoading === "facebook" ? (
+                              <motion.div
+                                animate={{ rotate: 360 }}
+                                transition={{
+                                  duration: 1,
+                                  repeat: Infinity,
+                                  ease: "linear",
+                                }}
+                                className="w-[14px] h-[14px] rounded-full border-2"
+                                style={{
+                                  borderColor: "rgba(24, 119, 242, 0.3)",
+                                  borderTopColor: "#1877F2",
+                                }}
+                              />
+                            ) : (
+                              <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                xmlns="http://www.w3.org/2000/svg"
+                              >
+                                <path
+                                  d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"
+                                  fill="#1877F2"
+                                />
+                              </svg>
+                            )}
+                            <span className="text-[8px] font-medium leading-tight">
+                              Facebook
                             </span>
                           </motion.button>
 

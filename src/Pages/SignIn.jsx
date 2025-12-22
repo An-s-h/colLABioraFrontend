@@ -18,7 +18,7 @@ export default function SignIn() {
   const navigate = useNavigate();
   
   // Auth0 social login
-  const { loginWithGoogle, loginWithMicrosoft, loginWithApple, isConfigured: isAuth0Configured } = useAuth0Social();
+  const { loginWithGoogle, loginWithMicrosoft, loginWithFacebook, loginWithApple, isConfigured: isAuth0Configured } = useAuth0Social();
 
   // Handle social login
   async function handleSocialLogin(provider) {
@@ -32,6 +32,8 @@ export default function SignIn() {
         await loginWithGoogle({ screenHint: "login" });
       } else if (provider === "microsoft") {
         await loginWithMicrosoft({ screenHint: "login" });
+      } else if (provider === "facebook") {
+        await loginWithFacebook({ screenHint: "login" });
       } else if (provider === "apple") {
         await loginWithApple({ screenHint: "login" });
       }
@@ -128,7 +130,7 @@ export default function SignIn() {
               >
                 Sign in with
               </p>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-4 gap-2">
                 <motion.button
                   type="button"
                   disabled={socialLoginLoading !== null}
@@ -227,6 +229,50 @@ export default function SignIn() {
                   )}
                   <span className="text-[10px] font-medium leading-tight">
                     Outlook
+                  </span>
+                </motion.button>
+                <motion.button
+                  type="button"
+                  disabled={socialLoginLoading !== null}
+                  whileHover={{
+                    scale: socialLoginLoading ? 1 : 1.02,
+                    backgroundColor: "rgba(208, 196, 226, 0.15)",
+                  }}
+                  whileTap={{ scale: socialLoginLoading ? 1 : 0.98 }}
+                  className="flex flex-col items-center justify-center gap-1.5 py-2 px-2 rounded-lg border transition-all disabled:opacity-50"
+                  style={{
+                    backgroundColor: "rgba(208, 196, 226, 0.08)",
+                    borderColor: "#D0C4E2",
+                    color: "#2F3C96",
+                  }}
+                  onClick={() => handleSocialLogin("facebook")}
+                >
+                  {socialLoginLoading === "facebook" ? (
+                    <motion.div
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                      className="w-[18px] h-[18px] rounded-full border-2"
+                      style={{
+                        borderColor: "rgba(24, 119, 242, 0.3)",
+                        borderTopColor: "#1877F2",
+                      }}
+                    />
+                  ) : (
+                    <svg
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path
+                        d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"
+                        fill="#1877F2"
+                      />
+                    </svg>
+                  )}
+                  <span className="text-[10px] font-medium leading-tight">
+                    Facebook
                   </span>
                 </motion.button>
                 <motion.button
