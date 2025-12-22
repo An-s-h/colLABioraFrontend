@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import Layout from "../components/Layout.jsx";
 import Input from "../components/ui/Input.jsx";
@@ -8,6 +8,7 @@ import AnimatedBackgroundDiff from "../components/ui/AnimatedBackgroundDiff.jsx"
 import SmartSearchInput from "../components/SmartSearchInput.jsx";
 import LocationInput from "../components/LocationInput.jsx";
 import { SMART_SUGGESTION_KEYWORDS } from "../utils/smartSuggestions.js";
+import { useAuth0Social } from "../hooks/useAuth0Social.js";
 import {
   User,
   Heart,
@@ -21,7 +22,11 @@ import {
 } from "lucide-react";
 
 export default function OnboardPatient() {
-  const [step, setStep] = useState(1);
+  const [searchParams] = useSearchParams();
+  const isOAuthFlow = searchParams.get("oauth") === "true";
+  const initialStep = parseInt(searchParams.get("step") || "1", 10);
+
+  const [step, setStep] = useState(initialStep);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -39,7 +44,36 @@ export default function OnboardPatient() {
   const [isGenderDropdownOpen, setIsGenderDropdownOpen] = useState(false);
   const [isQuickSelectOpen, setIsQuickSelectOpen] = useState(false);
   const [showAllConditions, setShowAllConditions] = useState(false);
+  const [socialLoginLoading, setSocialLoginLoading] = useState(null); // Track which social login is loading
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
   const navigate = useNavigate();
+
+  // Auth0 social login
+  const {
+    loginWithGoogle,
+    loginWithMicrosoft,
+    loginWithApple,
+    isConfigured: isAuth0Configured,
+  } = useAuth0Social();
+
+  // Pre-fill name from OAuth if available
+  useEffect(() => {
+    if (isOAuthFlow) {
+      try {
+        const storedUser = localStorage.getItem("user");
+        if (storedUser) {
+          const user = JSON.parse(storedUser);
+          if (user.username) {
+            const nameParts = user.username.split(" ");
+            setFirstName(nameParts[0] || "");
+            setLastName(nameParts.slice(1).join(" ") || "");
+          }
+        }
+      } catch (e) {
+        console.error("Failed to parse stored user:", e);
+      }
+    }
+  }, [isOAuthFlow]);
 
   // Common medical conditions
   const commonConditions = [
@@ -176,8 +210,115 @@ export default function OnboardPatient() {
     return { city: parts[0] || "", country: "" };
   }
 
+  // Handle social login button clicks
+  async function handleSocialLogin(provider) {
+    // Check if terms are accepted before proceeding
+    if (!agreedToTerms) {
+      setError(
+        "Please agree to the Terms of Service and Privacy Policy before signing up"
+      );
+      return;
+    }
+
+    setSocialLoginLoading(provider);
+    setError("");
+
+    // Prepare onboarding data to pass through OAuth flow
+    const onboardingData = {
+      role: "patient",
+      conditions: getCombinedConditions(),
+      location: parseLocation(location),
+      gender: gender.trim() || undefined,
+    };
+
+    try {
+      if (provider === "google") {
+        await loginWithGoogle({ onboardingData, screenHint: "signup" });
+      } else if (provider === "microsoft") {
+        await loginWithMicrosoft({ onboardingData, screenHint: "signup" });
+      } else if (provider === "apple") {
+        await loginWithApple({ onboardingData, screenHint: "signup" });
+      }
+    } catch (e) {
+      console.error(`${provider} login error:`, e);
+      setError(`Failed to sign up with ${provider}. Please try again.`);
+      setSocialLoginLoading(null);
+    }
+  }
+
+  // Handle OAuth profile completion (when coming back from OAuth with step=2)
+  async function handleOAuthComplete() {
+    setLoading(true);
+    setError("");
+
+    if (!agreedToTerms) {
+      setError("Please agree to the Terms of Service and Privacy Policy");
+      setLoading(false);
+      return;
+    }
+
+    const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
+    const token = localStorage.getItem("token");
+
+    try {
+      const conditionsArray = getCombinedConditions();
+      const locationData = parseLocation(location);
+      const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+      const userId = storedUser._id || storedUser.id;
+
+      if (!userId) {
+        throw new Error("User not found. Please sign in again.");
+      }
+
+      // Update profile with conditions and location
+      const profile = {
+        role: "patient",
+        patient: {
+          conditions: conditionsArray,
+          location: locationData,
+          gender: gender.trim() || undefined,
+        },
+      };
+
+      await fetch(`${base}/api/profile/${userId}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(profile),
+      });
+
+      // Update user's medicalInterests
+      await fetch(`${base}/api/auth/update-profile`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          userId,
+          medicalInterests: conditionsArray,
+        }),
+      });
+
+      navigate("/dashboard/patient");
+    } catch (e) {
+      console.error("OAuth profile completion error:", e);
+      setError(e.message || "Failed to save profile. Please try again.");
+      setLoading(false);
+    }
+  }
+
   async function handleComplete() {
     setError("");
+
+    // If OAuth flow, just save profile and redirect
+    if (isOAuthFlow) {
+      await handleOAuthComplete();
+      return;
+    }
+
     if (password !== confirmPassword) return setError("Passwords do not match");
     if (password.length < 6)
       return setError("Password must be at least 6 characters");
@@ -284,19 +425,19 @@ export default function OnboardPatient() {
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.4 }}
-            className="w-full max-w-2xl"
+            className="w-full max-w-xl"
           >
             {/* Progress Bar */}
-            <div className="mb-6">
+            <div className="mb-4">
               <div className="flex items-center justify-center relative">
                 {/* Single centered line */}
                 <div
-                  className="absolute top-6 left-[12%] right-[12%] h-[2px]"
+                  className="absolute top-5 left-[12%] right-[12%] h-[2px]"
                   style={{ backgroundColor: "rgba(120, 120, 120, 0.15)" }}
                 />
                 {/* Animated progress line */}
                 <motion.div
-                  className="absolute top-6 left-[12%] h-[2px]"
+                  className="absolute top-5 left-[12%] h-[2px]"
                   style={{ backgroundColor: "#2F3C96" }}
                   initial={{ width: "0%" }}
                   animate={{
@@ -320,7 +461,7 @@ export default function OnboardPatient() {
                       >
                         <div className="relative">
                           <motion.div
-                            className="w-12 h-12 rounded-full flex items-center justify-center relative z-10"
+                            className="w-10 h-10 rounded-full flex items-center justify-center relative z-10"
                             style={{
                               backgroundColor:
                                 isCompleted || isActive ? "#2F3C96" : "#F5F5F5",
@@ -347,15 +488,15 @@ export default function OnboardPatient() {
                                 animate={{ scale: 1, rotate: 0 }}
                                 transition={{ duration: 0.3, ease: "backOut" }}
                               >
-                                <CheckCircle size={20} />
+                                <CheckCircle size={16} />
                               </motion.div>
                             ) : (
-                              <Icon size={20} />
+                              <Icon size={16} />
                             )}
                           </motion.div>
                         </div>
                         <span
-                          className="text-xs font-medium mt-2"
+                          className="text-[10px] font-medium mt-1.5"
                           style={{
                             color:
                               isActive || isCompleted ? "#2F3C96" : "#787878",
@@ -372,15 +513,15 @@ export default function OnboardPatient() {
 
             {/* Main Card */}
             <motion.div
-              className="bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl border p-4 sm:p-5"
+              className="bg-white/95 backdrop-blur-xl rounded-xl shadow-xl border p-3 sm:p-4"
               style={{
                 borderColor: "#D0C4E2",
-                boxShadow: "0 20px 60px rgba(208, 196, 226, 0.25)",
+                boxShadow: "0 10px 40px rgba(208, 196, 226, 0.2)",
                 backgroundColor: "rgba(255, 255, 255, 0.98)",
               }}
             >
               {/* Unified Section Heading */}
-              <div className="text-center mb-4">
+              <div className="text-center mb-3">
                 <AnimatePresence mode="wait">
                   <motion.div
                     key={step}
@@ -390,7 +531,7 @@ export default function OnboardPatient() {
                     transition={{ duration: 0.25 }}
                   >
                     <h2
-                      className="text-xl font-bold mb-1"
+                      className="text-lg font-bold mb-0.5"
                       style={{ color: "#2F3C96" }}
                     >
                       {step === 1 && "Let's get started"}
@@ -398,7 +539,7 @@ export default function OnboardPatient() {
                       {step === 3 && "Your Location"}
                       {step === 4 && "Create Your Account"}
                     </h2>
-                    <p className="text-xs" style={{ color: "#787878" }}>
+                    <p className="text-[10px]" style={{ color: "#787878" }}>
                       {step === 1 &&
                         "Tell us your name to personalize your experience"}
                       {step === 2 &&
@@ -422,12 +563,12 @@ export default function OnboardPatient() {
                     animate="visible"
                     exit="exit"
                     transition={{ duration: 0.3 }}
-                    className="space-y-3"
+                    className="space-y-2.5"
                   >
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label
-                          className="block text-xs font-semibold mb-1.5"
+                          className="block text-[10px] font-semibold mb-1"
                           style={{ color: "#2F3C96" }}
                         >
                           First Name
@@ -442,7 +583,7 @@ export default function OnboardPatient() {
                             lastName &&
                             setStep(2)
                           }
-                          className="w-full py-2 px-3 text-sm border rounded-lg transition-all focus:outline-none focus:ring-2"
+                          className="w-full py-1.5 px-2.5 text-xs border rounded-lg transition-all focus:outline-none focus:ring-2"
                           style={{
                             borderColor: "#E8E8E8",
                             color: "#2F3C96",
@@ -452,7 +593,7 @@ export default function OnboardPatient() {
                       </div>
                       <div>
                         <label
-                          className="block text-xs font-semibold mb-1.5"
+                          className="block text-[10px] font-semibold mb-1"
                           style={{ color: "#2F3C96" }}
                         >
                           Last Name
@@ -467,7 +608,7 @@ export default function OnboardPatient() {
                             lastName &&
                             setStep(2)
                           }
-                          className="w-full py-2 px-3 text-sm border rounded-lg transition-all focus:outline-none focus:ring-2"
+                          className="w-full py-1.5 px-2.5 text-xs border rounded-lg transition-all focus:outline-none focus:ring-2"
                           style={{
                             borderColor: "#E8E8E8",
                             color: "#2F3C96",
@@ -480,7 +621,7 @@ export default function OnboardPatient() {
                     <Button
                       onClick={() => firstName && lastName && setStep(2)}
                       disabled={!firstName || !lastName}
-                      className="w-full py-2 rounded-lg font-semibold text-sm transition-all transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                      className="w-full py-1.5 rounded-lg font-semibold text-xs transition-all transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                       style={{
                         backgroundColor: "#2F3C96",
                         color: "#FFFFFF",
@@ -531,11 +672,11 @@ export default function OnboardPatient() {
                     animate="visible"
                     exit="exit"
                     transition={{ duration: 0.3 }}
-                    className="space-y-4"
+                    className="space-y-3"
                   >
                     {/* Search Input */}
-                    <div className="space-y-2">
-                      <div className="flex gap-2">
+                    <div className="space-y-1.5">
+                      <div className="flex gap-1.5">
                         <div className="relative flex-1">
                           <SmartSearchInput
                             value={conditionInput}
@@ -590,16 +731,16 @@ export default function OnboardPatient() {
                             ]}
                             maxSuggestions={8}
                             autoSubmitOnSelect={true}
-                            inputClassName="w-full py-2.5 px-4 text-sm border rounded-xl transition-all focus:outline-none focus:ring-2"
+                            inputClassName="w-full py-1.5 px-3 text-xs border rounded-lg transition-all focus:outline-none focus:ring-2"
                           />
                           {isExtracting && (
                             <motion.div
                               initial={{ opacity: 0 }}
                               animate={{ opacity: 1 }}
-                              className="absolute right-3 top-2.5 flex items-center gap-1.5"
+                              className="absolute right-2.5 top-1.5 flex items-center gap-1"
                             >
                               <Sparkles
-                                size={12}
+                                size={10}
                                 className="animate-pulse"
                                 style={{ color: "#2F3C96" }}
                               />
@@ -648,7 +789,7 @@ export default function OnboardPatient() {
                                 }
                               }}
                               disabled={isExtracting}
-                              className="px-4 py-2.5 rounded-xl font-semibold text-sm transition-all disabled:opacity-40"
+                              className="px-3 py-1.5 rounded-lg font-semibold text-xs transition-all disabled:opacity-40"
                               style={{
                                 backgroundColor: "#2F3C96",
                                 color: "#FFFFFF",
@@ -660,7 +801,7 @@ export default function OnboardPatient() {
                       </div>
                       {/* Inline Selected Conditions Chips */}
                       {getCombinedConditions().length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 pt-1">
+                        <div className="flex flex-wrap gap-1 pt-0.5">
                           {getCombinedConditions().map((condition, idx) => {
                             const isIdentified =
                               identifiedConditions.includes(condition);
@@ -669,7 +810,7 @@ export default function OnboardPatient() {
                                 key={idx}
                                 initial={{ scale: 0 }}
                                 animate={{ scale: 1 }}
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium"
+                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-medium"
                                 style={{
                                   backgroundColor: isIdentified
                                     ? "rgba(208, 196, 226, 0.2)"
@@ -679,7 +820,7 @@ export default function OnboardPatient() {
                               >
                                 {isIdentified && (
                                   <Sparkles
-                                    size={8}
+                                    size={7}
                                     style={{ color: "#2F3C96" }}
                                   />
                                 )}
@@ -693,7 +834,7 @@ export default function OnboardPatient() {
                                   className="ml-0.5 hover:opacity-70 transition-opacity"
                                   style={{ color: "#787878" }}
                                 >
-                                  <X size={10} />
+                                  <X size={8} />
                                 </button>
                               </motion.span>
                             );
@@ -702,10 +843,10 @@ export default function OnboardPatient() {
                       )}
                       {/* Softer helper text */}
                       <p
-                        className="text-[10px] flex items-center gap-1"
+                        className="text-[9px] flex items-center gap-0.5"
                         style={{ color: "#787878", opacity: 0.7 }}
                       >
-                        <Sparkles size={8} />
+                        <Sparkles size={7} />
                         You can describe symptoms if you're unsure of the
                         condition
                       </p>
@@ -884,11 +1025,11 @@ export default function OnboardPatient() {
                     animate="visible"
                     exit="exit"
                     transition={{ duration: 0.3 }}
-                    className="space-y-3"
+                    className="space-y-2.5"
                   >
                     <div>
                       <label
-                        className="block text-xs font-semibold mb-1.5"
+                        className="block text-[10px] font-semibold mb-1"
                         style={{ color: "#2F3C96" }}
                       >
                         Location
@@ -897,16 +1038,19 @@ export default function OnboardPatient() {
                         value={location}
                         onChange={setLocation}
                         placeholder="e.g. New York, USA or City, Country"
-                        inputClassName="w-full py-2 px-3 text-sm border rounded-lg transition-all focus:outline-none focus:ring-2"
+                        inputClassName="w-full py-1.5 px-2.5 text-xs border rounded-lg transition-all focus:outline-none focus:ring-2"
                       />
-                      <p className="text-xs mt-2" style={{ color: "#787878" }}>
+                      <p
+                        className="text-[9px] mt-1"
+                        style={{ color: "#787878" }}
+                      >
                         Type to see location suggestions
                       </p>
                     </div>
 
                     <div>
                       <label
-                        className="block text-xs font-semibold mb-1.5"
+                        className="block text-[10px] font-semibold mb-1"
                         style={{ color: "#2F3C96" }}
                       >
                         Gender (Optional)
@@ -917,7 +1061,7 @@ export default function OnboardPatient() {
                           onClick={() =>
                             setIsGenderDropdownOpen(!isGenderDropdownOpen)
                           }
-                          className="w-full py-2.5 px-3.5 text-sm border rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 flex items-center justify-between cursor-pointer"
+                          className="w-full py-1.5 px-2.5 text-xs border rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 flex items-center justify-between cursor-pointer"
                           style={{
                             borderColor: isGenderDropdownOpen
                               ? "#D0C4E2"
@@ -1051,21 +1195,21 @@ export default function OnboardPatient() {
                       <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
-                        className="p-3 rounded-lg border"
+                        className="p-2 rounded-lg border"
                         style={{
                           backgroundColor: "rgba(239, 68, 68, 0.1)",
                           borderColor: "rgba(239, 68, 68, 0.3)",
                           color: "#DC2626",
                         }}
                       >
-                        {error}
+                        <p className="text-[10px]">{error}</p>
                       </motion.div>
                     )}
 
-                    <div className="flex gap-2.5">
+                    <div className="flex gap-2">
                       <Button
                         onClick={() => setStep(2)}
-                        className="flex-1 py-2 rounded-lg font-semibold text-sm border transition-all"
+                        className="flex-1 py-1.5 rounded-lg font-semibold text-xs border transition-all"
                         style={{
                           backgroundColor: "#FFFFFF",
                           color: "#787878",
@@ -1075,8 +1219,16 @@ export default function OnboardPatient() {
                         Back
                       </Button>
                       <Button
-                        onClick={() => setStep(4)}
-                        className="flex-1 py-2 rounded-lg font-semibold text-sm transition-all transform hover:scale-[1.02]"
+                        onClick={() => {
+                          if (isOAuthFlow) {
+                            // Skip email/password step for OAuth users
+                            handleOAuthComplete();
+                          } else {
+                            setStep(4);
+                          }
+                        }}
+                        disabled={loading}
+                        className="flex-1 py-1.5 rounded-lg font-semibold text-xs transition-all transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                         style={{
                           backgroundColor: "#2F3C96",
                           color: "#FFFFFF",
@@ -1091,14 +1243,18 @@ export default function OnboardPatient() {
                           e.currentTarget.style.boxShadow = "none";
                         }}
                       >
-                        Continue →
+                        {isOAuthFlow
+                          ? loading
+                            ? "Saving..."
+                            : "Complete →"
+                          : "Continue →"}
                       </Button>
                     </div>
                   </motion.div>
                 )}
 
-                {/* Step 4: Email & Password */}
-                {step === 4 && (
+                {/* Step 4: Email & Password (Only for non-OAuth users) */}
+                {step === 4 && !isOAuthFlow && (
                   <motion.div
                     key="step4"
                     variants={stepVariants}
@@ -1106,11 +1262,240 @@ export default function OnboardPatient() {
                     animate="visible"
                     exit="exit"
                     transition={{ duration: 0.3 }}
-                    className="space-y-3"
+                    className="space-y-2.5"
                   >
+                    {/* Social Sign-In Options - At Top */}
+                    {isAuth0Configured && (
+                      <div className="space-y-2">
+                        <p
+                          className="text-[10px] text-center font-medium"
+                          style={{ color: "#787878" }}
+                        >
+                          Sign up with
+                        </p>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {/* Google Button */}
+                          <motion.button
+                            type="button"
+                            disabled={
+                              socialLoginLoading !== null || !agreedToTerms
+                            }
+                            whileHover={{
+                              scale:
+                                socialLoginLoading || !agreedToTerms ? 1 : 1.02,
+                              backgroundColor:
+                                socialLoginLoading || !agreedToTerms
+                                  ? "rgba(208, 196, 226, 0.08)"
+                                  : "rgba(208, 196, 226, 0.15)",
+                            }}
+                            whileTap={{
+                              scale:
+                                socialLoginLoading || !agreedToTerms ? 1 : 0.98,
+                            }}
+                            className="flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-lg border transition-all disabled:opacity-50"
+                            style={{
+                              backgroundColor: "rgba(208, 196, 226, 0.08)",
+                              borderColor: "#D0C4E2",
+                              color: "#2F3C96",
+                            }}
+                            onClick={() => handleSocialLogin("google")}
+                          >
+                            {socialLoginLoading === "google" ? (
+                              <motion.div
+                                animate={{ rotate: 360 }}
+                                transition={{
+                                  duration: 1,
+                                  repeat: Infinity,
+                                  ease: "linear",
+                                }}
+                                className="w-[14px] h-[14px] rounded-full border-2"
+                                style={{
+                                  borderColor: "rgba(47, 60, 150, 0.3)",
+                                  borderTopColor: "#2F3C96",
+                                }}
+                              />
+                            ) : (
+                              <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                xmlns="http://www.w3.org/2000/svg"
+                              >
+                                <path
+                                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                                  fill="#4285F4"
+                                />
+                                <path
+                                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                                  fill="#34A853"
+                                />
+                                <path
+                                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                                  fill="#FBBC05"
+                                />
+                                <path
+                                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                                  fill="#EA4335"
+                                />
+                              </svg>
+                            )}
+                            <span className="text-[8px] font-medium leading-tight">
+                              Google
+                            </span>
+                          </motion.button>
+
+                          {/* Microsoft/Outlook Button */}
+                          <motion.button
+                            type="button"
+                            disabled={
+                              socialLoginLoading !== null || !agreedToTerms
+                            }
+                            whileHover={{
+                              scale:
+                                socialLoginLoading || !agreedToTerms ? 1 : 1.02,
+                              backgroundColor:
+                                socialLoginLoading || !agreedToTerms
+                                  ? "rgba(208, 196, 226, 0.08)"
+                                  : "rgba(208, 196, 226, 0.15)",
+                            }}
+                            whileTap={{
+                              scale:
+                                socialLoginLoading || !agreedToTerms ? 1 : 0.98,
+                            }}
+                            className="flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-lg border transition-all disabled:opacity-50"
+                            style={{
+                              backgroundColor: "rgba(208, 196, 226, 0.08)",
+                              borderColor: "#D0C4E2",
+                              color: "#2F3C96",
+                            }}
+                            onClick={() => handleSocialLogin("microsoft")}
+                          >
+                            {socialLoginLoading === "microsoft" ? (
+                              <motion.div
+                                animate={{ rotate: 360 }}
+                                transition={{
+                                  duration: 1,
+                                  repeat: Infinity,
+                                  ease: "linear",
+                                }}
+                                className="w-[14px] h-[14px] rounded-full border-2"
+                                style={{
+                                  borderColor: "rgba(0, 120, 212, 0.3)",
+                                  borderTopColor: "#0078D4",
+                                }}
+                              />
+                            ) : (
+                              <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                xmlns="http://www.w3.org/2000/svg"
+                              >
+                                <path
+                                  d="M11.4 11.4H3V3h8.4v8.4z"
+                                  fill="#F25022"
+                                />
+                                <path
+                                  d="M21 11.4h-8.4V3H21v8.4z"
+                                  fill="#7FBA00"
+                                />
+                                <path
+                                  d="M11.4 21H3v-8.4h8.4V21z"
+                                  fill="#00A4EF"
+                                />
+                                <path
+                                  d="M21 21h-8.4v-8.4H21V21z"
+                                  fill="#FFB900"
+                                />
+                              </svg>
+                            )}
+                            <span className="text-[8px] font-medium leading-tight">
+                              Outlook
+                            </span>
+                          </motion.button>
+
+                          {/* Apple Button */}
+                          <motion.button
+                            type="button"
+                            disabled={
+                              socialLoginLoading !== null || !agreedToTerms
+                            }
+                            whileHover={{
+                              scale:
+                                socialLoginLoading || !agreedToTerms ? 1 : 1.02,
+                              backgroundColor:
+                                socialLoginLoading || !agreedToTerms
+                                  ? "rgba(208, 196, 226, 0.08)"
+                                  : "rgba(208, 196, 226, 0.15)",
+                            }}
+                            whileTap={{
+                              scale:
+                                socialLoginLoading || !agreedToTerms ? 1 : 0.98,
+                            }}
+                            className="flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-lg border transition-all disabled:opacity-50"
+                            style={{
+                              backgroundColor: "rgba(208, 196, 226, 0.08)",
+                              borderColor: "#D0C4E2",
+                              color: "#2F3C96",
+                            }}
+                            onClick={() => handleSocialLogin("apple")}
+                          >
+                            {socialLoginLoading === "apple" ? (
+                              <motion.div
+                                animate={{ rotate: 360 }}
+                                transition={{
+                                  duration: 1,
+                                  repeat: Infinity,
+                                  ease: "linear",
+                                }}
+                                className="w-[14px] h-[14px] rounded-full border-2"
+                                style={{
+                                  borderColor: "rgba(0, 0, 0, 0.3)",
+                                  borderTopColor: "#000000",
+                                }}
+                              />
+                            ) : (
+                              <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                xmlns="http://www.w3.org/2000/svg"
+                              >
+                                <path
+                                  d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"
+                                  fill="#000000"
+                                />
+                              </svg>
+                            )}
+                            <span className="text-[8px] font-medium leading-tight">
+                              Apple
+                            </span>
+                          </motion.button>
+                        </div>
+
+                        <div
+                          className="flex items-center gap-2 py-1"
+                          style={{ color: "#787878" }}
+                        >
+                          <div
+                            className="flex-1 h-px"
+                            style={{ backgroundColor: "#E8E8E8" }}
+                          />
+                          <span className="text-[9px]">or</span>
+                          <div
+                            className="flex-1 h-px"
+                            style={{ backgroundColor: "#E8E8E8" }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
                     <div>
                       <label
-                        className="block text-xs font-semibold mb-1.5"
+                        className="block text-[10px] font-semibold mb-1"
                         style={{ color: "#2F3C96" }}
                       >
                         Email
@@ -1120,7 +1505,7 @@ export default function OnboardPatient() {
                         placeholder="your@email.com"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        className="w-full py-2 px-3 text-sm border rounded-lg transition-all focus:outline-none focus:ring-2"
+                        className="w-full py-1.5 px-2.5 text-xs border rounded-lg transition-all focus:outline-none focus:ring-2"
                         style={{
                           borderColor: "#E8E8E8",
                           color: "#2F3C96",
@@ -1131,7 +1516,7 @@ export default function OnboardPatient() {
 
                     <div>
                       <label
-                        className="block text-xs font-semibold mb-1.5"
+                        className="block text-[10px] font-semibold mb-1"
                         style={{ color: "#2F3C96" }}
                       >
                         Password
@@ -1141,7 +1526,7 @@ export default function OnboardPatient() {
                         placeholder="Minimum 6 characters"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        className="w-full py-2 px-3 text-sm border rounded-lg transition-all focus:outline-none focus:ring-2"
+                        className="w-full py-1.5 px-2.5 text-xs border rounded-lg transition-all focus:outline-none focus:ring-2"
                         style={{
                           borderColor: "#E8E8E8",
                           color: "#2F3C96",
@@ -1152,7 +1537,7 @@ export default function OnboardPatient() {
 
                     <div>
                       <label
-                        className="block text-xs font-semibold mb-1.5"
+                        className="block text-[10px] font-semibold mb-1"
                         style={{ color: "#2F3C96" }}
                       >
                         Confirm Password
@@ -1170,7 +1555,7 @@ export default function OnboardPatient() {
                           !loading &&
                           handleComplete()
                         }
-                        className="w-full py-2 px-3 text-sm border rounded-lg transition-all focus:outline-none focus:ring-2"
+                        className="w-full py-1.5 px-2.5 text-xs border rounded-lg transition-all focus:outline-none focus:ring-2"
                         style={{
                           borderColor: "#E8E8E8",
                           color: "#2F3C96",
@@ -1183,43 +1568,62 @@ export default function OnboardPatient() {
                       <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
-                        className="p-3 rounded-lg border"
+                        className="p-2 rounded-lg border"
                         style={{
                           backgroundColor: "rgba(239, 68, 68, 0.1)",
                           borderColor: "rgba(239, 68, 68, 0.3)",
                           color: "#DC2626",
                         }}
                       >
-                        {error}
+                        <p className="text-[10px]">{error}</p>
                       </motion.div>
                     )}
 
-                    <p
-                      className="text-xs text-center"
-                      style={{ color: "#787878" }}
+                    {/* Terms & Conditions */}
+                    <div
+                      className="p-2 rounded-lg border"
+                      style={{ borderColor: "#E8E8E8" }}
                     >
-                      By signing up, you agree to our{" "}
-                      <a
-                        href="/terms"
-                        className="underline hover:opacity-80 transition-opacity"
-                        style={{ color: "#2F3C96" }}
-                      >
-                        Terms of Service
-                      </a>{" "}
-                      and{" "}
-                      <a
-                        href="/privacy"
-                        className="underline hover:opacity-80 transition-opacity"
-                        style={{ color: "#2F3C96" }}
-                      >
-                        Privacy Policy
-                      </a>
-                    </p>
+                      <label className="flex items-start gap-1.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={agreedToTerms}
+                          onChange={(e) => setAgreedToTerms(e.target.checked)}
+                          className="mt-0.5 w-3.5 h-3.5 rounded"
+                          style={{ accentColor: "#2F3C96" }}
+                        />
+                        <span
+                          className="text-[10px]"
+                          style={{ color: "#787878" }}
+                        >
+                          I agree to the{" "}
+                          <a
+                            href="/terms"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline hover:opacity-80 transition-opacity"
+                            style={{ color: "#2F3C96" }}
+                          >
+                            Terms of Service
+                          </a>{" "}
+                          and{" "}
+                          <a
+                            href="/privacy"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline hover:opacity-80 transition-opacity"
+                            style={{ color: "#2F3C96" }}
+                          >
+                            Privacy Policy
+                          </a>
+                        </span>
+                      </label>
+                    </div>
 
-                    <div className="flex gap-2.5">
+                    <div className="flex gap-2">
                       <Button
                         onClick={() => setStep(3)}
-                        className="flex-1 py-2 rounded-lg font-semibold text-sm border transition-all"
+                        className="flex-1 py-1.5 rounded-lg font-semibold text-xs border transition-all"
                         style={{
                           backgroundColor: "#FFFFFF",
                           color: "#787878",
@@ -1231,9 +1635,14 @@ export default function OnboardPatient() {
                       <Button
                         onClick={handleComplete}
                         disabled={
-                          loading || !email || !password || !confirmPassword
+                          loading ||
+                          (!isOAuthFlow &&
+                            (!email ||
+                              !password ||
+                              !confirmPassword ||
+                              !agreedToTerms))
                         }
-                        className="flex-1 py-2 rounded-lg font-semibold text-sm transition-all transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                        className="flex-1 py-1.5 rounded-lg font-semibold text-xs transition-all transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                         style={{
                           backgroundColor: "#2F3C96",
                           color: "#FFFFFF",
@@ -1250,133 +1659,14 @@ export default function OnboardPatient() {
                           e.currentTarget.style.boxShadow = "none";
                         }}
                       >
-                        {loading ? "Creating..." : "Complete →"}
+                        {loading
+                          ? isOAuthFlow
+                            ? "Saving..."
+                            : "Creating..."
+                          : isOAuthFlow
+                          ? "Save Profile →"
+                          : "Complete →"}
                       </Button>
-                    </div>
-                  </motion.div>
-                )}
-
-                {/* Social Sign-In Options - Outside Step 4 */}
-                {step === 4 && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3, delay: 0.1 }}
-                    className="mt-4 pt-4 border-t"
-                    style={{ borderColor: "#E8E8E8" }}
-                  >
-                    <div className="space-y-2.5">
-                      <p
-                        className="text-xs text-center font-medium"
-                        style={{ color: "#787878" }}
-                      >
-                        Or sign up with
-                      </p>
-                      <div className="grid grid-cols-3 gap-2">
-                        <motion.button
-                          type="button"
-                          whileHover={{
-                            scale: 1.02,
-                            backgroundColor: "rgba(208, 196, 226, 0.15)",
-                          }}
-                          whileTap={{ scale: 0.98 }}
-                          className="flex flex-col items-center justify-center gap-1.5 py-2 px-2 rounded-lg border transition-all"
-                          style={{
-                            backgroundColor: "rgba(208, 196, 226, 0.08)",
-                            borderColor: "#D0C4E2",
-                            color: "#2F3C96",
-                          }}
-                          onClick={() => {
-                            // Placeholder for Google sign-in
-                            console.log("Google sign-in clicked");
-                          }}
-                        >
-                          <svg
-                            width="18"
-                            height="18"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            xmlns="http://www.w3.org/2000/svg"
-                          >
-                            <path
-                              d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                              fill="#4285F4"
-                            />
-                            <path
-                              d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                              fill="#34A853"
-                            />
-                            <path
-                              d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                              fill="#FBBC05"
-                            />
-                            <path
-                              d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                              fill="#EA4335"
-                            />
-                          </svg>
-                          <span className="text-[10px] font-medium leading-tight">
-                            Google
-                          </span>
-                        </motion.button>
-                        <motion.button
-                          type="button"
-                          whileHover={{
-                            scale: 1.02,
-                            backgroundColor: "rgba(208, 196, 226, 0.15)",
-                          }}
-                          whileTap={{ scale: 0.98 }}
-                          className="flex flex-col items-center justify-center gap-1.5 py-2 px-2 rounded-lg border transition-all"
-                          style={{
-                            backgroundColor: "rgba(208, 196, 226, 0.08)",
-                            borderColor: "#D0C4E2",
-                            color: "#2F3C96",
-                          }}
-                          onClick={() => {
-                            // Placeholder for Outlook sign-in
-                            console.log("Outlook sign-in clicked");
-                          }}
-                        >
-                          <Mail size={18} style={{ color: "#0078D4" }} />
-                          <span className="text-[10px] font-medium leading-tight">
-                            Outlook
-                          </span>
-                        </motion.button>
-                        <motion.button
-                          type="button"
-                          whileHover={{
-                            scale: 1.02,
-                            backgroundColor: "rgba(208, 196, 226, 0.15)",
-                          }}
-                          whileTap={{ scale: 0.98 }}
-                          className="flex flex-col items-center justify-center gap-1.5 py-2 px-2 rounded-lg border transition-all"
-                          style={{
-                            backgroundColor: "rgba(208, 196, 226, 0.08)",
-                            borderColor: "#D0C4E2",
-                            color: "#2F3C96",
-                          }}
-                          onClick={() => {
-                            // Placeholder for Apple sign-in
-                            console.log("Apple sign-in clicked");
-                          }}
-                        >
-                          <svg
-                            width="18"
-                            height="18"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            xmlns="http://www.w3.org/2000/svg"
-                          >
-                            <path
-                              d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"
-                              fill="#000000"
-                            />
-                          </svg>
-                          <span className="text-[10px] font-medium leading-tight">
-                            Apple
-                          </span>
-                        </motion.button>
-                      </div>
                     </div>
                   </motion.div>
                 )}

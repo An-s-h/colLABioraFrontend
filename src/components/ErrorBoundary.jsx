@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -11,7 +11,7 @@ class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    console.error('Error caught by boundary:', error, errorInfo);
+    console.error("Error caught by boundary:", error, errorInfo);
   }
 
   render() {
@@ -23,12 +23,13 @@ class ErrorBoundary extends React.Component {
               Something went wrong
             </h1>
             <p className="text-gray-600 mb-6">
-              We're sorry, but something unexpected happened. Please try refreshing the page.
+              We're sorry, but something unexpected happened. Please try
+              refreshing the page.
             </p>
             <button
               onClick={() => {
                 this.setState({ hasError: false, error: null });
-                window.location.href = '/';
+                window.location.href = "/";
               }}
               className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
             >
@@ -44,4 +45,3 @@ class ErrorBoundary extends React.Component {
 }
 
 export default ErrorBoundary;
-

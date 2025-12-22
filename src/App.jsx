@@ -20,9 +20,13 @@ import Insights from "./Pages/Insights.jsx";
 import EditProfile from "./Pages/EditProfile.jsx";
 import AdminLogin from "./Pages/AdminLogin.jsx";
 import AdminDashboard from "./Pages/AdminDashboard.jsx";
+import Auth0Callback from "./Pages/Auth0Callback.jsx";
+import CompleteProfile from "./Pages/CompleteProfile.jsx";
+import AboutUs from "./Pages/AboutUs.jsx";
 import "./App.css";
 import Navbar from "./components/Navbar.jsx";
 import { ProfileProvider } from "./contexts/ProfileContext.jsx";
+import Auth0ProviderWithNavigate from "./contexts/Auth0ProviderWithNavigate.jsx";
 
 const AppContent = () => {
   return (
@@ -55,6 +59,7 @@ const AppContent = () => {
           />
           <Routes>
             <Route path="/" element={<Landing />} />
+            {/* <Route path="/about" element={<AboutUs />} /> */}
             <Route path="/explore" element={<Explore />} />
             <Route path="/signin" element={<SignIn />} />
             <Route path="/onboard/patient" element={<OnboardPatient />} />
@@ -79,6 +84,9 @@ const AppContent = () => {
             <Route path="/profile" element={<EditProfile />} />
             <Route path="/admin/login" element={<AdminLogin />} />
             <Route path="/admin/dashboard" element={<AdminDashboard />} />
+            {/* Auth0 routes */}
+            <Route path="/auth/callback" element={<Auth0Callback />} />
+            <Route path="/auth/complete-profile" element={<CompleteProfile />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
           {/* Nav is provided by Navbar in Layout */}
@@ -90,7 +98,9 @@ const App = () => {
   return (
     <ProfileProvider>
       <BrowserRouter>
-        <AppContent />
+        <Auth0ProviderWithNavigate>
+          <AppContent />
+        </Auth0ProviderWithNavigate>
       </BrowserRouter>
     </ProfileProvider>
   );
