@@ -65,6 +65,8 @@ export default function LocationInput({
   const [activeIndex, setActiveIndex] = useState(-1);
   const [apiSuggestions, setApiSuggestions] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedLocation, setSelectedLocation] = useState(null); // Track selected location
+  const [isSelecting, setIsSelecting] = useState(false); // Track if user is selecting from dropdown
   const [dropdownPosition, setDropdownPosition] = useState({
     top: 0,
     left: 0,
@@ -196,9 +198,26 @@ export default function LocationInput({
     }, 50); // Very short debounce for near-instant feel
   };
 
+  // Sync selectedLocation when value changes externally (e.g., cleared by parent)
+  useEffect(() => {
+    // If value is cleared externally and we had a selected location, clear it
+    if (!value || value.trim().length === 0) {
+      if (selectedLocation) {
+        setSelectedLocation(null);
+      }
+    }
+    // If value matches selected location exactly, ensure dropdown stays closed
+    else if (selectedLocation && value.trim() === selectedLocation.trim()) {
+      setIsDropdownOpen(false);
+    }
+  }, [value]);
+
   // Update API suggestions when value changes
   useEffect(() => {
-    if (value && value.trim().length >= 2) {
+    // Only fetch suggestions if user is actively editing (not viewing selected location)
+    const isEditing = !selectedLocation || value.trim() !== selectedLocation.trim();
+    
+    if (value && value.trim().length >= 2 && isEditing) {
       getPlaceSuggestions(value);
     } else {
       setApiSuggestions([]);
@@ -212,18 +231,36 @@ export default function LocationInput({
         abortControllerRef.current.abort();
       }
     };
-  }, [value]);
+  }, [value, selectedLocation]);
 
-  // Open dropdown when we have suggestions
+  // Open dropdown when we have suggestions, but only if:
+  // - User is actively typing (not just viewing a selected location)
+  // - Value doesn't exactly match the selected location
   useEffect(() => {
-    if (suggestions.length > 0 && value && value.trim().length >= 1) {
+    if (
+      suggestions.length > 0 &&
+      value &&
+      value.trim().length >= 1 &&
+      (!selectedLocation || value.trim() !== selectedLocation.trim())
+    ) {
       setIsDropdownOpen(true);
       updateDropdownPosition();
+    } else if (selectedLocation && value.trim() === selectedLocation.trim()) {
+      // If value matches selected location, don't show dropdown
+      setIsDropdownOpen(false);
     }
-  }, [suggestions, value]);
+  }, [suggestions, value, selectedLocation]);
 
+  // Only show dropdown if:
+  // 1. Dropdown is open
+  // 2. We have suggestions
+  // 3. User has typed something
+  // 4. Value doesn't exactly match the selected location (to prevent showing dropdown for selected values)
   const showDropdown =
-    isDropdownOpen && suggestions.length > 0 && value?.trim()?.length >= 1;
+    isDropdownOpen &&
+    suggestions.length > 0 &&
+    value?.trim()?.length >= 1 &&
+    (!selectedLocation || value.trim() !== selectedLocation.trim());
 
   const updateDropdownPosition = () => {
     if (inputRef.current) {
@@ -314,12 +351,24 @@ export default function LocationInput({
     const newValue = event.target.value;
     onChange?.(newValue);
     setActiveIndex(-1);
+    
+    // Reset selected location if user is editing
+    if (selectedLocation && newValue.trim() !== selectedLocation.trim()) {
+      setSelectedLocation(null);
+      setIsSelecting(false);
+    }
 
     if (newValue && newValue.trim().length >= 1) {
-      setIsDropdownOpen(true);
+      // Only open dropdown if value doesn't match selected location
+      if (!selectedLocation || newValue.trim() !== selectedLocation.trim()) {
+        setIsDropdownOpen(true);
+      } else {
+        setIsDropdownOpen(false);
+      }
     } else {
       setIsDropdownOpen(false);
       setApiSuggestions([]);
+      setSelectedLocation(null);
     }
 
     setTimeout(() => updateDropdownPosition(), 0);
@@ -330,13 +379,21 @@ export default function LocationInput({
       clearTimeout(blurTimeoutRef.current);
     }
     if (!disabled) {
-      if (value && value.trim().length >= 1 && suggestions.length > 0) {
-        setIsDropdownOpen(true);
-        updateDropdownPosition();
-      } else if (value && value.trim().length >= 2) {
-        setIsDropdownOpen(true);
-        getPlaceSuggestions(value);
+      // Only show dropdown on focus if:
+      // 1. Value doesn't match selected location (user is editing)
+      // 2. Or there's no selected location yet
+      const isEditing = !selectedLocation || value.trim() !== selectedLocation.trim();
+      
+      if (isEditing) {
+        if (value && value.trim().length >= 1 && suggestions.length > 0) {
+          setIsDropdownOpen(true);
+          updateDropdownPosition();
+        } else if (value && value.trim().length >= 2) {
+          setIsDropdownOpen(true);
+          getPlaceSuggestions(value);
+        }
       }
+      // If value matches selected location, don't show dropdown on focus
     }
   };
 
@@ -344,21 +401,37 @@ export default function LocationInput({
     const relatedTarget = event.relatedTarget || document.activeElement;
     const dropdown = document.querySelector("[data-location-dropdown]");
 
+    // Don't close if clicking on dropdown
     if (dropdown && relatedTarget && dropdown.contains(relatedTarget)) {
       return;
     }
 
+    // Close dropdown but preserve selected location state
     closeDropdown(150);
+    
+    // If we have a selected location and the value matches it, keep it selected
+    // Otherwise, if user cleared/changed the value, clear selected location
+    if (selectedLocation && value.trim() !== selectedLocation.trim()) {
+      // User changed the value - clear selected location so dropdown can show again on focus
+      setSelectedLocation(null);
+    }
   };
 
   const handleSelectSuggestion = (suggestion) => {
     if (blurTimeoutRef.current) {
       clearTimeout(blurTimeoutRef.current);
     }
+    setIsSelecting(true); // Mark that we're selecting
+    setSelectedLocation(suggestion); // Store the selected location
     onChange?.(suggestion);
     setActiveIndex(-1);
     setIsDropdownOpen(false);
     setApiSuggestions([]);
+    
+    // Reset selecting flag after a brief delay to allow the selection to complete
+    setTimeout(() => {
+      setIsSelecting(false);
+    }, 100);
   };
 
   const handleKeyDown = (event) => {

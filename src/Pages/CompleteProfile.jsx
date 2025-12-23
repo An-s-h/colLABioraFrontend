@@ -115,11 +115,11 @@ export default function CompleteProfile() {
 
       // Redirect to appropriate onboarding flow for more details
       if (role === "patient") {
-        // Redirect to patient onboarding step 2 (conditions)
-        navigate("/onboard/patient?step=2&oauth=true");
+        // Redirect to patient onboarding step 1 (name will be pre-filled from Auth0)
+        navigate("/onboard/patient?step=1&oauth=true");
       } else {
-        // Redirect to researcher onboarding
-        navigate("/onboard/researcher?oauth=true");
+        // Redirect to researcher onboarding step 1 (name will be pre-filled from Auth0)
+        navigate("/onboard/researcher?step=1&oauth=true");
       }
     } catch (e) {
       console.error("Profile completion error:", e);

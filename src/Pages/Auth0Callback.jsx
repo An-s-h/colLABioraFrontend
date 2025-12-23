@@ -7,13 +7,14 @@ import AnimatedBackgroundDiff from "../components/ui/AnimatedBackgroundDiff.jsx"
 
 /**
  * Auth0 Callback Page
- * 
+ *
  * This page handles the redirect after Auth0 authentication.
  * It syncs the Auth0 user with our backend database and sets up the session.
  */
 export default function Auth0Callback() {
   const navigate = useNavigate();
-  const { user, isAuthenticated, isLoading, getAccessTokenSilently } = useAuth0();
+  const { user, isAuthenticated, isLoading, getAccessTokenSilently } =
+    useAuth0();
   const [error, setError] = useState("");
   const [syncing, setSyncing] = useState(false);
 
@@ -31,7 +32,7 @@ export default function Auth0Callback() {
 
       try {
         const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
-        
+
         // Clear any old pending account data from previous incomplete sign-in
         // (This ensures a fresh start for each OAuth flow)
         const oldPendingAccount = localStorage.getItem("auth0_pending_account");
@@ -47,11 +48,13 @@ export default function Auth0Callback() {
             localStorage.removeItem("auth0_pending_account");
           }
         }
-        
+
         // Check localStorage for pending onboarding data
-        const pendingOnboarding = localStorage.getItem("auth0_pending_onboarding");
+        const pendingOnboarding = localStorage.getItem(
+          "auth0_pending_onboarding"
+        );
         let onboardingData = null;
-        
+
         if (pendingOnboarding) {
           try {
             onboardingData = JSON.parse(pendingOnboarding);
@@ -93,7 +96,10 @@ export default function Auth0Callback() {
         if (data.needsProfileCompletion && data.isNewUser) {
           // New OAuth user from sign-in flow - account not created yet
           // Store Auth0 info temporarily so CompleteProfile can create the account
-          localStorage.setItem("auth0_pending_account", JSON.stringify(data.auth0User));
+          localStorage.setItem(
+            "auth0_pending_account",
+            JSON.stringify(data.auth0User)
+          );
           // Redirect to profile completion - account will be created there
           navigate("/auth/complete-profile");
           return;
@@ -120,7 +126,6 @@ export default function Auth0Callback() {
         // Redirect to appropriate dashboard
         const userRole = data.user?.role || "patient";
         navigate(`/dashboard/${userRole}`);
-
       } catch (e) {
         console.error("OAuth sync error:", e);
         setError(e.message || "Failed to complete sign in. Please try again.");
@@ -214,7 +219,9 @@ export default function Auth0Callback() {
                     className="text-xl font-bold mb-2"
                     style={{ color: "#2F3C96" }}
                   >
-                    {syncing ? "Setting up your account..." : "Authenticating..."}
+                    {syncing
+                      ? "Setting up your account..."
+                      : "Authenticating..."}
                   </h2>
                   <p className="text-sm" style={{ color: "#787878" }}>
                     Please wait while we complete your sign in
@@ -228,4 +235,3 @@ export default function Auth0Callback() {
     </Layout>
   );
 }
-

@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 
 /**
  * Auth0 Provider that wraps the application and handles authentication
- * 
+ *
  * Required Environment Variables:
  * - VITE_AUTH0_DOMAIN: Your Auth0 domain (e.g., dev-xxxxx.us.auth0.com)
  * - VITE_AUTH0_CLIENT_ID: Your Auth0 application client ID
@@ -46,4 +46,3 @@ export default function Auth0ProviderWithNavigate({ children }) {
     </Auth0Provider>
   );
 }
-
