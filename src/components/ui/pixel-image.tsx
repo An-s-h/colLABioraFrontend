@@ -89,12 +89,12 @@ export const PixelImage = ({
   }, [rows, cols, maxAnimationDelay])
 
   return (
-    <div className="relative h-72 w-72 select-none md:h-96 md:w-96">
+    <div className="relative h-72 w-72 select-none md:h-96 md:w-96 m-0 p-0 block">
       {pieces.map((piece, index) => (
         <div
           key={index}
           className={cn(
-            "absolute inset-0 transition-all ease-out",
+            "absolute inset-0 transition-all ease-out m-0 p-0",
             isVisible ? "opacity-100" : "opacity-0"
           )}
           style={{
@@ -107,7 +107,7 @@ export const PixelImage = ({
             src={src}
             alt={`Pixel image piece ${index + 1}`}
             className={cn(
-              "z-1 rounded-[2.5rem] object-cover",
+              "z-1 object-cover w-full h-full m-0 p-0",
               grayscaleAnimation && (showColor ? "grayscale-0" : "grayscale")
             )}
             style={{

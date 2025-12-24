@@ -24,6 +24,7 @@ import {
   MessageSquare,
   Users,
   Plus,
+  AlertCircle,
 } from "lucide-react";
 
 export default function OnboardResearcher() {
@@ -31,9 +32,7 @@ export default function OnboardResearcher() {
   const isOAuthFlow = searchParams.get("oauth") === "true";
   const initialStep = parseInt(searchParams.get("step") || "1", 10);
 
-  // TEMPORARILY LIMITED: Step 5 (Account Creation) is disabled
-  // Clamp initial step to max 4 to prevent navigation to disabled step 5
-  const [step, setStep] = useState(Math.min(initialStep, 4));
+  const [step, setStep] = useState(initialStep);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -57,6 +56,7 @@ export default function OnboardResearcher() {
   const [isGenderDropdownOpen, setIsGenderDropdownOpen] = useState(false);
   const [gender, setGender] = useState("");
   const [socialLoginLoading, setSocialLoginLoading] = useState(null);
+  const [showTermsDialog, setShowTermsDialog] = useState(false);
   const navigate = useNavigate();
 
   // Auth0 social login
@@ -197,9 +197,7 @@ export default function OnboardResearcher() {
   async function handleSocialLogin(provider) {
     // Check if terms are accepted before proceeding
     if (!agreedToTerms) {
-      setError(
-        "Please agree to the Terms of Service and Privacy Policy before signing up"
-      );
+      setShowTermsDialog(true);
       return;
     }
 
@@ -331,8 +329,8 @@ export default function OnboardResearcher() {
     if (password.length < 6)
       return setError("Password must be at least 6 characters");
     if (!email) return setError("Email is required");
-    if (researchInterests.length < 5) {
-      return setError("Please add at least 5 research interests/keywords");
+    if (researchInterests.length < 3) {
+      return setError("Please add at least 3 research interests/keywords");
     }
     if (!agreedToTerms) {
       return setError(
@@ -423,14 +421,6 @@ export default function OnboardResearcher() {
     visible: { opacity: 1, y: 0 },
     exit: { opacity: 0, y: -20 },
   };
-
-  // TEMPORARILY DISABLED: Prevent navigation beyond step 4
-  // Step 5 (Account Creation) is disabled and will be re-enabled soon
-  useEffect(() => {
-    if (step > 4) {
-      setStep(4);
-    }
-  }, [step]);
 
   // Close gender dropdown when clicking outside
   useEffect(() => {
@@ -680,6 +670,19 @@ export default function OnboardResearcher() {
                     >
                       Continue →
                     </Button>
+
+                    <div className="text-center pt-1">
+                      <p className="text-xs" style={{ color: "#787878" }}>
+                        Are you a Patient?{" "}
+                        <a
+                          href="/onboard/patient"
+                          className="underline hover:opacity-80 transition-opacity font-medium"
+                          style={{ color: "#2F3C96" }}
+                        >
+                          Sign up here
+                        </a>
+                      </p>
+                    </div>
                   </motion.div>
                 )}
 
@@ -1299,29 +1302,34 @@ export default function OnboardResearcher() {
                           {loading ? "Saving..." : "Complete →"}
                         </Button>
                       ) : (
-                        // TEMPORARILY DISABLED: Step 5 (Account Creation) is disabled for now
-                        // Non-OAuth users cannot proceed to account creation step
-                        // This will be re-enabled soon
                         <Button
-                          disabled={true}
-                          className="flex-1 py-1.5 rounded-lg font-semibold text-sm transition-all opacity-50 cursor-not-allowed"
+                          onClick={() => setStep(5)}
+                          className="flex-1 py-1.5 rounded-lg font-semibold text-sm transition-all transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                           style={{
                             backgroundColor: "#2F3C96",
                             color: "#FFFFFF",
                           }}
+                          onMouseEnter={(e) => {
+                            if (!e.currentTarget.disabled) {
+                              e.currentTarget.style.backgroundColor = "#474F97";
+                              e.currentTarget.style.boxShadow =
+                                "0 4px 12px rgba(208, 196, 226, 0.4)";
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = "#2F3C96";
+                            e.currentTarget.style.boxShadow = "none";
+                          }}
                         >
-                          Coming Soon...
+                          Continue →
                         </Button>
                       )}
                     </div>
                   </motion.div>
                 )}
 
-                {/* TEMPORARILY DISABLED: Step 5 (Account Creation) - Will be re-enabled soon
-                    The entire step 5 section below is conditionally disabled (false && ...)
-                    Uncomment and change 'false' to the original condition when ready to re-enable */}
                 {/* Step 5: Account Creation */}
-                {false && step === 5 && !isOAuthFlow && (
+                {step === 5 && !isOAuthFlow && (
                   <motion.div
                     key="step5"
                     variants={stepVariants}
@@ -1412,7 +1420,7 @@ export default function OnboardResearcher() {
                             </span>
                           </motion.button>
 
-                          {/* Microsoft/Outlook Button */}
+                          {/* Microsoft Button */}
                           <motion.button
                             type="button"
                             disabled={
@@ -1479,7 +1487,7 @@ export default function OnboardResearcher() {
                               </svg>
                             )}
                             <span className="text-[8px] font-medium leading-tight">
-                              Outlook
+                              Microsoft
                             </span>
                           </motion.button>
 
@@ -1735,6 +1743,146 @@ export default function OnboardResearcher() {
           </motion.div>
         </div>
       </div>
+
+      {/* Terms of Service Dialog */}
+      <AnimatePresence>
+        {showTermsDialog && (
+          <>
+            {/* Overlay */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowTermsDialog(false)}
+              className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
+            />
+            {/* Dialog */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ type: "spring", duration: 0.3 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div
+                className="bg-white rounded-xl shadow-xl border p-6 max-w-md w-full"
+                style={{
+                  borderColor: "#D0C4E2",
+                  boxShadow: "0 10px 40px rgba(208, 196, 226, 0.3)",
+                  backgroundColor: "rgba(255, 255, 255, 0.98)",
+                }}
+              >
+                <div className="flex items-start gap-4 mb-4">
+                  <div
+                    className="rounded-full p-2 shrink-0"
+                    style={{
+                      backgroundColor: "rgba(47, 60, 150, 0.1)",
+                    }}
+                  >
+                    <AlertCircle size={24} style={{ color: "#2F3C96" }} />
+                  </div>
+                  <div className="flex-1">
+                    <h3
+                      className="text-lg font-bold mb-2"
+                      style={{ color: "#2F3C96" }}
+                    >
+                      Agreement Required
+                    </h3>
+                    <p
+                      className="text-sm leading-relaxed"
+                      style={{ color: "#787878" }}
+                    >
+                      To continue with social sign-in, please review and agree
+                      to our{" "}
+                      <a
+                        href="/terms"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline font-semibold hover:opacity-80 transition-opacity"
+                        style={{ color: "#2F3C96" }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Terms of Service
+                      </a>{" "}
+                      and{" "}
+                      <a
+                        href="/privacy"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline font-semibold hover:opacity-80 transition-opacity"
+                        style={{ color: "#2F3C96" }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Privacy Policy
+                      </a>
+                      . This helps us protect your privacy and ensure a safe
+                      experience.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-6">
+                  <Button
+                    onClick={() => setShowTermsDialog(false)}
+                    className="flex-1 py-2 rounded-lg font-semibold text-sm border transition-all"
+                    style={{
+                      backgroundColor: "#FFFFFF",
+                      color: "#787878",
+                      borderColor: "#E8E8E8",
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setShowTermsDialog(false);
+                      // Scroll to terms checkbox
+                      const termsCheckbox = document.querySelector(
+                        'input[type="checkbox"]'
+                      );
+                      if (termsCheckbox) {
+                        termsCheckbox.scrollIntoView({
+                          behavior: "smooth",
+                          block: "center",
+                        });
+                        // Highlight the checkbox area briefly
+                        setTimeout(() => {
+                          const termsContainer = termsCheckbox.closest("div");
+                          if (termsContainer) {
+                            termsContainer.style.transition =
+                              "background-color 0.3s";
+                            termsContainer.style.backgroundColor =
+                              "rgba(208, 196, 226, 0.2)";
+                            setTimeout(() => {
+                              termsContainer.style.backgroundColor = "";
+                            }, 2000);
+                          }
+                        }, 500);
+                      }
+                    }}
+                    className="flex-1 py-2 rounded-lg font-semibold text-sm transition-all transform hover:scale-[1.02]"
+                    style={{
+                      backgroundColor: "#2F3C96",
+                      color: "#FFFFFF",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = "#474F97";
+                      e.currentTarget.style.boxShadow =
+                        "0 4px 12px rgba(208, 196, 226, 0.4)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = "#2F3C96";
+                      e.currentTarget.style.boxShadow = "none";
+                    }}
+                  >
+                    Go to Terms
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </Layout>
   );
 }
