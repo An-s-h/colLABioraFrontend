@@ -1191,6 +1191,49 @@ export default function OnboardPatient() {
                       </div>
                     </div>
 
+                    {/* Terms & Conditions (for OAuth flow) */}
+                    {isOAuthFlow && (
+                      <div
+                        className="p-2 rounded-lg border"
+                        style={{ borderColor: "#E8E8E8" }}
+                      >
+                        <label className="flex items-start gap-1.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={agreedToTerms}
+                            onChange={(e) => setAgreedToTerms(e.target.checked)}
+                            className="mt-0.5 w-3.5 h-3.5 rounded"
+                            style={{ accentColor: "#2F3C96" }}
+                          />
+                          <span
+                            className="text-xs"
+                            style={{ color: "#787878" }}
+                          >
+                            I agree to the{" "}
+                            <a
+                              href="/terms"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="underline hover:opacity-80 transition-opacity"
+                              style={{ color: "#2F3C96" }}
+                            >
+                              Terms of Service
+                            </a>{" "}
+                            and{" "}
+                            <a
+                              href="/privacy"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="underline hover:opacity-80 transition-opacity"
+                              style={{ color: "#2F3C96" }}
+                            >
+                              Privacy Policy
+                            </a>
+                          </span>
+                        </label>
+                      </div>
+                    )}
+
                     {error && (
                       <motion.div
                         initial={{ opacity: 0 }}
@@ -1227,16 +1270,18 @@ export default function OnboardPatient() {
                             setStep(4);
                           }
                         }}
-                        disabled={loading}
+                        disabled={loading || (isOAuthFlow && !agreedToTerms)}
                         className="flex-1 py-1.5 rounded-lg font-semibold text-sm transition-all transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                         style={{
                           backgroundColor: "#2F3C96",
                           color: "#FFFFFF",
                         }}
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = "#474F97";
-                          e.currentTarget.style.boxShadow =
-                            "0 4px 12px rgba(208, 196, 226, 0.4)";
+                          if (!e.currentTarget.disabled) {
+                            e.currentTarget.style.backgroundColor = "#474F97";
+                            e.currentTarget.style.boxShadow =
+                              "0 4px 12px rgba(208, 196, 226, 0.4)";
+                          }
                         }}
                         onMouseLeave={(e) => {
                           e.currentTarget.style.backgroundColor = "#2F3C96";

@@ -24,63 +24,18 @@ export default function AboutUs() {
       <AnimatedBackground isMobile={isMobile} />
 
       {/* Single View Container - Centered Content */}
-      <section className="relative flex-1 flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8 py-8 sm:py-12 lg:pt-20 pb-12 sm:pb-16 z-10">
+      <section className="relative flex-1 flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8 pt-[40px] sm:pt-8 lg:pt-24 pb-12 sm:pb-16 z-10">
         <div className="max-w-7xl w-full">
           {/* Grid Layout - All content visible at once */}
-          <div className="grid lg:grid-cols-2 gap-6 lg:gap-8">
-            {/* Left Column - Main Story */}
-            <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.5 }}
-              className="space-y-4"
-            >
-              {/* Title */}
-              <div className="space-y-2">
-                <h1 className="text-4xl sm:text-5xl font-bold text-foreground">
-                  About Us
-                </h1>
-                <div className="w-16 h-1 bg-primary rounded-full" />
-              </div>
-
-              {/* Story Text */}
-              <div className="space-y-3 max-w-2xl">
-                <p className="text-base leading-relaxed text-foreground">
-                  Collaboria is reimagining how health research is done — making
-                  it transparent, ethical, and accessible to everyone.
-                </p>
-
-                <p className="text-sm leading-relaxed text-muted-foreground">
-                  Coming from neurology, neuroscience, psychology, and health
-                  policy, we saw the same problem everywhere: valuable research
-                  that patients and clinicians couldn't easily access or
-                  understand.
-                </p>
-
-                <p className="text-sm leading-relaxed text-muted-foreground">
-                  Innovation slows when researchers, clinicians, and patients
-                  work in silos. Collaboria brings them together — enabling
-                  direct collaboration that accelerates discovery and keeps
-                  research focused on real health needs.
-                </p>
-
-                <p className="text-sm leading-relaxed font-medium text-foreground">
-                  We're building a new model for health research — one where
-                  knowledge flows openly, collaboration drives discovery, and
-                  every voice helps shape the future of health.
-                </p>
-              </div>
-            </motion.div>
-
-            {/* Right Column - Founders & Values */}
+          <div className="flex flex-col lg:grid lg:grid-cols-2 gap-6 lg:gap-8">
+            {/* Founders Card - Mobile: First, Desktop: Right Column */}
             <motion.div
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.5, delay: 0.1 }}
-              className="space-y-6"
+              className="order-1 lg:order-2"
             >
-              {/* Founders Card */}
-              <div className="rounded-2xl p-3 hover:border-primary/30 transition-all duration-300">
+              <div className="rounded-2xl pt-18 hover:border-primary/30 transition-all duration-300">
                 <div className="flex items-center gap-0">
                   {/* Compact Image */}
                   <div className="shrink-0">
@@ -128,51 +83,103 @@ export default function AboutUs() {
                   </div>
                 </div>
               </div>
+            </motion.div>
 
-              {/* Values Grid */}
-              <div className="space-y-4">
-                <p className="text-sm text-muted-foreground font-medium">
-                  What We Stand For
+            {/* Left Column - Main Story - Mobile: Second, Desktop: Left Column */}
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.5 }}
+              className="space-y-4 order-2 lg:order-1"
+            >
+              {/* Title */}
+              <div className="space-y-2">
+                <h1 className="text-4xl sm:text-5xl font-bold text-foreground">
+                  About Us
+                </h1>
+                <div className="w-16 h-1 bg-primary rounded-full" />
+              </div>
+
+              {/* Story Text */}
+              <div className="space-y-3 max-w-2xl">
+                {/* First paragraph - visible on all screens */}
+                <p className="text-base leading-relaxed text-foreground">
+                  Collabiora is reimagining how health research is done — making
+                  it transparent, ethical, and accessible to everyone.
                 </p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  {[
-                    {
-                      icon: <Target size={20} />,
-                      title: "Transparency",
-                      description: "Open, understandable research for everyone",
-                    },
-                    {
-                      icon: <Heart size={20} />,
-                      title: "Ethics",
-                      description: "Integrity at every step",
-                    },
-                    {
-                      icon: <Users size={20} />,
-                      title: "Collaboration",
-                      description:
-                        "Bringing researchers, clinicians, and patients together",
-                    },
-                  ].map((value, index) => (
-                    <motion.div
-                      key={index}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.3, delay: 0.2 + index * 0.1 }}
-                      whileHover={{ y: -4, scale: 1.02 }}
-                      className="bg-gradient-to-br from-card to-card/50 border border-border rounded-xl p-3 hover:border-primary/40 hover:shadow-lg transition-all duration-300"
-                    >
-                      <div className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10 text-primary mb-2">
-                        {value.icon}
-                      </div>
-                      <h3 className="text-sm font-bold text-foreground mb-1">
-                        {value.title}
-                      </h3>
-                      <p className="text-xs leading-relaxed text-muted-foreground">
-                        {value.description}
-                      </p>
-                    </motion.div>
-                  ))}
-                </div>
+
+                {/* Middle paragraphs - hidden on mobile, visible on desktop */}
+                <p className="hidden lg:block text-sm leading-relaxed text-muted-foreground">
+                  Coming from neurology, neuroscience, psychology, and health
+                  policy, we saw the same problem everywhere: valuable research
+                  that patients and clinicians couldn't easily access or
+                  understand.
+                </p>
+
+                <p className="hidden lg:block text-sm leading-relaxed text-muted-foreground">
+                  Innovation slows when researchers, clinicians, and patients
+                  work in silos. Collabiora brings them together — enabling
+                  direct collaboration that accelerates discovery and keeps
+                  research focused on real health needs.
+                </p>
+
+                {/* Last paragraph - visible on all screens */}
+                <p className="text-sm leading-relaxed font-medium text-foreground">
+                  We're building a new model for health research — one where
+                  knowledge flows openly, collaboration drives discovery, and
+                  every voice helps shape the future of health.
+                </p>
+              </div>
+            </motion.div>
+
+            {/* Values Grid - Mobile: Third, Desktop: Right Column (below Founders) */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.2 }}
+              className="space-y-4 order-3 lg:order-2 lg:col-start-2"
+            >
+              <p className="text-sm text-muted-foreground font-medium">
+                What We Stand For
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {[
+                  {
+                    icon: <Target size={20} />,
+                    title: "Transparency",
+                    description: "Open, understandable research for everyone",
+                  },
+                  {
+                    icon: <Heart size={20} />,
+                    title: "Ethics",
+                    description: "Integrity at every step",
+                  },
+                  {
+                    icon: <Users size={20} />,
+                    title: "Collaboration",
+                    description:
+                      "Bringing researchers, clinicians, and patients together",
+                  },
+                ].map((value, index) => (
+                  <motion.div
+                    key={index}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, delay: 0.2 + index * 0.1 }}
+                    whileHover={{ y: -4, scale: 1.02 }}
+                    className="bg-gradient-to-br from-card to-card/50 border border-border rounded-xl p-3 hover:border-primary/40 hover:shadow-lg transition-all duration-300"
+                  >
+                    <div className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10 text-primary mb-2">
+                      {value.icon}
+                    </div>
+                    <h3 className="text-sm font-bold text-foreground mb-1">
+                      {value.title}
+                    </h3>
+                    <p className="text-xs leading-relaxed text-muted-foreground">
+                      {value.description}
+                    </p>
+                  </motion.div>
+                ))}
               </div>
             </motion.div>
           </div>

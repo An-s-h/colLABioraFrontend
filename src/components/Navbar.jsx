@@ -7,6 +7,7 @@ import { ShimmerButton } from "@/components/ui/shimmer-button";
 
 export default function Navbar() {
   const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [isMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isDropdownOpen, setIsMenuOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
@@ -49,6 +50,26 @@ export default function Navbar() {
     const updateUser = () => {
       const userData = JSON.parse(localStorage.getItem("user") || "null");
       setUser(userData);
+
+      // Fetch profile data if user exists
+      if (userData?._id || userData?.id) {
+        fetchProfile(userData._id || userData.id);
+      } else {
+        setProfile(null);
+      }
+    };
+
+    const fetchProfile = async (userId) => {
+      try {
+        const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
+        const response = await fetch(`${base}/api/profile/${userId}`);
+        if (response.ok) {
+          const data = await response.json();
+          setProfile(data.profile || null);
+        }
+      } catch (error) {
+        console.error("Error fetching profile:", error);
+      }
     };
 
     updateUser();
@@ -378,13 +399,16 @@ export default function Navbar() {
               <div className="relative" ref={notificationRef}>
                 <motion.button
                   onClick={() => setIsNotificationOpen(!isNotificationOpen)}
-                  className="w-10 h-10 rounded-full shadow-md hover:shadow-lg transition-all duration-300 flex items-center justify-center border"
+                  className="w-11 h-11 rounded-full shadow-md hover:shadow-lg transition-all duration-300 flex items-center justify-center border backdrop-blur-sm"
                   style={{
-                    backgroundColor: "#F5F2F8",
-                    borderColor: "#D0C4E2",
+                    backgroundColor: "",
+                    borderColor: "rgba(47, 60, 150, 0.2)",
                     color: "#2F3C96",
                   }}
-                  whileHover={{ scale: 1.1, backgroundColor: "#E8E0EF" }}
+                  whileHover={{
+                    scale: 1.1,
+                    backgroundColor: "rgba(232, 224, 239, 0.8)",
+                  }}
                   whileTap={{ scale: 0.95 }}
                 >
                   <svg
@@ -401,6 +425,8 @@ export default function Navbar() {
                       d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
                     />
                   </svg>
+                  {/* Notification dot indicator */}
+                  {/* <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span> */}
                 </motion.button>
 
                 <AnimatePresence>
@@ -472,29 +498,70 @@ export default function Navbar() {
               <div className="relative" ref={menuRef}>
                 <motion.button
                   onClick={() => setIsMenuOpen(!isDropdownOpen)}
-                  className="w-10 h-10 rounded-full text-white shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center border-2"
+                  className="flex items-center gap-2 px-2 py-2 rounded-full shadow-md hover:shadow-lg transition-all duration-300 border backdrop-blur-sm"
                   style={{
-                    background: "linear-gradient(135deg, #2F3C96, #474F97)",
-                    borderColor: "#D0C4E2",
+                    backgroundColor: "",
+                    borderColor: "rgba(47, 60, 150, 0.2)",
                   }}
                   whileHover={{
-                    scale: 1.1,
-                    background: "linear-gradient(135deg, #474F97, #2F3C96)",
+                    scale: 1.02,
+                    backgroundColor: "rgba(232, 224, 239, 0.8)",
                   }}
-                  whileTap={{ scale: 0.95 }}
+                  whileTap={{ scale: 0.98 }}
                 >
+                  {/* Profile Avatar with First Letter */}
+                  <div
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-md shrink-0"
+                    style={{
+                      backgroundColor: "rgba(47, 60, 150, 0.8)",
+                      border: "2px solid rgba(47, 60, 150, 0.3)",
+                    }}
+                  >
+                    {user?.username?.charAt(0)?.toUpperCase() || "U"}
+                  </div>
+
+                  {/* Name and Role/Condition */}
+                  <div className="flex flex-col items-start min-w-0">
+                    <span
+                      className="text-xs font-semibold truncate max-w-[100px]"
+                      style={{ color: "#2F3C96" }}
+                    >
+                      {user.username || "User"}
+                    </span>
+                    <span
+                      className="text-[10px] truncate max-w-[100px]"
+                      style={{ color: "#787878" }}
+                    >
+                      {(() => {
+                        if (
+                          user.role === "patient" &&
+                          profile?.patient?.conditions?.length > 0
+                        ) {
+                          return profile.patient.conditions[0];
+                        } else if (user.role === "researcher") {
+                          return "Researcher";
+                        } else if (user.role === "patient") {
+                          return "Patient";
+                        }
+                        return user.role || "User";
+                      })()}
+                    </span>
+                  </div>
+
+                  {/* Chevron */}
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    className="w-5 h-5"
+                    className="w-3 h-3 shrink-0"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
                     strokeWidth="2.5"
+                    style={{ color: "#2F3C96" }}
                   >
                     <path
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                      d="M19 9l-7 7-7-7"
                     />
                   </svg>
                 </motion.button>
@@ -513,9 +580,9 @@ export default function Navbar() {
                       }}
                     >
                       <Link
-                        to={getDashboardPath()}
+                        to="/profile"
                         onClick={() => setIsMenuOpen(false)}
-                        className="block px-4 py-2.5 text-sm font-medium transition-all duration-200"
+                        className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-all duration-200"
                         style={{ color: "#2F3C96" }}
                         onMouseEnter={(e) => {
                           e.target.style.backgroundColor = "#E8E0EF";
@@ -526,12 +593,84 @@ export default function Navbar() {
                           e.target.style.color = "#2F3C96";
                         }}
                       >
-                        Dashboard
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="w-4 h-4"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                          />
+                        </svg>
+                        <span>My Profile</span>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="w-4 h-4 ml-auto"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M9 5l7 7-7 7"
+                          />
+                        </svg>
+                      </Link>
+                      <Link
+                        to={getDashboardPath()}
+                        onClick={() => setIsMenuOpen(false)}
+                        className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-all duration-200"
+                        style={{ color: "#2F3C96" }}
+                        onMouseEnter={(e) => {
+                          e.target.style.backgroundColor = "#E8E0EF";
+                          e.target.style.color = "#474F97";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.target.style.backgroundColor = "transparent";
+                          e.target.style.color = "#2F3C96";
+                        }}
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="w-4 h-4"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M3 12l2-3m0 0l7-4 7 4M5 9v10a1 1 0 001 1h12a1 1 0 001-1V9m-9 4l4 2m-2-8l4-2m-6 2l-4-2"
+                          />
+                        </svg>
+                        <span>Dashboard</span>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="w-4 h-4 ml-auto"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M9 5l7 7-7 7"
+                          />
+                        </svg>
                       </Link>
                       <Link
                         to="/favorites"
                         onClick={() => setIsMenuOpen(false)}
-                        className="block px-4 py-2.5 text-sm font-medium transition-all duration-200"
+                        className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-all duration-200"
                         style={{ color: "#2F3C96" }}
                         onMouseEnter={(e) => {
                           e.target.style.backgroundColor = "#E8E0EF";
@@ -542,12 +681,40 @@ export default function Navbar() {
                           e.target.style.color = "#2F3C96";
                         }}
                       >
-                        Favorites
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="w-4 h-4"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+                          />
+                        </svg>
+                        <span>Favorites</span>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="w-4 h-4 ml-auto"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M9 5l7 7-7 7"
+                          />
+                        </svg>
                       </Link>
                       <Link
                         to="/insights"
                         onClick={() => setIsMenuOpen(false)}
-                        className="block px-4 py-2.5 text-sm font-medium transition-all duration-200"
+                        className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-all duration-200"
                         style={{ color: "#2F3C96" }}
                         onMouseEnter={(e) => {
                           e.target.style.backgroundColor = "#E8E0EF";
@@ -558,12 +725,40 @@ export default function Navbar() {
                           e.target.style.color = "#2F3C96";
                         }}
                       >
-                        Insights
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="w-4 h-4"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M13 10V3L4 14h7v7l9-11h-7z"
+                          />
+                        </svg>
+                        <span>Insights</span>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="w-4 h-4 ml-auto"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M9 5l7 7-7 7"
+                          />
+                        </svg>
                       </Link>
                       <hr className="my-2" style={{ borderColor: "#D0C4E2" }} />
                       <button
                         onClick={handleLogout}
-                        className="block w-full text-left px-4 py-2.5 text-sm font-medium transition-all duration-200"
+                        className="flex items-center gap-3 w-full text-left px-4 py-2.5 text-sm font-medium transition-all duration-200"
                         style={{ color: "#dc2626" }}
                         onMouseEnter={(e) => {
                           e.target.style.backgroundColor = "#fee2e2";
@@ -572,7 +767,35 @@ export default function Navbar() {
                           e.target.style.backgroundColor = "transparent";
                         }}
                       >
-                        Logout
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="w-4 h-4"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                          />
+                        </svg>
+                        <span>Sign Out</span>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="w-4 h-4 ml-auto"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M9 5l7 7-7 7"
+                          />
+                        </svg>
                       </button>
                     </motion.div>
                   )}
@@ -612,13 +835,16 @@ export default function Navbar() {
           {user && (
             <motion.button
               onClick={() => setIsNotificationOpen(!isNotificationOpen)}
-              className="w-10 h-10 rounded-full shadow-md hover:shadow-lg transition-all duration-300 flex items-center justify-center border"
+              className="w-10 h-10 rounded-full shadow-md hover:shadow-lg transition-all duration-300 flex items-center justify-center border backdrop-blur-sm relative"
               style={{
-                backgroundColor: "#F5F2F8",
-                borderColor: "#D0C4E2",
+                backgroundColor: "rgba(245, 242, 248, 0.7)",
+                borderColor: "rgba(47, 60, 150, 0.2)",
                 color: "#2F3C96",
               }}
-              whileHover={{ scale: 1.1, backgroundColor: "#E8E0EF" }}
+              whileHover={{
+                scale: 1.1,
+                backgroundColor: "rgba(232, 224, 239, 0.8)",
+              }}
               whileTap={{ scale: 0.95 }}
             >
               <svg
@@ -635,6 +861,8 @@ export default function Navbar() {
                   d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
                 />
               </svg>
+              {/* Notification dot indicator */}
+              {/* <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span> */}
             </motion.button>
           )}
 

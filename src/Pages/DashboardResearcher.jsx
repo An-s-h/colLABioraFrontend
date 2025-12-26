@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
@@ -827,9 +827,8 @@ export default function DashboardResearcher() {
         userProfile?.researcher?.interests?.[0] ||
         "oncology";
       params.set("q", userDisease);
-      if (trialFilter) {
-        params.set("status", trialFilter);
-      }
+      // Default to RECRUITING if no filter is set
+      params.set("status", trialFilter || "RECRUITING");
 
       // Add location (country only for trials)
       if (userLocation?.country) {
@@ -854,10 +853,26 @@ export default function DashboardResearcher() {
           ...prev,
           trials: sortedTrials,
         }));
+      } else {
+        // Handle non-ok responses
+        let errorData = {};
+        try {
+          errorData = await response.json();
+        } catch (e) {
+          errorData = { error: `Server error: ${response.status}` };
+        }
+        console.error("Error fetching filtered trials:", response.status, errorData);
+        // Only show error toast if it's not a search limit error (handled by the API)
+        if (response.status !== 429) {
+          toast.error(errorData.error || "Failed to load filtered trials");
+        }
       }
     } catch (error) {
       console.error("Error fetching filtered trials:", error);
-      toast.error("Failed to load filtered trials");
+      // Only show error if it's a network error, not if it's already handled
+      if (error.name !== "AbortError") {
+        toast.error("Failed to load filtered trials");
+      }
     } finally {
       setLoadingFiltered(false);
     }
@@ -922,19 +937,10 @@ export default function DashboardResearcher() {
 
   // Effect to fetch filtered trials when filter changes
   useEffect(() => {
+    // Only fetch filtered trials if a filter is explicitly set
+    // On initial load, use the recommendations that were already fetched
     if (selectedCategory === "trials" && trialFilter && user?._id) {
       fetchFilteredTrials();
-    } else if (selectedCategory === "trials" && !trialFilter && user?._id) {
-      // Reset to original recommendations if filter is cleared
-      fetch(`${base}/api/recommendations/${user._id || user.id}`)
-        .then((r) => r.json())
-        .then((fetchedData) => {
-          setData((prev) => ({
-            ...prev,
-            trials: fetchedData.trials || [],
-          }));
-        })
-        .catch((err) => console.error("Error fetching recommendations:", err));
     }
   }, [trialFilter, selectedCategory, user?._id]);
 
