@@ -20,7 +20,6 @@ import {
   MoreVertical,
   UserPlus,
   Check,
-  Bell,
   Send,
   Briefcase,
   Building2,
@@ -30,6 +29,7 @@ import {
   Edit3,
   MessageSquare,
   TrendingUp,
+  Flame,
   Clock,
   AlertCircle,
   Activity,
@@ -42,7 +42,7 @@ import {
 import Modal from "../components/ui/Modal";
 import { MultiStepLoader } from "../components/ui/multi-step-loader";
 import { useProfile } from "../contexts/ProfileContext.jsx";
-import AnimatedBackgroundDiff from "../components/ui/AnimatedBackgroundDiff.jsx";
+import AnimatedBackground from "../components/ui/AnimatedBackground.jsx";
 
 export default function DashboardPatient() {
   const [data, setData] = useState({
@@ -94,11 +94,17 @@ export default function DashboardPatient() {
   });
   const [followingStatus, setFollowingStatus] = useState({});
   const [favorites, setFavorites] = useState([]);
-  const [insights, setInsights] = useState({ unreadCount: 0 });
-  const [selectedCategory, setSelectedCategory] = useState("trials"); // "trials", "publications", "globalExperts", "curalinkExperts", "favorites"
+  const [selectedCategory, setSelectedCategory] = useState("publications"); // "publications", "trials", "experts", "forums", "favorites", "trending"
   const [userProfile, setUserProfile] = useState(null);
+  const [forumsCategories, setForumsCategories] = useState([]);
+  const [trendingData, setTrendingData] = useState({
+    publications: [],
+    trials: [],
+  });
   const [trialFilter, setTrialFilter] = useState(""); // Status filter for trials
   const [publicationSort, setPublicationSort] = useState("relevance"); // Sort option for publications
+  const [showCollabioraExperts, setShowCollabioraExperts] = useState(true); // Toggle for Collabiora Experts
+  const [showGlobalExperts, setShowGlobalExperts] = useState(false); // Toggle for Global Experts
   const [filterModalOpen, setFilterModalOpen] = useState(false);
   const [loadingFiltered, setLoadingFiltered] = useState(false);
   const [favoritingItems, setFavoritingItems] = useState(new Set()); // Track items being favorited/unfavorited
@@ -211,6 +217,12 @@ export default function DashboardPatient() {
               }
             );
             setGlobalExperts(sortedGlobalExperts);
+
+            // Trending data is not loaded - showing empty state
+            setTrendingData({
+              publications: [],
+              trials: [],
+            });
           }
 
           // Fetch favorites
@@ -226,17 +238,15 @@ export default function DashboardPatient() {
             console.error("Error fetching favorites:", error);
           }
 
-          // Fetch insights unread count
+          // Fetch forums categories
           try {
-            const insightsResponse = await fetch(
-              `${base}/api/insights/${userData._id || userData.id}?limit=0`
-            );
-            if (insightsResponse.ok) {
-              const insightsData = await insightsResponse.json();
-              setInsights({ unreadCount: insightsData.unreadCount || 0 });
+            const forumsResponse = await fetch(`${base}/api/forums/categories`);
+            if (forumsResponse.ok) {
+              const forumsData = await forumsResponse.json();
+              setForumsCategories(forumsData.categories || []);
             }
           } catch (error) {
-            console.error("Error fetching insights:", error);
+            console.error("Error fetching forums categories:", error);
           }
 
           // Fetch user profile for location and conditions
@@ -370,12 +380,16 @@ export default function DashboardPatient() {
       const res = await fetch(`${base}/api/ai/summary`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, type }),
       }).then((r) => r.json());
 
       setSummaryModal((prev) => ({
         ...prev,
-        summary: res.summary || "Summary unavailable",
+        summary:
+          res.summary ||
+          (type === "publication"
+            ? { structured: false, summary: "Summary unavailable" }
+            : "Summary unavailable"),
         loading: false,
       }));
     } catch (e) {
@@ -1040,6 +1054,13 @@ export default function DashboardPatient() {
     }
   }, [selectedCategory]);
 
+  // Update filter modal title based on selected category
+  const getFilterModalTitle = () => {
+    return selectedCategory === "trials"
+      ? "Filter Trials"
+      : "Sort Publications";
+  };
+
   // Note: Removed lazy loading for globalExperts - they are now loaded on initial page load
   // from the recommendations endpoint, improving load times when switching categories
 
@@ -1166,16 +1187,20 @@ export default function DashboardPatient() {
 
   const getCategoryCount = (category) => {
     switch (category) {
-      case "trials":
-        return data.trials.length;
       case "publications":
         return data.publications.length;
-      case "globalExperts":
-        return globalExperts.length;
-      case "curalinkExperts":
-        return data.experts.length;
+      case "trials":
+        return data.trials.length;
+      case "experts":
+        return globalExperts.length + data.experts.length;
+      case "forums":
+        return forumsCategories.filter(
+          (category) => (category.threadCount || 0) >= 2
+        ).length;
       case "favorites":
         return favorites.length;
+      case "trending":
+        return trendingData.publications.length + trendingData.trials.length;
       default:
         return 0;
     }
@@ -1183,16 +1208,18 @@ export default function DashboardPatient() {
 
   const getCategoryLabel = (category) => {
     switch (category) {
-      case "trials":
-        return "Trials";
       case "publications":
         return "Publications";
-      case "globalExperts":
-        return "Global Experts";
-      case "curalinkExperts":
-        return "Collabiora Experts";
+      case "trials":
+        return "Trials";
+      case "experts":
+        return "Experts";
+      case "forums":
+        return "Forums";
       case "favorites":
         return "Favorites";
+      case "trending":
+        return "Trending";
       default:
         return "";
     }
@@ -1203,6 +1230,8 @@ export default function DashboardPatient() {
     userProfile?.patient?.conditions?.[0] ||
     user?.medicalInterests?.[0] ||
     "Not specified";
+  const userConditions =
+    userProfile?.patient?.conditions || user?.medicalInterests || [];
   const userLocation =
     userProfile?.patient?.location || userProfile?.researcher?.location || null;
   const locationText = userLocation
@@ -1213,36 +1242,93 @@ export default function DashboardPatient() {
 
   return (
     <div className="min-h-scren relative ">
-      <AnimatedBackgroundDiff />
+      <AnimatedBackground />
       <div className="px-4 sm:px-6 md:px-8 lg:px-12 mx-auto max-w-7xl pt-6 pb-12 relative ">
         {/* Top Bar with Profile and Insights */}
         <div className="mb-8">
           {/* Profile Section with Insights */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-gradient-to-br from-indigo-600 via-indigo-700 to-blue-700 rounded-2xl shadow-xl border border-indigo-500/50 relative overflow-hidden w-full p-5 sm:p-4 mt-18">
+          <div
+            className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-2xl shadow-xl border relative overflow-hidden w-full p-5 sm:p-4 mt-18"
+            style={{
+              background: "linear-gradient(135deg, #D0C4E2, #E8E0EF, #F5F2F8)",
+              borderColor: "rgba(208, 196, 226, 0.5)",
+            }}
+          >
             {/* Decorative background elements */}
-            <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32"></div>
-            <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/5 rounded-full -ml-24 -mb-24"></div>
+            <div
+              className="absolute top-0 right-0 w-64 h-64 rounded-full -mr-32 -mt-32"
+              style={{ backgroundColor: "rgba(47, 60, 150, 0.1)" }}
+            ></div>
+            <div
+              className="absolute bottom-0 left-0 w-48 h-48 rounded-full -ml-24 -mb-24"
+              style={{ backgroundColor: "rgba(47, 60, 150, 0.1)" }}
+            ></div>
 
             <div className="relative z-10 flex items-center gap-4 flex-1 min-w-0 w-full sm:w-auto">
               {/* Avatar */}
-              <div className="w-12 h-12 bg-white/25 backdrop-blur-sm rounded-full flex items-center justify-center text-white font-bold text-xl shadow-lg ring-2 ring-white/30 shrink-0">
+              <div
+                className="w-12 h-12 backdrop-blur-sm rounded-full flex items-center justify-center text-white font-bold text-xl shadow-lg ring-2 shrink-0"
+                style={{
+                  backgroundColor: "#2F3C96",
+                  ringColor: "rgba(47, 60, 150, 0.5)",
+                }}
+              >
                 {user?.username?.charAt(0)?.toUpperCase() || "U"}
               </div>
 
               {/* Profile Info */}
               <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-6 flex-1 min-w-0">
                 <div className="flex-1 min-w-0">
-                  <h3 className="text-base sm:text-lg font-bold text-white mb-1">
+                  <h3
+                    className="text-base sm:text-lg font-bold mb-1"
+                    style={{ color: "#2F3C96" }}
+                  >
                     Hello, {user?.username || "User"} 👋
                   </h3>
-                  <div className="flex flex-wrap items-center gap-3 text-xs sm:text-sm text-indigo-100">
-                    <span className="flex items-center gap-1.5 bg-white/10 px-2.5 py-1 rounded-full">
-                      <Heart className="w-3.5 h-3.5 shrink-0" />
-                      <span className="truncate max-w-[150px] sm:max-w-none">
-                        {userDisease}
+                  <div
+                    className="flex flex-wrap items-center gap-3 text-xs sm:text-sm"
+                    style={{ color: "#787878" }}
+                  >
+                    {userConditions.length > 0 ? (
+                      userConditions.map((condition, idx) => (
+                        <span
+                          key={idx}
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+                          style={{
+                            backgroundColor: "rgba(47, 60, 150, 0.15)",
+                            border: "1px solid rgba(47, 60, 150, 0.3)",
+                            color: "#2F3C96",
+                          }}
+                        >
+                          <Heart className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate max-w-[150px] sm:max-w-none">
+                            {condition}
+                          </span>
+                        </span>
+                      ))
+                    ) : (
+                      <span
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+                        style={{
+                          backgroundColor: "rgba(47, 60, 150, 0.15)",
+                          border: "1px solid rgba(47, 60, 150, 0.3)",
+                          color: "#2F3C96",
+                        }}
+                      >
+                        <Heart className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate max-w-[150px] sm:max-w-none">
+                          {userDisease}
+                        </span>
                       </span>
-                    </span>
-                    <span className="flex items-center gap-1.5 bg-white/10 px-2.5 py-1 rounded-full">
+                    )}
+                    <span
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+                      style={{
+                        backgroundColor: "rgba(47, 60, 150, 0.15)",
+                        border: "1px solid rgba(47, 60, 150, 0.3)",
+                        color: "#2F3C96",
+                      }}
+                    >
                       <MapPin className="w-3.5 h-3.5 shrink-0" />
                       <span className="truncate max-w-[150px] sm:max-w-none">
                         {locationText}
@@ -1255,36 +1341,25 @@ export default function DashboardPatient() {
 
             {/* Action Buttons */}
             <div className="relative z-10 flex items-center gap-3 shrink-0">
-              {/* Edit Profile Button */}
-              <button
-                onClick={() => navigate("/profile")}
-                className="relative flex items-center gap-2 px-4 py-2.5 bg-white/20 hover:bg-white/30 rounded-xl transition-all border border-white/30 text-sm font-semibold text-white shadow-lg hover:shadow-xl hover:scale-105"
-              >
-                <Edit3 className="w-4 h-4" />
-                <span className="hidden sm:inline">Edit Profile</span>
-              </button>
-
               {/* View All Saved Items Button */}
               <button
                 onClick={() => navigate("/favorites")}
-                className="relative flex items-center gap-2 px-4 py-2.5 bg-white/20 hover:bg-white/30 rounded-xl transition-all border border-white/30 text-sm font-semibold text-white shadow-lg hover:shadow-xl hover:scale-105"
+                className="relative flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all text-sm font-semibold text-white shadow-lg hover:shadow-xl hover:scale-105"
+                style={{
+                  backgroundColor: "#2F3C96",
+                  border: "1px solid rgba(47, 60, 150, 0.5)",
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.backgroundColor = "#253075";
+                  e.target.style.borderColor = "rgba(47, 60, 150, 0.7)";
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.backgroundColor = "#2F3C96";
+                  e.target.style.borderColor = "rgba(47, 60, 150, 0.5)";
+                }}
               >
                 <Star className="w-4 h-4" />
                 <span className="hidden sm:inline">View All Saved Items</span>
-              </button>
-
-              {/* Insights Button */}
-              <button
-                onClick={() => navigate("/insights")}
-                className="relative flex items-center gap-2 px-4 py-2.5 bg-white/20 hover:bg-white/30 rounded-xl transition-all border border-white/30 text-sm font-semibold text-white shadow-lg hover:shadow-xl hover:scale-105"
-              >
-                <Bell className="w-4 h-4" />
-                <span className="hidden sm:inline">Insights</span>
-                {insights.unreadCount > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 w-6 h-6 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center font-bold shadow-md animate-pulse">
-                    {insights.unreadCount > 9 ? "9+" : insights.unreadCount}
-                  </span>
-                )}
               </button>
             </div>
           </div>
@@ -1293,63 +1368,44 @@ export default function DashboardPatient() {
         {/* Main Content Section - Full Width */}
         <div className="mb-8">
           {/* Category Buttons Bar */}
-          <div className="bg-white rounded-xl shadow-md border border-slate-200 p-2 mb-6">
+          <div
+            className="rounded-xl shadow-md border p-2 mb-6"
+            style={{
+              background: "linear-gradient(135deg, #D0C4E2, #E8E0EF, #F5F2F8)",
+              borderColor: "rgba(208, 196, 226, 0.5)",
+            }}
+          >
             <div className="flex items-center gap-2 overflow-x-auto">
               {[
-                {
-                  key: "trials",
-                  label: "Clinical Trials",
-                  icon: Beaker,
-                  colorClasses: {
-                    selected: "bg-indigo-600 text-white border-indigo-600",
-                    unselected:
-                      "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100",
-                    count: "text-indigo-600",
-                  },
-                },
                 {
                   key: "publications",
                   label: "Publications",
                   icon: FileText,
-                  colorClasses: {
-                    selected: "bg-blue-600 text-white border-blue-600",
-                    unselected:
-                      "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100",
-                    count: "text-blue-600",
-                  },
                 },
                 {
-                  key: "globalExperts",
-                  label: "Global Experts",
-                  icon: Users,
-                  colorClasses: {
-                    selected: "bg-purple-600 text-white border-purple-600",
-                    unselected:
-                      "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100",
-                    count: "text-purple-600",
-                  },
+                  key: "trials",
+                  label: "Trials",
+                  icon: Beaker,
                 },
                 {
-                  key: "curalinkExperts",
-                  label: "Collabiora Experts",
+                  key: "experts",
+                  label: "Experts",
                   icon: Users,
-                  colorClasses: {
-                    selected: "bg-emerald-600 text-white border-emerald-600",
-                    unselected:
-                      "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100",
-                    count: "text-emerald-600",
-                  },
+                },
+                {
+                  key: "forums",
+                  label: "Forums",
+                  icon: MessageCircle,
                 },
                 {
                   key: "favorites",
-                  label: "Favourites",
+                  label: "Favorites",
                   icon: Star,
-                  colorClasses: {
-                    selected: "bg-amber-600 text-white border-amber-600",
-                    unselected:
-                      "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100",
-                    count: "text-amber-600",
-                  },
+                },
+                {
+                  key: "trending",
+                  label: "Trending",
+                  icon: Flame,
                 },
               ].map((category) => {
                 const Icon = category.icon;
@@ -1358,22 +1414,46 @@ export default function DashboardPatient() {
                   <button
                     key={category.key}
                     onClick={() => setSelectedCategory(category.key)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-all duration-200 whitespace-nowrap ${
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg border transition-all duration-200 whitespace-nowrap"
+                    style={
                       isSelected
-                        ? category.colorClasses.selected
-                        : category.colorClasses.unselected
-                    }`}
+                        ? {
+                            backgroundColor: "#2F3C96",
+                            color: "#FFFFFF",
+                            borderColor: "#2F3C96",
+                          }
+                        : {
+                            backgroundColor: "rgba(255, 255, 255, 0.6)",
+                            color: "#787878",
+                            borderColor: "rgba(47, 60, 150, 0.2)",
+                          }
+                    }
+                    onMouseEnter={(e) => {
+                      if (!isSelected) {
+                        e.target.style.backgroundColor =
+                          "rgba(255, 255, 255, 0.8)";
+                        e.target.style.borderColor = "rgba(47, 60, 150, 0.3)";
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isSelected) {
+                        e.target.style.backgroundColor =
+                          "rgba(255, 255, 255, 0.6)";
+                        e.target.style.borderColor = "rgba(47, 60, 150, 0.2)";
+                      }
+                    }}
                   >
                     <Icon className="w-4 h-4 shrink-0" />
                     <span className="text-sm font-semibold">
                       {category.label}
                     </span>
                     <span
-                      className={`text-sm font-bold ${
-                        isSelected
-                          ? "text-white/90"
-                          : category.colorClasses.count
-                      }`}
+                      className="text-sm font-bold"
+                      style={{
+                        color: isSelected
+                          ? "rgba(255, 255, 255, 0.9)"
+                          : "#2F3C96",
+                      }}
                     >
                       ({getCategoryCount(category.key)})
                     </span>
@@ -1386,14 +1466,30 @@ export default function DashboardPatient() {
                 selectedCategory === "publications") && (
                 <button
                   onClick={() => setFilterModalOpen(true)}
-                  className="ml-auto flex items-center gap-2 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg border border-indigo-200 transition-all duration-200 whitespace-nowrap"
+                  className="ml-auto flex items-center gap-2 px-4 py-2 rounded-lg border transition-all duration-200 whitespace-nowrap"
+                  style={{
+                    backgroundColor: "rgba(47, 60, 150, 0.15)",
+                    color: "#2F3C96",
+                    borderColor: "rgba(47, 60, 150, 0.3)",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.target.style.backgroundColor = "rgba(47, 60, 150, 0.25)";
+                    e.target.style.borderColor = "rgba(47, 60, 150, 0.4)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.backgroundColor = "rgba(47, 60, 150, 0.15)";
+                    e.target.style.borderColor = "rgba(47, 60, 150, 0.3)";
+                  }}
                 >
                   <Filter className="w-4 h-4 shrink-0" />
                   <span className="text-sm font-semibold">
                     {selectedCategory === "trials" ? "Filter" : "Sort"}
                   </span>
                   {(trialFilter || publicationSort !== "relevance") && (
-                    <span className="w-2 h-2 bg-indigo-600 rounded-full"></span>
+                    <span
+                      className="w-2 h-2 rounded-full"
+                      style={{ backgroundColor: "#2F3C96" }}
+                    ></span>
                   )}
                 </button>
               )}
@@ -1401,38 +1497,185 @@ export default function DashboardPatient() {
           </div>
 
           {/* Main Recommendations Section */}
-          <div className="bg-white rounded-2xl shadow-xl border border-slate-200/50 p-6 sm:p-8">
+          <div
+            className="rounded-2xl shadow-xl border p-6 sm:p-8"
+            style={{
+              backgroundColor: "#FFFFFF",
+              borderColor: "rgba(208, 196, 226, 0.3)",
+            }}
+          >
             <div className="mb-8">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
                 <div>
-                  <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold bg-gradient-to-r from-indigo-700 via-indigo-600 to-blue-700 bg-clip-text text-transparent mb-2">
+                  <h2
+                    className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-3"
+                    style={{
+                      background: "linear-gradient(135deg, #2F3C96, #253075)",
+                      WebkitBackgroundClip: "text",
+                      WebkitTextFillColor: "transparent",
+                      backgroundClip: "text",
+                    }}
+                  >
                     Your Personalized Recommendations
                   </h2>
-                  <p className="text-slate-600 text-sm sm:text-base">
-                    Discover tailored content based on your profile
-                  </p>
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                    <div
+                      className="flex items-center gap-2 text-sm sm:text-base"
+                      style={{ color: "#787878" }}
+                    >
+                      <Sparkles
+                        className="w-4 h-4"
+                        style={{ color: "#2F3C96" }}
+                      />
+                      <span className="font-medium">Curated for you</span>
+                    </div>
+                    <span
+                      className="hidden sm:inline"
+                      style={{ color: "#D0C4E2" }}
+                    >
+                      •
+                    </span>
+                    <div
+                      className="flex items-center gap-2 text-sm sm:text-base"
+                      style={{ color: "#787878" }}
+                    >
+                      <Heart className="w-4 h-4" style={{ color: "#2F3C96" }} />
+                      <span>Your conditions</span>
+                    </div>
+                    <span
+                      className="hidden sm:inline"
+                      style={{ color: "#D0C4E2" }}
+                    >
+                      •
+                    </span>
+                    <div
+                      className="flex items-center gap-2 text-sm sm:text-base"
+                      style={{ color: "#787878" }}
+                    >
+                      <MapPin
+                        className="w-4 h-4"
+                        style={{ color: "#2F3C96" }}
+                      />
+                      <span>Your location</span>
+                    </div>
+                    <span
+                      className="hidden sm:inline"
+                      style={{ color: "#D0C4E2" }}
+                    >
+                      •
+                    </span>
+                    <div
+                      className="flex items-center gap-2 text-sm sm:text-base"
+                      style={{ color: "#787878" }}
+                    >
+                      <Activity
+                        className="w-4 h-4"
+                        style={{ color: "#2F3C96" }}
+                      />
+                      <span>Your activity</span>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex items-center gap-3 bg-indigo-50 px-4 py-2 rounded-xl border border-indigo-100">
-                  <div className="h-2 w-2 bg-indigo-600 rounded-full animate-pulse"></div>
-                  <p className="text-sm font-semibold text-indigo-700">
+                <div
+                  className="flex items-center gap-3 px-4 py-2 rounded-xl border"
+                  style={{
+                    backgroundColor: "rgba(208, 196, 226, 0.2)",
+                    borderColor: "rgba(47, 60, 150, 0.2)",
+                  }}
+                >
+                  <div
+                    className="h-2 w-2 rounded-full animate-pulse"
+                    style={{ backgroundColor: "#2F3C96" }}
+                  ></div>
+                  <p
+                    className="text-sm font-semibold"
+                    style={{ color: "#2F3C96" }}
+                  >
                     Viewing:{" "}
-                    <span className="text-indigo-900">
+                    <span style={{ color: "#2F3C96" }}>
                       {getCategoryLabel(selectedCategory)}
                     </span>
-                    {selectedCategory === "favorites" && (
-                      <span className="text-indigo-600 ml-2">
-                        • To see all, go to{" "}
-                        <button
-                          onClick={() => navigate("/favorites")}
-                          className="underline hover:text-indigo-800 font-bold"
-                        >
-                          Saved Items/Favourites
-                        </button>
-                      </span>
-                    )}
                   </p>
                 </div>
               </div>
+
+              {/* Expert Type Toggles - Only show for experts category */}
+              {selectedCategory === "experts" && (
+                <div className="mb-6 flex items-center gap-3 flex-wrap">
+                  <button
+                    onClick={() => {
+                      // Toggle: selecting this one deselects the other
+                      setShowCollabioraExperts(true);
+                      setShowGlobalExperts(false);
+                    }}
+                    className={`relative flex items-center gap-2 px-5 py-2.5 rounded-xl border-2 transition-all duration-200 font-semibold cursor-pointer hover:shadow-md ${
+                      showCollabioraExperts
+                        ? "bg-emerald-600 text-white border-emerald-600 shadow-lg scale-105"
+                        : "bg-white text-slate-700 border-slate-300 hover:border-emerald-300 hover:bg-emerald-50"
+                    }`}
+                  >
+                    <div
+                      className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                        showCollabioraExperts
+                          ? "bg-white border-white"
+                          : "bg-slate-200 border-slate-400"
+                      }`}
+                    >
+                      {showCollabioraExperts && (
+                        <div className="w-2 h-2 bg-emerald-600 rounded-full"></div>
+                      )}
+                    </div>
+                    <Users className="w-4 h-4 shrink-0" />
+                    <span className="text-sm font-bold">
+                      Collabiora Experts
+                    </span>
+                    <span
+                      className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                        showCollabioraExperts
+                          ? "bg-white/30 text-white"
+                          : "bg-slate-200 text-slate-600"
+                      }`}
+                    >
+                      {data.experts.length}
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      // Toggle: selecting this one deselects the other
+                      setShowGlobalExperts(true);
+                      setShowCollabioraExperts(false);
+                    }}
+                    className={`relative flex items-center gap-2 px-5 py-2.5 rounded-xl border-2 transition-all duration-200 font-semibold cursor-pointer hover:shadow-md ${
+                      showGlobalExperts
+                        ? "bg-purple-600 text-white border-purple-600 shadow-lg scale-105"
+                        : "bg-white text-slate-700 border-slate-300 hover:border-purple-300 hover:bg-purple-50"
+                    }`}
+                  >
+                    <div
+                      className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                        showGlobalExperts
+                          ? "bg-white border-white"
+                          : "bg-slate-200 border-slate-400"
+                      }`}
+                    >
+                      {showGlobalExperts && (
+                        <div className="w-2 h-2 bg-purple-600 rounded-full"></div>
+                      )}
+                    </div>
+                    <Users className="w-4 h-4 shrink-0" />
+                    <span className="text-sm font-bold">Global Experts</span>
+                    <span
+                      className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                        showGlobalExperts
+                          ? "bg-white/30 text-white"
+                          : "bg-slate-200 text-slate-600"
+                      }`}
+                    >
+                      {globalExperts.length}
+                    </span>
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Grid of Items - Larger Cards - Full Width with 3 columns */}
@@ -1454,21 +1697,23 @@ export default function DashboardPatient() {
                       className="bg-white rounded-xl shadow-sm border border-slate-200 hover:shadow-lg hover:border-indigo-300 transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden"
                     >
                       <div className="p-5">
-                        {/* Match Badge Banner */}
+                        {/* Match Progress Bar */}
                         {t.matchPercentage !== undefined && (
-                          <div className="mb-3 -mt-2 -mx-5 px-5 py-2 bg-gradient-to-r from-indigo-50 to-blue-50 border-b border-indigo-100">
-                            <div className="flex items-center justify-between">
+                          <div className="mb-4">
+                            <div className="flex items-center justify-between mb-2">
                               <div className="flex items-center gap-2">
                                 <TrendingUp className="w-4 h-4 text-indigo-600" />
                                 <span className="text-sm font-bold text-indigo-700">
                                   {t.matchPercentage}% Match
                                 </span>
                               </div>
-                              {t.matchExplanation && (
-                                <span className="text-xs text-indigo-600 truncate flex-1 ml-2 max-w-[200px] sm:max-w-none">
-                                  {t.matchExplanation}
-                                </span>
-                              )}
+                            </div>
+                            {/* Progress Bar */}
+                            <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-gradient-to-r from-indigo-500 to-blue-500 rounded-full transition-all duration-500"
+                                style={{ width: `${t.matchPercentage}%` }}
+                              ></div>
                             </div>
                           </div>
                         )}
@@ -1616,45 +1861,94 @@ export default function DashboardPatient() {
                       return (
                         <div
                           key={idx}
-                          className="bg-white rounded-xl shadow-sm border border-slate-200 hover:shadow-lg hover:border-indigo-300 transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden"
+                          className="bg-white rounded-xl shadow-sm border transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden"
+                          style={{
+                            borderColor: "rgba(208, 196, 226, 0.3)",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.boxShadow =
+                              "0 10px 15px -3px rgba(47, 60, 150, 0.1), 0 4px 6px -2px rgba(47, 60, 150, 0.05)";
+                            e.currentTarget.style.borderColor =
+                              "rgba(47, 60, 150, 0.4)";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.boxShadow =
+                              "0 1px 2px 0 rgba(0, 0, 0, 0.05)";
+                            e.currentTarget.style.borderColor =
+                              "rgba(208, 196, 226, 0.3)";
+                          }}
                         >
                           <div className="p-5">
-                            {/* Match Badge Banner */}
+                            {/* Match Progress Bar */}
                             {p.matchPercentage !== undefined && (
-                              <div className="mb-3 -mt-2 -mx-5 px-5 py-2 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100">
-                                <div className="flex items-center justify-between">
+                              <div className="mb-4">
+                                <div className="flex items-center justify-between mb-2">
                                   <div className="flex items-center gap-2">
-                                    <TrendingUp className="w-4 h-4 text-blue-600" />
-                                    <span className="text-sm font-bold text-blue-700">
+                                    <TrendingUp
+                                      className="w-4 h-4"
+                                      style={{ color: "#2F3C96" }}
+                                    />
+                                    <span
+                                      className="text-sm font-bold"
+                                      style={{ color: "#2F3C96" }}
+                                    >
                                       {p.matchPercentage}% Match
                                     </span>
                                   </div>
-                                  {p.matchExplanation && (
-                                    <span className="text-xs text-blue-600 truncate flex-1 ml-2 max-w-[200px] sm:max-w-none">
-                                      {p.matchExplanation}
-                                    </span>
-                                  )}
+                                </div>
+                                {/* Progress Bar */}
+                                <div
+                                  className="w-full h-2.5 rounded-full overflow-hidden"
+                                  style={{
+                                    backgroundColor: "rgba(208, 196, 226, 0.3)",
+                                  }}
+                                >
+                                  <div
+                                    className="h-full rounded-full transition-all duration-500"
+                                    style={{
+                                      width: `${p.matchPercentage}%`,
+                                      background:
+                                        "linear-gradient(90deg, #2F3C96, #253075)",
+                                    }}
+                                  ></div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Journal Name - Below Progress Bar */}
+                            {p.journal && (
+                              <div className="mb-3">
+                                <div
+                                  className="flex items-center text-sm"
+                                  style={{ color: "#787878" }}
+                                >
+                                  <BookOpen className="w-3.5 h-3.5 mr-2 shrink-0" />
+                                  <span className="break-words">
+                                    {p.journal}
+                                  </span>
                                 </div>
                               </div>
                             )}
 
                             {/* Publication Header */}
                             <div className="flex items-start justify-between mb-3">
-                              <span className="inline-flex items-center px-2.5 py-1 bg-indigo-100 text-indigo-700 text-xs font-medium rounded-full">
+                              <span
+                                className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full"
+                                style={{
+                                  backgroundColor: "rgba(47, 60, 150, 0.15)",
+                                  color: "#2F3C96",
+                                }}
+                              >
                                 <FileText className="w-3 h-3 mr-1" />
                                 {p.pmid ? `PMID: ${p.pmid}` : p.id || "PUB-001"}
                               </span>
-                              {p.journal && (
-                                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border bg-slate-50 text-slate-700 border-slate-200">
-                                  {p.journal.length > 20
-                                    ? `${p.journal.substring(0, 20)}...`
-                                    : p.journal}
-                                </span>
-                              )}
                             </div>
 
                             {/* Publication Title */}
-                            <h3 className="text-base font-bold text-slate-900 mb-3 line-clamp-2 leading-tight">
+                            <h3
+                              className="text-base font-bold mb-3 line-clamp-2 leading-tight"
+                              style={{ color: "#2F3C96" }}
+                            >
                               {p.title || "Untitled Publication"}
                             </h3>
 
@@ -1663,7 +1957,10 @@ export default function DashboardPatient() {
                               {p.authors &&
                                 Array.isArray(p.authors) &&
                                 p.authors.length > 0 && (
-                                  <div className="flex items-center text-sm text-slate-700">
+                                  <div
+                                    className="flex items-center text-sm"
+                                    style={{ color: "#787878" }}
+                                  >
                                     <User className="w-3.5 h-3.5 mr-2 shrink-0" />
                                     <span className="line-clamp-1">
                                       {p.authors.join(", ")}
@@ -1671,19 +1968,14 @@ export default function DashboardPatient() {
                                   </div>
                                 )}
                               {(p.year || p.month) && (
-                                <div className="flex items-center text-sm text-slate-600">
+                                <div
+                                  className="flex items-center text-sm"
+                                  style={{ color: "#787878" }}
+                                >
                                   <Calendar className="w-3.5 h-3.5 mr-2 shrink-0" />
                                   <span>
                                     {p.month && p.month + " "}
                                     {p.year || ""}
-                                  </span>
-                                </div>
-                              )}
-                              {p.journal && (
-                                <div className="flex items-center text-sm text-slate-600">
-                                  <BookOpen className="w-3.5 h-3.5 mr-2 shrink-0" />
-                                  <span className="line-clamp-1">
-                                    {p.journal}
                                   </span>
                                 </div>
                               )}
@@ -1694,13 +1986,48 @@ export default function DashboardPatient() {
                               <div className="mb-3">
                                 <button
                                   onClick={() => openPublicationDetailsModal(p)}
-                                  className="w-full text-left text-sm text-slate-700 hover:text-indigo-700 font-medium py-2 px-3 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
+                                  className="w-full text-left text-sm py-2 px-3 rounded-lg transition-all duration-200 border group"
+                                  style={{
+                                    backgroundColor: "rgba(208, 196, 226, 0.2)",
+                                    borderColor: "rgba(47, 60, 150, 0.2)",
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.backgroundColor =
+                                      "rgba(208, 196, 226, 0.3)";
+                                    e.currentTarget.style.borderColor =
+                                      "rgba(47, 60, 150, 0.3)";
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.backgroundColor =
+                                      "rgba(208, 196, 226, 0.2)";
+                                    e.currentTarget.style.borderColor =
+                                      "rgba(47, 60, 150, 0.2)";
+                                  }}
                                 >
                                   <div className="flex items-start gap-2">
-                                    <Info className="w-4 h-4 mt-0.5 shrink-0" />
-                                    <span className="line-clamp-2 flex-1">
-                                      {p.abstract}
-                                    </span>
+                                    <Info
+                                      className="w-4 h-4 mt-0.5 shrink-0 transition-colors duration-200"
+                                      style={{ color: "#2F3C96" }}
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                      <div
+                                        className="transition-colors duration-200"
+                                        style={{ color: "#787878" }}
+                                      >
+                                        <span className="line-clamp-2">
+                                          {p.abstract}
+                                        </span>
+                                      </div>
+                                      <div
+                                        className="mt-1.5 flex items-center gap-1 font-medium transition-all duration-200"
+                                        style={{ color: "#2F3C96" }}
+                                      >
+                                        <span>View full details</span>
+                                        <span className="inline-block group-hover:translate-x-0.5 transition-transform duration-200">
+                                          →
+                                        </span>
+                                      </div>
+                                    </div>
                                   </div>
                                 </button>
                               </div>
@@ -1712,10 +2039,22 @@ export default function DashboardPatient() {
                                 onClick={() =>
                                   generateSummary(p, "publication")
                                 }
-                                className="flex-1 flex items-center justify-center gap-2 py-2 bg-gradient-to-r from-slate-600 to-slate-700 text-white rounded-lg text-sm font-semibold hover:from-slate-700 hover:to-slate-800 transition-all shadow-sm"
+                                className="flex-1 flex items-center justify-center gap-2 py-2 text-white rounded-lg text-sm font-semibold transition-all shadow-sm"
+                                style={{
+                                  background:
+                                    "linear-gradient(135deg, #2F3C96, #253075)",
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.target.style.background =
+                                    "linear-gradient(135deg, #253075, #1C2454)";
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.target.style.background =
+                                    "linear-gradient(135deg, #2F3C96, #253075)";
+                                }}
                               >
                                 <Sparkles className="w-4 h-4" />
-                                Summarize
+                                Understand this Paper
                               </button>
 
                               <button
@@ -1728,8 +2067,35 @@ export default function DashboardPatient() {
                                 className={`p-2 rounded-lg border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
                                   isFavorited
                                     ? "bg-red-50 border-red-200 text-red-500"
-                                    : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-red-500"
+                                    : ""
                                 }`}
+                                style={
+                                  !isFavorited
+                                    ? {
+                                        backgroundColor:
+                                          "rgba(208, 196, 226, 0.2)",
+                                        borderColor: "rgba(208, 196, 226, 0.3)",
+                                        color: "#787878",
+                                      }
+                                    : {}
+                                }
+                                onMouseEnter={(e) => {
+                                  if (
+                                    !isFavorited &&
+                                    !e.currentTarget.disabled
+                                  ) {
+                                    e.currentTarget.style.backgroundColor =
+                                      "rgba(208, 196, 226, 0.3)";
+                                    e.currentTarget.style.color = "#dc2626";
+                                  }
+                                }}
+                                onMouseLeave={(e) => {
+                                  if (!isFavorited) {
+                                    e.currentTarget.style.backgroundColor =
+                                      "rgba(208, 196, 226, 0.2)";
+                                    e.currentTarget.style.color = "#787878";
+                                  }
+                                }}
                               >
                                 {favoritingItems.has(
                                   getFavoriteKey("publication", itemId, p)
@@ -1751,7 +2117,21 @@ export default function DashboardPatient() {
                                 href={p.url}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="flex items-center justify-center gap-2 py-2 text-xs text-indigo-600 hover:text-indigo-700 font-medium bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors mt-3 w-full"
+                                className="flex items-center justify-center gap-2 py-2 text-xs font-medium rounded-lg transition-colors mt-3 w-full"
+                                style={{
+                                  color: "#2F3C96",
+                                  backgroundColor: "rgba(208, 196, 226, 0.2)",
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.target.style.backgroundColor =
+                                    "rgba(208, 196, 226, 0.3)";
+                                  e.target.style.color = "#253075";
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.target.style.backgroundColor =
+                                    "rgba(208, 196, 226, 0.2)";
+                                  e.target.style.color = "#2F3C96";
+                                }}
                               >
                                 <ExternalLink className="w-3.5 h-3.5" />
                                 Open Paper
@@ -1764,466 +2144,463 @@ export default function DashboardPatient() {
                   )
                 ) : (
                   <div className="col-span-full text-center py-16">
-                    <div className="inline-flex items-center justify-center w-20 h-20 bg-blue-100 rounded-full mb-4">
-                      <FileText className="w-10 h-10 text-blue-400" />
+                    <div
+                      className="inline-flex items-center justify-center w-20 h-20 rounded-full mb-4"
+                      style={{ backgroundColor: "rgba(208, 196, 226, 0.3)" }}
+                    >
+                      <FileText
+                        className="w-10 h-10"
+                        style={{ color: "#2F3C96" }}
+                      />
                     </div>
-                    <h3 className="text-lg font-semibold text-slate-800 mb-2">
+                    <h3
+                      className="text-lg font-semibold mb-2"
+                      style={{ color: "#2F3C96" }}
+                    >
                       No Publications Found
                     </h3>
-                    <p className="text-slate-600 text-sm max-w-md mx-auto">
+                    <p
+                      className="text-sm max-w-md mx-auto"
+                      style={{ color: "#787878" }}
+                    >
                       We're curating relevant research publications for you.
                       Check back soon!
                     </p>
                   </div>
                 ))}
 
-              {selectedCategory === "globalExperts" &&
-                (globalExperts.length > 0 ? (
-                  sortByMatchPercentage(globalExperts).map((e, idx) => {
-                    const expertId = e.name || e.id || e._id || `expert-${idx}`;
-                    const itemId = e.name || e.orcid || e.id || e._id;
-                    // Check if expert is favorited by exact name match (consistent with Experts.jsx)
-                    const isFavorited = favorites.some((fav) => {
-                      if (fav.type !== "expert") return false;
+              {selectedCategory === "experts" && (
+                <>
+                  {/* Experts Grid */}
+                  {(() => {
+                    const filteredExperts = [];
+                    if (showCollabioraExperts) {
+                      filteredExperts.push(
+                        ...sortByMatchPercentage(data.experts)
+                      );
+                    }
+                    if (showGlobalExperts) {
+                      filteredExperts.push(
+                        ...sortByMatchPercentage(globalExperts)
+                      );
+                    }
 
-                      // Check by exact name match (primary identifier)
-                      if (e.name && fav.item?.name) {
-                        return fav.item.name === e.name;
-                      }
+                    return filteredExperts.length > 0 ? (
+                      filteredExperts.map((e, idx) => {
+                        const expertId =
+                          e.name ||
+                          e.id ||
+                          e._id ||
+                          e.userId ||
+                          `expert-${idx}`;
+                        const itemId = e.name || e.orcid || e.id || e._id;
+                        const isCuralinkExpert = !!(e._id || e.userId); // Check if it's a CuraLink expert
+                        const medicalInterests = isCuralinkExpert
+                          ? [...(e.specialties || []), ...(e.interests || [])]
+                          : e.researchInterests || [];
+                        const locationText =
+                          isCuralinkExpert && e.location
+                            ? typeof e.location === "string"
+                              ? e.location
+                              : `${e.location.city || ""}${
+                                  e.location.city && e.location.country
+                                    ? ", "
+                                    : ""
+                                }${e.location.country || ""}`.trim()
+                            : e.location || null;
 
-                      // Fallback: check by id
-                      if (
-                        fav.item?.id === itemId ||
-                        fav.item?._id === itemId ||
-                        fav.item?.orcid === itemId
-                      ) {
-                        return true;
-                      }
+                        // Check if expert is favorited by exact name match (consistent with Experts.jsx)
+                        const isFavorited = favorites.some((fav) => {
+                          if (fav.type !== "expert") return false;
 
-                      return false;
-                    });
+                          // Check by exact name match (primary identifier)
+                          if (e.name && fav.item?.name) {
+                            return fav.item.name === e.name;
+                          }
 
-                    return (
-                      <div
-                        key={expertId}
-                        className="bg-white rounded-xl shadow-sm border border-slate-200 hover:shadow-lg hover:border-indigo-300 transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden"
-                      >
-                        <div className="p-5">
-                          {/* Match Badge Banner */}
-                          {e.matchPercentage !== undefined && (
-                            <div className="mb-3 -mt-2 -mx-5 px-5 py-2 bg-gradient-to-r from-purple-50 to-indigo-50 border-b border-purple-100">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <TrendingUp className="w-4 h-4 text-purple-600" />
-                                  <span className="text-sm font-bold text-purple-700">
-                                    {e.matchPercentage}% Match
-                                  </span>
-                                </div>
-                                {e.matchExplanation && (
-                                  <span className="text-xs text-purple-600 truncate flex-1 ml-2 max-w-[200px] sm:max-w-none">
-                                    {e.matchExplanation}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          )}
+                          // Fallback: check by id
+                          if (
+                            fav.item?.id === itemId ||
+                            fav.item?._id === itemId ||
+                            fav.item?.orcid === itemId
+                          ) {
+                            return true;
+                          }
 
-                          <div className="flex items-start gap-4 mb-4">
-                            {/* Avatar */}
-                            <div className="w-14 h-14 bg-gradient-to-br from-purple-600 via-purple-600 to-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-xl shadow-md shrink-0 ring-2 ring-purple-100">
-                              {e.name?.charAt(0)?.toUpperCase() || "E"}
-                            </div>
+                          return false;
+                        });
 
-                            {/* Main Content */}
-                            <div className="flex-1 min-w-0">
-                              {/* Header */}
-                              <div className="flex items-start justify-between mb-1.5">
-                                <div className="flex-1 min-w-0">
-                                  <h3 className="text-base font-bold text-slate-900 mb-1 leading-tight">
-                                    {e.name || "Unknown Expert"}
-                                  </h3>
-                                  {e.orcid && (
-                                    <span className="text-sm text-slate-500 font-mono">
-                                      {e.orcid}
-                                    </span>
-                                  )}
-                                </div>
-                                <button
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    toggleFavorite("expert", itemId, e);
-                                  }}
-                                  disabled={favoritingItems.has(
-                                    getFavoriteKey("expert", itemId, e)
-                                  )}
-                                  title={
-                                    isFavorited
-                                      ? "Remove from favorites"
-                                      : "Add to favorites"
-                                  }
-                                  className={`p-1.5 rounded-md border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
-                                    isFavorited
-                                      ? "bg-red-50 border-red-200 text-red-500 shadow-sm"
-                                      : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-red-500"
-                                  }`}
-                                >
-                                  {favoritingItems.has(
-                                    getFavoriteKey("expert", itemId, e)
-                                  ) ? (
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                  ) : (
-                                    <Heart
-                                      className={`w-4 h-4 ${
-                                        isFavorited ? "fill-current" : ""
-                                      }`}
-                                    />
-                                  )}
-                                </button>
-                              </div>
-
-                              {/* Basic Info */}
-                              <div className="space-y-1 mb-3">
-                                {e.currentPosition && (
-                                  <div className="flex items-start text-sm text-slate-700">
-                                    <Briefcase className="w-3.5 h-3.5 mr-1.5 shrink-0 mt-0.5" />
-                                    <span className="flex-1 leading-relaxed">
-                                      {e.currentPosition}
-                                    </span>
+                        return (
+                          <div
+                            key={expertId}
+                            className="bg-white rounded-xl shadow-sm border border-slate-200 hover:shadow-lg hover:border-purple-300 transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden"
+                          >
+                            <div className="p-5">
+                              {/* Match Badge Banner */}
+                              {e.matchPercentage !== undefined && (
+                                <div className="mb-3 -mt-2 -mx-5 px-5 py-2 bg-gradient-to-r from-purple-50 to-indigo-50 border-b border-purple-100">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <TrendingUp className="w-4 h-4 text-purple-600" />
+                                      <span className="text-sm font-bold text-purple-700">
+                                        {e.matchPercentage}% Match
+                                      </span>
+                                    </div>
+                                    {e.matchExplanation && (
+                                      <span className="text-xs text-purple-600 truncate flex-1 ml-2 max-w-[200px] sm:max-w-none">
+                                        {e.matchExplanation}
+                                      </span>
+                                    )}
                                   </div>
-                                )}
-                                {!e.currentPosition && e.affiliation && (
-                                  <div className="flex items-start text-sm text-slate-700">
-                                    <Building2 className="w-3.5 h-3.5 mr-1.5 shrink-0 mt-0.5" />
-                                    <span className="flex-1 leading-relaxed">
-                                      {e.affiliation}
-                                    </span>
-                                  </div>
-                                )}
-                                {e.location && (
-                                  <div className="flex items-center text-sm text-slate-600">
-                                    <MapPin className="w-3.5 h-3.5 mr-1.5 shrink-0" />
-                                    <span>{e.location}</span>
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Biography */}
-                              {e.biography && (
-                                <div className="mb-3">
-                                  <p className="text-sm text-slate-700 leading-relaxed line-clamp-2">
-                                    {e.biography}
-                                  </p>
                                 </div>
                               )}
 
-                              {/* Research Interests */}
-                              {e.researchInterests &&
-                                Array.isArray(e.researchInterests) &&
-                                e.researchInterests.length > 0 && (
-                                  <div className="mb-3">
-                                    <div className="flex flex-wrap gap-1.5">
-                                      {e.researchInterests
-                                        .slice(0, 5)
-                                        .map((interest, idx) => (
-                                          <span
-                                            key={idx}
-                                            className="text-xs bg-gradient-to-r from-purple-50 to-slate-50 text-purple-700 px-2 py-0.5 rounded-md border border-purple-200"
-                                          >
-                                            {interest}
-                                          </span>
-                                        ))}
-                                      {e.researchInterests.length > 5 && (
-                                        <span className="text-xs text-slate-500 px-2 py-0.5">
-                                          +{e.researchInterests.length - 5}
+                              <div className="flex items-start gap-4 mb-4">
+                                {/* Avatar */}
+                                <div className="w-14 h-14 bg-gradient-to-br from-purple-600 via-purple-600 to-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-xl shadow-md shrink-0 ring-2 ring-purple-100">
+                                  {e.name?.charAt(0)?.toUpperCase() || "E"}
+                                </div>
+
+                                {/* Main Content */}
+                                <div className="flex-1 min-w-0">
+                                  {/* Header */}
+                                  <div className="flex items-start justify-between mb-1.5">
+                                    <div className="flex-1 min-w-0">
+                                      <h3 className="text-base font-bold text-slate-900 mb-1 leading-tight">
+                                        {e.name || "Unknown Expert"}
+                                      </h3>
+                                      {e.orcid && (
+                                        <span className="text-sm text-slate-500 font-mono">
+                                          {e.orcid}
                                         </span>
                                       )}
                                     </div>
+                                    <button
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        toggleFavorite("expert", itemId, e);
+                                      }}
+                                      disabled={favoritingItems.has(
+                                        getFavoriteKey("expert", itemId, e)
+                                      )}
+                                      title={
+                                        isFavorited
+                                          ? "Remove from favorites"
+                                          : "Add to favorites"
+                                      }
+                                      className={`p-1.5 rounded-md border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                                        isFavorited
+                                          ? "bg-red-50 border-red-200 text-red-500 shadow-sm"
+                                          : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-red-500"
+                                      }`}
+                                    >
+                                      {favoritingItems.has(
+                                        getFavoriteKey("expert", itemId, e)
+                                      ) ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                      ) : (
+                                        <Heart
+                                          className={`w-4 h-4 ${
+                                            isFavorited ? "fill-current" : ""
+                                          }`}
+                                        />
+                                      )}
+                                    </button>
                                   </div>
+
+                                  {/* Basic Info */}
+                                  <div className="space-y-1 mb-3">
+                                    {isCuralinkExpert ? (
+                                      <>
+                                        {locationText && (
+                                          <div className="flex items-center text-sm text-slate-600">
+                                            <MapPin className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+                                            <span>{locationText}</span>
+                                          </div>
+                                        )}
+                                      </>
+                                    ) : (
+                                      <>
+                                        {e.currentPosition && (
+                                          <div className="flex items-start text-sm text-slate-700">
+                                            <Briefcase className="w-3.5 h-3.5 mr-1.5 shrink-0 mt-0.5" />
+                                            <span className="flex-1 leading-relaxed">
+                                              {e.currentPosition}
+                                            </span>
+                                          </div>
+                                        )}
+                                        {!e.currentPosition &&
+                                          e.affiliation && (
+                                            <div className="flex items-start text-sm text-slate-700">
+                                              <Building2 className="w-3.5 h-3.5 mr-1.5 shrink-0 mt-0.5" />
+                                              <span className="flex-1 leading-relaxed">
+                                                {e.affiliation}
+                                              </span>
+                                            </div>
+                                          )}
+                                        {e.location && (
+                                          <div className="flex items-center text-sm text-slate-600">
+                                            <MapPin className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+                                            <span>{e.location}</span>
+                                          </div>
+                                        )}
+                                      </>
+                                    )}
+                                  </div>
+
+                                  {/* Biography */}
+                                  {(e.biography || e.bio) && (
+                                    <div className="mb-3">
+                                      <p className="text-sm text-slate-700 leading-relaxed line-clamp-2">
+                                        {e.biography || e.bio}
+                                      </p>
+                                    </div>
+                                  )}
+
+                                  {/* Research Interests / Medical Interests */}
+                                  {medicalInterests.length > 0 && (
+                                    <div className="mb-3">
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {medicalInterests
+                                          .slice(0, 5)
+                                          .map((interest, idx) => (
+                                            <span
+                                              key={idx}
+                                              className="text-xs bg-gradient-to-r from-purple-50 to-slate-50 text-purple-700 px-2 py-0.5 rounded-md border border-purple-200"
+                                            >
+                                              {interest}
+                                            </span>
+                                          ))}
+                                        {medicalInterests.length > 5 && (
+                                          <span className="text-xs text-slate-500 px-2 py-0.5">
+                                            +{medicalInterests.length - 5}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Action Buttons */}
+                              <div
+                                className={`flex ${
+                                  isCuralinkExpert ? "flex-col" : "items-center"
+                                } gap-2 pt-3 border-t border-slate-100`}
+                              >
+                                {isCuralinkExpert ? (
+                                  <>
+                                    {e.available === true ? (
+                                      <div className="flex items-center justify-center gap-1.5 px-3 py-2 bg-gradient-to-r from-purple-500/10 to-purple-600/10 border border-purple-300 rounded-lg">
+                                        <Calendar className="w-3.5 h-3.5 text-purple-600" />
+                                        <span className="text-xs font-semibold text-purple-700">
+                                          Available for Meetings
+                                        </span>
+                                      </div>
+                                    ) : (
+                                      <div className="flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg">
+                                        <Calendar className="w-3.5 h-3.5 text-slate-500" />
+                                        <span className="text-xs font-semibold text-slate-600">
+                                          Not Available for Collaboration
+                                        </span>
+                                      </div>
+                                    )}
+                                    <button
+                                      onClick={() => {
+                                        const expertUserId =
+                                          e._id || e.userId || e.id;
+                                        if (expertUserId) {
+                                          const params = new URLSearchParams();
+                                          if (e.name)
+                                            params.set("name", e.name);
+                                          if (locationText)
+                                            params.set(
+                                              "location",
+                                              locationText
+                                            );
+                                          if (e.bio) params.set("bio", e.bio);
+                                          navigate(
+                                            `/curalink-expert/profile/${expertUserId}?${params.toString()}`
+                                          );
+                                        }
+                                      }}
+                                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-gradient-to-r from-purple-600 to-indigo-700 text-white rounded-md text-xs font-semibold hover:from-purple-700 hover:to-indigo-800 transition-all shadow-sm hover:shadow-md"
+                                    >
+                                      <Info className="w-3.5 h-3.5" />
+                                      View Profile
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    {e.email && (
+                                      <a
+                                        href={`mailto:${e.email}`}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          toast.success(
+                                            "Message sent successfully!"
+                                          );
+                                        }}
+                                        className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-purple-600 to-indigo-700 text-white rounded-md text-xs font-semibold hover:from-purple-700 hover:to-indigo-800 transition-all shadow-sm hover:shadow-md"
+                                      >
+                                        <Mail className="w-3.5 h-3.5" />
+                                        Contact
+                                      </a>
+                                    )}
+                                    <button
+                                      onClick={() => {
+                                        const params = new URLSearchParams();
+                                        params.set("name", e.name || "");
+                                        if (e.affiliation)
+                                          params.set(
+                                            "affiliation",
+                                            e.affiliation
+                                          );
+                                        if (e.location)
+                                          params.set("location", e.location);
+                                        if (e.orcid)
+                                          params.set("orcid", e.orcid);
+                                        if (e.biography)
+                                          params.set("biography", e.biography);
+                                        if (
+                                          e.researchInterests &&
+                                          Array.isArray(e.researchInterests)
+                                        ) {
+                                          params.set(
+                                            "researchInterests",
+                                            JSON.stringify(e.researchInterests)
+                                          );
+                                        }
+                                        params.set("from", "dashboard");
+                                        navigate(
+                                          `/expert/profile?${params.toString()}`
+                                        );
+                                      }}
+                                      className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 text-white rounded-md text-xs font-semibold hover:bg-indigo-700 transition-all"
+                                    >
+                                      <Info className="w-3.5 h-3.5" />
+                                      View Profile
+                                    </button>
+                                    <button
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        openGlobalExpertDetailsModal(e);
+                                      }}
+                                      className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-700 rounded-md text-xs font-semibold hover:bg-slate-200 hover:text-blue-700 transition-all"
+                                    >
+                                      <Info className="w-3.5 h-3.5" />
+                                      Details
+                                    </button>
+                                  </>
                                 )}
+                              </div>
                             </div>
                           </div>
-
-                          {/* Action Buttons */}
-                          <div className="flex items-center gap-2 pt-3 border-t border-slate-100">
-                            {e.email && (
-                              <a
-                                href={`mailto:${e.email}`}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toast.success("Message sent successfully!");
-                                }}
-                                className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-purple-600 to-indigo-700 text-white rounded-md text-xs font-semibold hover:from-purple-700 hover:to-indigo-800 transition-all shadow-sm hover:shadow-md"
-                              >
-                                <Mail className="w-3.5 h-3.5" />
-                                Contact
-                              </a>
-                            )}
-                            <button
-                              onClick={() => {
-                                const params = new URLSearchParams();
-                                params.set("name", e.name || "");
-                                if (e.affiliation)
-                                  params.set("affiliation", e.affiliation);
-                                if (e.location)
-                                  params.set("location", e.location);
-                                if (e.orcid) params.set("orcid", e.orcid);
-                                if (e.biography)
-                                  params.set("biography", e.biography);
-                                if (
-                                  e.researchInterests &&
-                                  Array.isArray(e.researchInterests)
-                                ) {
-                                  params.set(
-                                    "researchInterests",
-                                    JSON.stringify(e.researchInterests)
-                                  );
-                                }
-                                params.set("from", "dashboard");
-                                navigate(
-                                  `/expert/profile?${params.toString()}`
-                                );
-                              }}
-                              className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 text-white rounded-md text-xs font-semibold hover:bg-indigo-700 transition-all"
-                            >
-                              <Info className="w-3.5 h-3.5" />
-                              View Profile
-                            </button>
-                            <button
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                openGlobalExpertDetailsModal(e);
-                              }}
-                              className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-700 rounded-md text-xs font-semibold hover:bg-slate-200 hover:text-blue-700 transition-all"
-                            >
-                              <Info className="w-3.5 h-3.5" />
-                              Details
-                            </button>
-                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="col-span-full text-center py-16">
+                        <div className="inline-flex items-center justify-center w-20 h-20 bg-purple-100 rounded-full mb-4">
+                          <Users className="w-10 h-10 text-purple-400" />
                         </div>
+                        <h3 className="text-lg font-semibold text-slate-800 mb-2">
+                          No Experts Found
+                        </h3>
+                        <p className="text-slate-600 text-sm max-w-md mx-auto">
+                          {showCollabioraExperts && data.experts.length === 0
+                            ? "No Collabiora Experts found. Try switching to Global Experts."
+                            : showGlobalExperts && globalExperts.length === 0
+                            ? "No Global Experts found. Try switching to Collabiora Experts."
+                            : "We're searching for relevant experts for you. Check back soon!"}
+                        </p>
                       </div>
                     );
-                  })
-                ) : (
-                  <div className="col-span-full text-center py-16">
-                    <div className="inline-flex items-center justify-center w-20 h-20 bg-purple-100 rounded-full mb-4">
-                      <Users className="w-10 h-10 text-purple-400" />
-                    </div>
-                    <h3 className="text-lg font-semibold text-slate-800 mb-2">
-                      No Global Experts Found
-                    </h3>
-                    <p className="text-slate-600 text-sm max-w-md mx-auto">
-                      We're searching for relevant global health experts. Check
-                      back soon!
-                    </p>
-                  </div>
-                ))}
+                  })()}
+                </>
+              )}
 
-              {selectedCategory === "curalinkExperts" &&
-                (data.experts.length > 0 ? (
-                  sortByMatchPercentage(data.experts).map((e, idx) => {
-                    const expertId =
-                      e._id || e.userId || e.id || `expert-${idx}`;
-                    const itemId = e.name || e.orcid || e.id || e._id;
-                    // Check if expert is favorited by exact name match (consistent with Experts.jsx)
-                    const isFavorited = favorites.some((fav) => {
-                      if (fav.type !== "expert") return false;
-
-                      // Check by exact name match (primary identifier)
-                      if (e.name && fav.item?.name) {
-                        return fav.item.name === e.name;
-                      }
-
-                      // Fallback: check by id
-                      if (
-                        fav.item?.id === itemId ||
-                        fav.item?._id === itemId ||
-                        fav.item?.orcid === itemId
-                      ) {
-                        return true;
-                      }
-
-                      return false;
-                    });
-                    const medicalInterests = [
-                      ...(e.specialties || []),
-                      ...(e.interests || []),
-                    ];
-                    const locationText = e.location
-                      ? typeof e.location === "string"
-                        ? e.location
-                        : `${e.location.city || ""}${
-                            e.location.city && e.location.country ? ", " : ""
-                          }${e.location.country || ""}`.trim()
-                      : null;
-
-                    return (
-                      <div
-                        key={expertId}
-                        className="bg-white rounded-xl shadow-sm border border-slate-200 hover:shadow-lg hover:border-emerald-300 transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden"
-                      >
-                        <div className="p-5">
-                          {/* Match Badge Banner */}
-                          {e.matchPercentage !== undefined && (
-                            <div className="mb-3 -mt-2 -mx-5 px-5 py-2 bg-gradient-to-r from-emerald-50 to-indigo-50 border-b border-emerald-100">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <TrendingUp className="w-4 h-4 text-emerald-600" />
-                                  <span className="text-sm font-bold text-emerald-700">
-                                    {e.matchPercentage}% Match
+              {selectedCategory === "forums" && (
+                <div className="col-span-full min-h-screen">
+                  {(() => {
+                    const forumsWithThreads = forumsCategories.filter(
+                      (category) => (category.threadCount || 0) >= 2
+                    );
+                    return forumsWithThreads.length > 0 ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                        {forumsWithThreads.map((category, idx) => (
+                          <div
+                            key={category._id || idx}
+                            className="bg-white rounded-xl shadow-sm border border-slate-200 hover:shadow-lg hover:border-emerald-300 transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden"
+                          >
+                            <div className="p-5">
+                              <div className="flex items-start justify-between mb-3">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-12 h-12 bg-emerald-100 rounded-lg flex items-center justify-center">
+                                    <MessageCircle className="w-6 h-6 text-emerald-600" />
+                                  </div>
+                                  <div className="flex-1">
+                                    <h3 className="text-base font-bold text-slate-900 mb-1">
+                                      {category.name || "Unnamed Category"}
+                                    </h3>
+                                    {category.description && (
+                                      <p className="text-sm text-slate-600 line-clamp-2">
+                                        {category.description}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                                <div className="flex items-center gap-4 text-sm text-slate-600">
+                                  <span className="flex items-center gap-1">
+                                    <MessageSquare className="w-4 h-4" />
+                                    {category.threadCount || 0} threads
                                   </span>
                                 </div>
-                                {e.matchExplanation && (
-                                  <span className="text-xs text-emerald-600 truncate flex-1 ml-2 max-w-[200px] sm:max-w-none">
-                                    {e.matchExplanation}
-                                  </span>
-                                )}
+                                <button
+                                  onClick={() =>
+                                    navigate(`/forums?category=${category._id}`)
+                                  }
+                                  className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition-all"
+                                >
+                                  View Forum
+                                  <ExternalLink className="w-4 h-4" />
+                                </button>
                               </div>
                             </div>
-                          )}
-
-                          {/* Name with Favorite Button */}
-                          <div className="flex items-start justify-between mb-2">
-                            <h3 className="text-lg font-bold text-slate-900">
-                              {e.name || "Unknown Expert"}
-                            </h3>
-                            <button
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                toggleFavorite("expert", itemId, e);
-                              }}
-                              disabled={favoritingItems.has(
-                                getFavoriteKey("expert", itemId, e)
-                              )}
-                              title={
-                                isFavorited
-                                  ? "Remove from favorites"
-                                  : "Add to favorites"
-                              }
-                              className={`p-1.5 rounded-md border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
-                                isFavorited
-                                  ? "bg-red-50 border-red-200 text-red-500 shadow-sm"
-                                  : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-red-500"
-                              }`}
-                            >
-                              {favoritingItems.has(
-                                getFavoriteKey("expert", itemId, e)
-                              ) ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                              ) : (
-                                <Heart
-                                  className={`w-4 h-4 ${
-                                    isFavorited ? "fill-current" : ""
-                                  }`}
-                                />
-                              )}
-                            </button>
                           </div>
-
-                          {/* Location */}
-                          {locationText && (
-                            <div className="flex items-center text-sm text-slate-600 mb-2">
-                              <MapPin className="w-4 h-4 mr-1.5 shrink-0" />
-                              <span>{locationText}</span>
-                            </div>
-                          )}
-
-                          {/* ORCID */}
-                          {e.orcid && (
-                            <div className="text-sm text-slate-600 mb-2 font-mono">
-                              ORCID: {e.orcid}
-                            </div>
-                          )}
-
-                          {/* Available/Not Available Badge */}
-
-                          {/* Medical Interests */}
-                          {medicalInterests.length > 0 && (
-                            <div className="mb-3">
-                              <h4 className="text-xs font-semibold text-slate-700 mb-2 uppercase tracking-wide">
-                                Medical Interests
-                              </h4>
-                              <div className="flex flex-wrap gap-1.5">
-                                {medicalInterests.map((interest, idx) => (
-                                  <span
-                                    key={idx}
-                                    className="text-xs bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-md border border-emerald-200 font-medium"
-                                  >
-                                    {interest}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Biography */}
-                          {e.bio && (
-                            <div className="mb-3">
-                              <h4 className="text-xs font-semibold text-slate-700 mb-2 uppercase tracking-wide">
-                                Biography
-                              </h4>
-                              <p className="text-sm text-slate-700 leading-relaxed line-clamp-3">
-                                {e.bio}
-                              </p>
-                            </div>
-                          )}
-
-                          {/* Action Buttons */}
-                          <div className="flex flex-col gap-2 pt-3 border-t border-slate-100">
-                            {/* Available/Not Available CTA */}
-                            {e.available === true ? (
-                              <div className="flex items-center justify-center gap-1.5 px-3 py-2 bg-gradient-to-r from-emerald-500/10 to-emerald-600/10 border border-emerald-300 rounded-lg">
-                                <Calendar className="w-3.5 h-3.5 text-emerald-600" />
-                                <span className="text-xs font-semibold text-emerald-700">
-                                  Available for Meetings
-                                </span>
-                              </div>
-                            ) : (
-                              <div className="flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg">
-                                <Calendar className="w-3.5 h-3.5 text-slate-500" />
-                                <span className="text-xs font-semibold text-slate-600">
-                                  Not Available for Collaboration
-                                </span>
-                              </div>
-                            )}
-                            <button
-                              onClick={() => {
-                                const expertUserId = e._id || e.userId || e.id;
-                                if (expertUserId) {
-                                  // Pass name, location, and bio as URL params
-                                  const params = new URLSearchParams();
-                                  if (e.name) params.set("name", e.name);
-                                  if (locationText)
-                                    params.set("location", locationText);
-                                  if (e.bio) params.set("bio", e.bio);
-                                  navigate(
-                                    `/curalink-expert/profile/${expertUserId}?${params.toString()}`
-                                  );
-                                }
-                              }}
-                              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-gradient-to-r from-emerald-600 to-indigo-700 text-white rounded-md text-xs font-semibold hover:from-emerald-700 hover:to-indigo-800 transition-all shadow-sm hover:shadow-md"
-                            >
-                              <Info className="w-3.5 h-3.5" />
-                              View Profile
-                            </button>
-                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="col-span-full text-center py-16">
+                        <div className="inline-flex items-center justify-center w-20 h-20 bg-emerald-100 rounded-full mb-4">
+                          <MessageCircle className="w-10 h-10 text-emerald-400" />
                         </div>
+                        <h3 className="text-lg font-semibold text-slate-800 mb-2">
+                          No Forums Available
+                        </h3>
+                        <p className="text-slate-600 text-sm max-w-md mx-auto">
+                          Forums are being set up. Check back soon!
+                        </p>
                       </div>
                     );
-                  })
-                ) : (
-                  <div className="col-span-full text-center py-16">
-                    <div className="inline-flex items-center justify-center w-20 h-20 bg-emerald-100 rounded-full mb-4">
-                      <Users className="w-10 h-10 text-emerald-400" />
-                    </div>
-                    <h3 className="text-lg font-semibold text-slate-800 mb-2">
-                      No Collabiora Experts Found
-                    </h3>
-                    <p className="text-slate-600 text-sm max-w-md mx-auto">
-                      We're connecting you with relevant experts on Collabiora.
-                      Check back soon!
-                    </p>
+                  })()}
+                </div>
+              )}
+
+              {selectedCategory === "trending" && (
+                <div className="col-span-full text-center py-16">
+                  <div className="inline-flex items-center justify-center w-20 h-20 bg-orange-100 rounded-full mb-4">
+                    <Flame className="w-10 h-10 text-orange-400" />
                   </div>
-                ))}
+                  <h3 className="text-lg font-semibold text-slate-800 mb-2">
+                    No Trending Content
+                  </h3>
+                  <p className="text-slate-600 text-sm max-w-md mx-auto">
+                    Check back later for trending publications and trials!
+                  </p>
+                </div>
+              )}
 
               {selectedCategory === "favorites" &&
                 (favorites.length > 0 ? (
@@ -2571,19 +2948,39 @@ export default function DashboardPatient() {
             {/* Scrollable Content */}
             <div className="flex-1 overflow-y-auto space-y-6 px-6 pt-6 pb-24">
               {/* Header */}
-              <div className="pb-4 border-b border-slate-200/60">
-                <h3 className="text-xl font-bold text-slate-900 mb-3 leading-tight">
+              <div
+                className="pb-4 border-b"
+                style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+              >
+                <h3
+                  className="text-xl font-bold mb-3 leading-tight"
+                  style={{ color: "#2F3C96" }}
+                >
                   {publicationDetailsModal.publication.title}
                 </h3>
                 <div className="flex flex-wrap gap-2">
                   {publicationDetailsModal.publication.pmid && (
-                    <span className="inline-flex items-center px-3 py-1 bg-indigo-50 text-indigo-700 text-xs font-medium rounded-md border border-indigo-100">
+                    <span
+                      className="inline-flex items-center px-3 py-1 text-xs font-medium rounded-md border"
+                      style={{
+                        backgroundColor: "rgba(47, 60, 150, 0.15)",
+                        color: "#2F3C96",
+                        borderColor: "rgba(47, 60, 150, 0.3)",
+                      }}
+                    >
                       <FileText className="w-3 h-3 mr-1.5" />
                       PMID: {publicationDetailsModal.publication.pmid}
                     </span>
                   )}
                   {publicationDetailsModal.publication.journal && (
-                    <span className="inline-flex items-center px-3 py-1 bg-slate-50 text-slate-700 text-xs font-medium rounded-md border border-slate-200">
+                    <span
+                      className="inline-flex items-center px-3 py-1 text-xs font-medium rounded-md border"
+                      style={{
+                        backgroundColor: "rgba(208, 196, 226, 0.2)",
+                        color: "#787878",
+                        borderColor: "rgba(208, 196, 226, 0.3)",
+                      }}
+                    >
                       <BookOpen className="w-3 h-3 mr-1.5" />
                       {publicationDetailsModal.publication.journal}
                     </span>
@@ -2594,12 +2991,25 @@ export default function DashboardPatient() {
               {/* Abstract Section - Moved to Top */}
               {publicationDetailsModal.publication.abstract && (
                 <div>
-                  <div className="bg-gradient-to-br from-indigo-50/50 to-blue-50/50 rounded-xl p-5 border border-indigo-100/50">
-                    <h4 className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide text-indigo-700">
+                  <div
+                    className="rounded-xl p-5 border"
+                    style={{
+                      background:
+                        "linear-gradient(135deg, rgba(208, 196, 226, 0.2), rgba(232, 224, 239, 0.2))",
+                      borderColor: "rgba(208, 196, 226, 0.3)",
+                    }}
+                  >
+                    <h4
+                      className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
+                      style={{ color: "#2F3C96" }}
+                    >
                       <Info className="w-4 h-4" />
                       Abstract
                     </h4>
-                    <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+                    <p
+                      className="text-sm leading-relaxed whitespace-pre-wrap"
+                      style={{ color: "#787878" }}
+                    >
                       {publicationDetailsModal.publication.abstract}
                     </p>
                   </div>
@@ -2611,17 +3021,29 @@ export default function DashboardPatient() {
                 Array.isArray(publicationDetailsModal.publication.authors) &&
                 publicationDetailsModal.publication.authors.length > 0 && (
                   <div>
-                    <div className="bg-white rounded-xl p-5 border border-slate-200/60 shadow-sm">
-                      <h4 className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide text-slate-600">
+                    <div
+                      className="bg-white rounded-xl p-5 border shadow-sm"
+                      style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+                    >
+                      <h4
+                        className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
+                        style={{ color: "#2F3C96" }}
+                      >
                         <User className="w-4 h-4" />
                         Authors
                       </h4>
-                      <p className="text-sm text-slate-700 leading-relaxed">
+                      <p
+                        className="text-sm leading-relaxed"
+                        style={{ color: "#787878" }}
+                      >
                         {publicationDetailsModal.publication.authors.join(", ")}
                       </p>
                       {publicationDetailsModal.publication.authors.length >
                         1 && (
-                        <p className="text-xs text-slate-500 mt-2">
+                        <p
+                          className="text-xs mt-2"
+                          style={{ color: "#787878" }}
+                        >
                           {publicationDetailsModal.publication.authors.length}{" "}
                           authors
                         </p>
@@ -2632,8 +3054,14 @@ export default function DashboardPatient() {
 
               {/* Publication Metadata Cards */}
               <div>
-                <div className="bg-white rounded-xl p-5 border border-slate-200/60 shadow-sm">
-                  <h4 className="font-semibold mb-4 flex items-center gap-2 text-sm uppercase tracking-wide text-slate-600">
+                <div
+                  className="bg-white rounded-xl p-5 border shadow-sm"
+                  style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+                >
+                  <h4
+                    className="font-semibold mb-4 flex items-center gap-2 text-sm uppercase tracking-wide"
+                    style={{ color: "#2F3C96" }}
+                  >
                     <Calendar className="w-4 h-4" />
                     Publication Information
                   </h4>
@@ -2641,14 +3069,29 @@ export default function DashboardPatient() {
                     {/* Publication Date */}
                     {(publicationDetailsModal.publication.year ||
                       publicationDetailsModal.publication.month) && (
-                      <div className="bg-slate-50/50 rounded-lg p-3 border border-slate-200/50">
+                      <div
+                        className="rounded-lg p-3 border"
+                        style={{
+                          backgroundColor: "rgba(208, 196, 226, 0.1)",
+                          borderColor: "rgba(208, 196, 226, 0.3)",
+                        }}
+                      >
                         <div className="flex items-center gap-2 mb-1.5">
-                          <Calendar className="w-3.5 h-3.5 text-slate-500" />
-                          <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                          <Calendar
+                            className="w-3.5 h-3.5"
+                            style={{ color: "#787878" }}
+                          />
+                          <span
+                            className="text-xs font-medium uppercase tracking-wide"
+                            style={{ color: "#787878" }}
+                          >
                             Published
                           </span>
                         </div>
-                        <p className="text-sm font-semibold text-slate-900">
+                        <p
+                          className="text-sm font-semibold"
+                          style={{ color: "#2F3C96" }}
+                        >
                           {publicationDetailsModal.publication.month
                             ? `${publicationDetailsModal.publication.month} `
                             : ""}
@@ -2663,14 +3106,29 @@ export default function DashboardPatient() {
                     {/* Volume & Issue */}
                     {(publicationDetailsModal.publication.volume ||
                       publicationDetailsModal.publication.issue) && (
-                      <div className="bg-slate-50/50 rounded-lg p-3 border border-slate-200/50">
+                      <div
+                        className="rounded-lg p-3 border"
+                        style={{
+                          backgroundColor: "rgba(208, 196, 226, 0.1)",
+                          borderColor: "rgba(208, 196, 226, 0.3)",
+                        }}
+                      >
                         <div className="flex items-center gap-2 mb-1.5">
-                          <BookOpen className="w-3.5 h-3.5 text-slate-500" />
-                          <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                          <BookOpen
+                            className="w-3.5 h-3.5"
+                            style={{ color: "#787878" }}
+                          />
+                          <span
+                            className="text-xs font-medium uppercase tracking-wide"
+                            style={{ color: "#787878" }}
+                          >
                             Volume / Issue
                           </span>
                         </div>
-                        <p className="text-sm font-semibold text-slate-900">
+                        <p
+                          className="text-sm font-semibold"
+                          style={{ color: "#2F3C96" }}
+                        >
                           {publicationDetailsModal.publication.volume || "N/A"}
                           {publicationDetailsModal.publication.issue
                             ? ` (Issue ${publicationDetailsModal.publication.issue})`
@@ -2681,14 +3139,29 @@ export default function DashboardPatient() {
 
                     {/* Pages */}
                     {publicationDetailsModal.publication.Pages && (
-                      <div className="bg-slate-50/50 rounded-lg p-3 border border-slate-200/50">
+                      <div
+                        className="rounded-lg p-3 border"
+                        style={{
+                          backgroundColor: "rgba(208, 196, 226, 0.1)",
+                          borderColor: "rgba(208, 196, 226, 0.3)",
+                        }}
+                      >
                         <div className="flex items-center gap-2 mb-1.5">
-                          <FileText className="w-3.5 h-3.5 text-slate-500" />
-                          <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                          <FileText
+                            className="w-3.5 h-3.5"
+                            style={{ color: "#787878" }}
+                          />
+                          <span
+                            className="text-xs font-medium uppercase tracking-wide"
+                            style={{ color: "#787878" }}
+                          >
                             Pages
                           </span>
                         </div>
-                        <p className="text-sm font-semibold text-slate-900">
+                        <p
+                          className="text-sm font-semibold"
+                          style={{ color: "#2F3C96" }}
+                        >
                           {publicationDetailsModal.publication.Pages}
                         </p>
                       </div>
@@ -2696,13 +3169,25 @@ export default function DashboardPatient() {
 
                     {/* Language */}
                     {publicationDetailsModal.publication.language && (
-                      <div className="bg-slate-50/50 rounded-lg p-3 border border-slate-200/50">
+                      <div
+                        className="rounded-lg p-3 border"
+                        style={{
+                          backgroundColor: "rgba(208, 196, 226, 0.1)",
+                          borderColor: "rgba(208, 196, 226, 0.3)",
+                        }}
+                      >
                         <div className="flex items-center gap-2 mb-1.5">
-                          <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                          <span
+                            className="text-xs font-medium uppercase tracking-wide"
+                            style={{ color: "#787878" }}
+                          >
                             Language
                           </span>
                         </div>
-                        <p className="text-sm font-semibold text-slate-900">
+                        <p
+                          className="text-sm font-semibold"
+                          style={{ color: "#2F3C96" }}
+                        >
                           {publicationDetailsModal.publication.language}
                         </p>
                       </div>
@@ -2715,8 +3200,14 @@ export default function DashboardPatient() {
               {publicationDetailsModal.publication.keywords &&
                 publicationDetailsModal.publication.keywords.length > 0 && (
                   <div>
-                    <div className="bg-white rounded-xl p-5 border border-slate-200/60 shadow-sm">
-                      <h4 className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide text-slate-600">
+                    <div
+                      className="bg-white rounded-xl p-5 border shadow-sm"
+                      style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+                    >
+                      <h4
+                        className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
+                        style={{ color: "#2F3C96" }}
+                      >
                         <TrendingUp className="w-4 h-4" />
                         Keywords
                       </h4>
@@ -2725,7 +3216,12 @@ export default function DashboardPatient() {
                           (keyword, idx) => (
                             <span
                               key={idx}
-                              className="px-3 py-1.5 bg-indigo-50 text-indigo-700 text-xs font-medium rounded-md border border-indigo-100"
+                              className="px-3 py-1.5 text-xs font-medium rounded-md border"
+                              style={{
+                                backgroundColor: "rgba(47, 60, 150, 0.15)",
+                                color: "#2F3C96",
+                                borderColor: "rgba(47, 60, 150, 0.3)",
+                              }}
                             >
                               {keyword}
                             </span>
@@ -2740,8 +3236,14 @@ export default function DashboardPatient() {
               {publicationDetailsModal.publication.meshTerms &&
                 publicationDetailsModal.publication.meshTerms.length > 0 && (
                   <div>
-                    <div className="bg-white rounded-xl p-5 border border-slate-200/60 shadow-sm">
-                      <h4 className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide text-slate-600">
+                    <div
+                      className="bg-white rounded-xl p-5 border shadow-sm"
+                      style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+                    >
+                      <h4
+                        className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
+                        style={{ color: "#2F3C96" }}
+                      >
                         <Info className="w-4 h-4" />
                         MeSH Terms
                       </h4>
@@ -2751,14 +3253,22 @@ export default function DashboardPatient() {
                           .map((term, idx) => (
                             <span
                               key={idx}
-                              className="px-3 py-1.5 bg-slate-50 text-slate-700 text-xs font-medium rounded-md border border-slate-200"
+                              className="px-3 py-1.5 text-xs font-medium rounded-md border"
+                              style={{
+                                backgroundColor: "rgba(208, 196, 226, 0.2)",
+                                color: "#787878",
+                                borderColor: "rgba(208, 196, 226, 0.3)",
+                              }}
                             >
                               {term}
                             </span>
                           ))}
                         {publicationDetailsModal.publication.meshTerms.length >
                           10 && (
-                          <span className="px-3 py-1.5 text-slate-500 text-xs">
+                          <span
+                            className="px-3 py-1.5 text-xs"
+                            style={{ color: "#787878" }}
+                          >
                             +
                             {publicationDetailsModal.publication.meshTerms
                               .length - 10}{" "}
@@ -2774,12 +3284,21 @@ export default function DashboardPatient() {
               {publicationDetailsModal.publication.affiliations &&
                 publicationDetailsModal.publication.affiliations.length > 0 && (
                   <div>
-                    <div className="bg-white rounded-xl p-5 border border-slate-200/60 shadow-sm">
-                      <h4 className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide text-slate-600">
+                    <div
+                      className="bg-white rounded-xl p-5 border shadow-sm"
+                      style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+                    >
+                      <h4
+                        className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
+                        style={{ color: "#2F3C96" }}
+                      >
                         <MapPin className="w-4 h-4" />
                         Affiliation
                       </h4>
-                      <p className="text-sm text-slate-700 leading-relaxed">
+                      <p
+                        className="text-sm leading-relaxed"
+                        style={{ color: "#787878" }}
+                      >
                         {publicationDetailsModal.publication.affiliations[0]}
                       </p>
                     </div>
@@ -2791,8 +3310,14 @@ export default function DashboardPatient() {
                 publicationDetailsModal.publication.publicationTypes.length >
                   0 && (
                   <div>
-                    <div className="bg-white rounded-xl p-5 border border-slate-200/60 shadow-sm">
-                      <h4 className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide text-slate-600">
+                    <div
+                      className="bg-white rounded-xl p-5 border shadow-sm"
+                      style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+                    >
+                      <h4
+                        className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
+                        style={{ color: "#2F3C96" }}
+                      >
                         <FileText className="w-4 h-4" />
                         Publication Type
                       </h4>
@@ -2801,7 +3326,12 @@ export default function DashboardPatient() {
                           (type, idx) => (
                             <span
                               key={idx}
-                              className="px-3 py-1.5 bg-slate-50 text-slate-700 text-xs font-medium rounded-md border border-slate-200"
+                              className="px-3 py-1.5 text-xs font-medium rounded-md border"
+                              style={{
+                                backgroundColor: "rgba(208, 196, 226, 0.2)",
+                                color: "#787878",
+                                borderColor: "rgba(208, 196, 226, 0.3)",
+                              }}
                             >
                               {type}
                             </span>
@@ -2814,14 +3344,28 @@ export default function DashboardPatient() {
             </div>
 
             {/* Sticky Actions Footer */}
-            <div className="sticky bottom-0 px-6 py-4 border-t border-slate-200/60 bg-white/95 backdrop-blur-sm shadow-lg">
+            <div
+              className="sticky bottom-0 px-6 py-4 border-t bg-white/95 backdrop-blur-sm shadow-lg"
+              style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+            >
               <div className="flex flex-wrap gap-3">
                 {publicationDetailsModal.publication.url && (
                   <a
                     href={publicationDetailsModal.publication.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex-1 px-4 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 shadow-sm hover:shadow-md"
+                    className="flex-1 px-4 py-2.5 text-white rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2 shadow-sm hover:shadow-md"
+                    style={{
+                      background: "linear-gradient(135deg, #2F3C96, #253075)",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.target.style.background =
+                        "linear-gradient(135deg, #253075, #1C2454)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.background =
+                        "linear-gradient(135deg, #2F3C96, #253075)";
+                    }}
                   >
                     <ExternalLink className="w-4 h-4" />
                     View on PubMed
@@ -2844,7 +3388,8 @@ export default function DashboardPatient() {
                       publicationDetailsModal.publication
                     )
                   )}
-                  className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 border shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed ${
+                  className="px-4 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 border shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={
                     favorites.some(
                       (fav) =>
                         fav.type === "publication" &&
@@ -2858,9 +3403,59 @@ export default function DashboardPatient() {
                             (publicationDetailsModal.publication.id ||
                               publicationDetailsModal.publication.pmid))
                     )
-                      ? "bg-red-50 border-red-200 text-red-600 hover:bg-red-100"
-                      : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
-                  }`}
+                      ? {
+                          backgroundColor: "#fee2e2",
+                          borderColor: "#fecaca",
+                          color: "#dc2626",
+                        }
+                      : {
+                          backgroundColor: "rgba(208, 196, 226, 0.2)",
+                          borderColor: "rgba(208, 196, 226, 0.3)",
+                          color: "#787878",
+                        }
+                  }
+                  onMouseEnter={(e) => {
+                    if (
+                      !favorites.some(
+                        (fav) =>
+                          fav.type === "publication" &&
+                          (fav.item?.id ===
+                            (publicationDetailsModal.publication.id ||
+                              publicationDetailsModal.publication.pmid) ||
+                            fav.item?._id ===
+                              (publicationDetailsModal.publication.id ||
+                                publicationDetailsModal.publication.pmid) ||
+                            fav.item?.pmid ===
+                              (publicationDetailsModal.publication.id ||
+                                publicationDetailsModal.publication.pmid))
+                      )
+                    ) {
+                      e.currentTarget.style.backgroundColor =
+                        "rgba(208, 196, 226, 0.3)";
+                      e.currentTarget.style.color = "#2F3C96";
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (
+                      !favorites.some(
+                        (fav) =>
+                          fav.type === "publication" &&
+                          (fav.item?.id ===
+                            (publicationDetailsModal.publication.id ||
+                              publicationDetailsModal.publication.pmid) ||
+                            fav.item?._id ===
+                              (publicationDetailsModal.publication.id ||
+                                publicationDetailsModal.publication.pmid) ||
+                            fav.item?.pmid ===
+                              (publicationDetailsModal.publication.id ||
+                                publicationDetailsModal.publication.pmid))
+                      )
+                    ) {
+                      e.currentTarget.style.backgroundColor =
+                        "rgba(208, 196, 226, 0.2)";
+                      e.currentTarget.style.color = "#787878";
+                    }
+                  }}
                 >
                   {favoritingItems.has(
                     getFavoriteKey(
@@ -2924,7 +3519,11 @@ export default function DashboardPatient() {
       </Modal>
 
       {/* Summary Modal */}
-      <Modal isOpen={summaryModal.open} onClose={closeModal} title="AI Summary">
+      <Modal
+        isOpen={summaryModal.open}
+        onClose={closeModal}
+        title="Key Insights"
+      >
         <div className="space-y-4">
           <div className="pb-4 border-b border-indigo-200">
             <div className="flex items-center gap-3 mb-2">
@@ -2954,7 +3553,7 @@ export default function DashboardPatient() {
               <div className="flex items-center gap-2 text-indigo-600 mb-4">
                 <Sparkles className="w-4 h-4 animate-pulse" />
                 <span className="text-sm font-medium">
-                  Generating AI summary...
+                  Preparing structured insights…
                 </span>
               </div>
               <div className="animate-pulse space-y-3">
@@ -2966,10 +3565,145 @@ export default function DashboardPatient() {
                 <div className="h-4 bg-indigo-100 rounded w-3/4"></div>
               </div>
             </div>
+          ) : summaryModal.type === "publication" &&
+            summaryModal.summary &&
+            typeof summaryModal.summary === "object" &&
+            summaryModal.summary.structured ? (
+            // Structured Publication Summary with Visual Aids
+            <div className="space-y-5 py-2">
+              {/* Core Message - Most Important First */}
+              {summaryModal.summary.coreMessage && (
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-5 border-2 border-blue-200 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center shrink-0 mt-0.5">
+                      <Sparkles className="w-5 h-5 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <h5 className="font-bold text-blue-900 text-base mb-2">
+                        Key Finding
+                      </h5>
+                      <p className="text-blue-800 text-sm leading-relaxed">
+                        {summaryModal.summary.coreMessage}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* What Section */}
+              {summaryModal.summary.what && (
+                <div className="bg-white rounded-lg p-4 border-l-4 border-indigo-500 shadow-sm hover:shadow-md transition-shadow">
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center shrink-0">
+                      <FileText className="w-4 h-4 text-indigo-600" />
+                    </div>
+                    <div className="flex-1">
+                      <h5 className="font-semibold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                        <span className="w-6 h-6 bg-indigo-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                          1
+                        </span>
+                        What This Study Was About
+                      </h5>
+                      <p className="text-slate-700 text-sm leading-relaxed">
+                        {summaryModal.summary.what}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Why Section */}
+              {summaryModal.summary.why && (
+                <div className="bg-white rounded-lg p-4 border-l-4 border-blue-500 shadow-sm hover:shadow-md transition-shadow">
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center shrink-0">
+                      <Heart className="w-4 h-4 text-blue-600" />
+                    </div>
+                    <div className="flex-1">
+                      <h5 className="font-semibold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                        <span className="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                          2
+                        </span>
+                        Why This Research Matters
+                      </h5>
+                      <p className="text-slate-700 text-sm leading-relaxed">
+                        {summaryModal.summary.why}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* How Section */}
+              {summaryModal.summary.how && (
+                <div className="bg-white rounded-lg p-4 border-l-4 border-emerald-500 shadow-sm hover:shadow-md transition-shadow">
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 bg-emerald-100 rounded-lg flex items-center justify-center shrink-0">
+                      <ListChecks className="w-4 h-4 text-emerald-600" />
+                    </div>
+                    <div className="flex-1">
+                      <h5 className="font-semibold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                        <span className="w-6 h-6 bg-emerald-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                          3
+                        </span>
+                        How They Did The Study
+                      </h5>
+                      <p className="text-slate-700 text-sm leading-relaxed">
+                        {summaryModal.summary.how}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* So What Section */}
+              {summaryModal.summary.soWhat && (
+                <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg p-4 border-l-4 border-purple-500 shadow-sm hover:shadow-md transition-shadow">
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center shrink-0">
+                      <TrendingUp className="w-4 h-4 text-purple-600" />
+                    </div>
+                    <div className="flex-1">
+                      <h5 className="font-semibold text-slate-900 text-sm mb-2 flex items-center gap-2">
+                        <span className="w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                          4
+                        </span>
+                        What This Means For You
+                      </h5>
+                      <p className="text-slate-700 text-sm leading-relaxed">
+                        {summaryModal.summary.soWhat}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Key Takeaway */}
+              {summaryModal.summary.keyTakeaway && (
+                <div className="bg-amber-50 rounded-xl p-4 border-2 border-amber-200 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 bg-amber-400 rounded-full flex items-center justify-center shrink-0">
+                      <AlertCircle className="w-5 h-5 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <h5 className="font-bold text-amber-900 text-sm mb-2">
+                        Remember This
+                      </h5>
+                      <p className="text-amber-800 text-sm leading-relaxed font-medium">
+                        {summaryModal.summary.keyTakeaway}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           ) : (
+            // Fallback for non-structured summaries (trials or old format)
             <div className="py-2">
               <p className="text-indigo-800 text-sm leading-relaxed whitespace-pre-wrap">
-                {summaryModal.summary}
+                {typeof summaryModal.summary === "object"
+                  ? summaryModal.summary.summary || "Summary unavailable"
+                  : summaryModal.summary || "Summary unavailable"}
               </p>
             </div>
           )}

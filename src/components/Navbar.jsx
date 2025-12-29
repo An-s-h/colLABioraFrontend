@@ -481,11 +481,46 @@ export default function Navbar() {
                           No new notifications
                         </p>
                         <p
-                          className="text-sm mt-1 text-center"
+                          className="text-sm mt-1 text-center mb-4"
                           style={{ color: "#787878" }}
                         >
                           You're all caught up!
                         </p>
+                        <button
+                          onClick={() => {
+                            setIsNotificationOpen(false);
+                            navigate("/insights");
+                          }}
+                          className="w-full px-4 py-2.5 rounded-lg font-semibold text-sm transition-all duration-200 flex items-center justify-center gap-2"
+                          style={{
+                            background: "linear-gradient(135deg, #2F3C96, #474F97)",
+                            color: "#FFFFFF",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.target.style.background =
+                              "linear-gradient(135deg, #474F97, #2F3C96)";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.target.style.background =
+                              "linear-gradient(135deg, #2F3C96, #474F97)";
+                          }}
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="w-4 h-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M13 10V3L4 14h7v7l9-11h-7z"
+                            />
+                          </svg>
+                          View All Insights and Activity
+                        </button>
                       </div>
                     </motion.div>
                   )}
@@ -1194,9 +1229,43 @@ export default function Navbar() {
               <p className="text-gray-600 font-semibold text-center text-lg">
                 No new notifications
               </p>
-              <p className="text-sm text-gray-400 mt-2 text-center">
+              <p className="text-sm text-gray-400 mt-2 text-center mb-4">
                 You're all caught up!
               </p>
+              <button
+                onClick={() => {
+                  setIsNotificationOpen(false);
+                  navigate("/insights");
+                }}
+                className="w-full px-4 py-2.5 rounded-lg font-semibold text-sm transition-all duration-200 flex items-center justify-center gap-2 text-white"
+                style={{
+                  background: "linear-gradient(135deg, #2F3C96, #474F97)",
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.background =
+                    "linear-gradient(135deg, #474F97, #2F3C96)";
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.background =
+                    "linear-gradient(135deg, #2F3C96, #474F97)";
+                }}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="w-4 h-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                  />
+                </svg>
+                View All Insights and Activity
+              </button>
             </div>
           </motion.div>
         )}
