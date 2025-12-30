@@ -50,7 +50,7 @@ export default function DashboardResearcher() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isFirstLoad, setIsFirstLoad] = useState(true); // Track if this is the first load (cache miss)
-  const [selectedCategory, setSelectedCategory] = useState("trials"); // "trials", "publications", "globalExperts", "collaborators", "favorites"
+  const [selectedCategory, setSelectedCategory] = useState("profile"); // "profile", "trials", "publications", "globalExperts", "collaborators", "favorites"
   const [trialFilter, setTrialFilter] = useState(""); // Status filter for trials
   const [publicationSort, setPublicationSort] = useState("relevance"); // Sort option for publications
   const [filterModalOpen, setFilterModalOpen] = useState(false);
@@ -102,10 +102,134 @@ export default function DashboardResearcher() {
     useState({}); // Map of expert name/id to loading state
   const [favorites, setFavorites] = useState([]);
   const [insights, setInsights] = useState({ unreadCount: 0 });
+  const [orcidStats, setOrcidStats] = useState(null);
+  const [loadingOrcidStats, setLoadingOrcidStats] = useState(false);
+  const [orcidError, setOrcidError] = useState(null);
   const navigate = useNavigate();
   const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
   const { updateProfileSignature, markDataFetched, generateProfileSignature } =
     useProfile();
+
+  // Fetch ORCID stats
+  const fetchOrcidStats = async (orcidId, userId) => {
+    if (!orcidId || !userId) return;
+    
+    setLoadingOrcidStats(true);
+    setOrcidError(null);
+    try {
+      // Use the curalink-expert/profile endpoint which fetches ORCID data
+      const response = await fetch(`${base}/api/curalink-expert/profile/${userId}`);
+      if (response.ok) {
+        const data = await response.json();
+        const orcidId = data.profile?.orcid || data.profile?.orcidId;
+        if (orcidId) {
+          const publications = data.profile?.publications || data.profile?.works || [];
+          const totalWorks = data.profile.totalWorks || publications.length;
+          const hasBiography = !!data.profile.biography;
+          const hasAffiliation = !!data.profile.affiliation;
+          const hasCurrentPosition = !!data.profile.currentPosition;
+          const hasEmployments = data.profile.employments && data.profile.employments.length > 0;
+          const hasEducations = data.profile.educations && data.profile.educations.length > 0;
+          
+          // Check if ORCID profile is invalid - if we have an ORCID ID but no data at all
+          // (no publications, no biography, no employment, no education, etc.)
+          const hasNoData = !totalWorks && 
+                           !hasBiography && 
+                           !hasAffiliation && 
+                           !hasCurrentPosition && 
+                           !hasEmployments && 
+                           !hasEducations &&
+                           !data.profile.location &&
+                           (!data.profile.researchInterests || data.profile.researchInterests.length === 0);
+          
+          if (hasNoData) {
+            // Invalid ORCID - no data found
+            setOrcidError("not_found");
+            setOrcidStats(null);
+          } else {
+            // Sort publications by year (most recent first)
+            const sortedPublications = [...publications].sort((a, b) => {
+              const yearA = a.year || 0;
+              const yearB = b.year || 0;
+              return yearB - yearA;
+            });
+            
+            // Format location - handle both string and object formats
+            let locationText = null;
+            if (data.profile.location) {
+              if (typeof data.profile.location === "string") {
+                locationText = data.profile.location;
+              } else if (data.profile.location.city || data.profile.location.country) {
+                locationText = [
+                  data.profile.location.city,
+                  data.profile.location.country,
+                ]
+                  .filter(Boolean)
+                  .join(", ");
+              }
+            }
+
+            setOrcidStats({
+              orcidId: orcidId,
+              orcidUrl: `https://orcid.org/${orcidId}`,
+              totalPublications: totalWorks,
+              recentPublications: sortedPublications.slice(0, 5), // Top 5 most recent
+              impactMetrics: data.profile.impactMetrics || {
+                totalPublications: totalWorks,
+                hIndex: 0,
+                totalCitations: 0,
+                maxCitations: 0,
+              },
+              affiliation: data.profile.affiliation || null,
+              currentPosition: data.profile.currentPosition || null,
+              location: locationText,
+              biography: data.profile.biography || null,
+              researchInterests: data.profile.researchInterests || [],
+              externalLinks: data.profile.externalLinks || {},
+              // Additional ORCID data
+              employments: data.profile.employments || [],
+              educations: data.profile.educations || [],
+              fundings: data.profile.fundings || [],
+              totalFundings: data.profile.totalFundings || 0,
+              totalPeerReviews: data.profile.totalPeerReviews || 0,
+              country: data.profile.country || null,
+            });
+          }
+        }
+      } else {
+        // Check for 404 error specifically
+        if (response.status === 404) {
+          try {
+            const errorData = await response.json();
+            const errorMessage = errorData.error || errorData.message || response.statusText || "";
+            if (errorMessage.toLowerCase().includes("404") || 
+                errorMessage.toLowerCase().includes("not found") || 
+                errorMessage.toLowerCase().includes("resource was not found")) {
+              setOrcidError("not_found");
+            } else {
+              setOrcidError("error");
+            }
+          } catch (e) {
+            // If response is not JSON, check status text
+            const statusText = response.statusText || "";
+            if (statusText.toLowerCase().includes("not found")) {
+              setOrcidError("not_found");
+            } else {
+              setOrcidError("error");
+            }
+          }
+        } else {
+          setOrcidError("error");
+        }
+        console.error("Failed to fetch ORCID profile:", response.status, response.statusText);
+      }
+    } catch (error) {
+      console.error("Error fetching ORCID stats:", error);
+      setOrcidError("error");
+    } finally {
+      setLoadingOrcidStats(false);
+    }
+  };
 
   const statusOptions = [
     "RECRUITING",
@@ -240,6 +364,11 @@ export default function DashboardResearcher() {
                 // Update both the current signature and mark it as fetched
                 updateProfileSignature(conditions, location);
                 markDataFetched(currentSignature);
+
+                // Fetch ORCID stats if user has ORCID ID
+                if (profile.researcher?.orcid) {
+                  fetchOrcidStats(profile.researcher.orcid, userData._id || userData.id);
+                }
               }
             }
           } catch (error) {
@@ -1060,6 +1189,8 @@ export default function DashboardResearcher() {
 
   const getCategoryCount = (category) => {
     switch (category) {
+      case "profile":
+        return userProfile?.researcher?.orcid ? 1 : 0;
       case "trials":
         return data.trials.length;
       case "publications":
@@ -1077,6 +1208,8 @@ export default function DashboardResearcher() {
 
   const getCategoryLabel = (category) => {
     switch (category) {
+      case "profile":
+        return "Your Profile";
       case "trials":
         return "Trials";
       case "publications":
@@ -1204,6 +1337,7 @@ export default function DashboardResearcher() {
               </button>
             </div>
           </div>
+
         </div>
 
         {/* Main Content Section - Full Width */}
@@ -1212,6 +1346,17 @@ export default function DashboardResearcher() {
           <div className="bg-white rounded-xl shadow-md border border-slate-200 p-2 mb-6">
             <div className="flex items-center gap-2 overflow-x-auto">
               {[
+                {
+                  key: "profile",
+                  label: "Your Profile",
+                  icon: User,
+                  colorClasses: {
+                    selected: "bg-indigo-600 text-white border-indigo-600",
+                    unselected:
+                      "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100",
+                    count: "text-indigo-600",
+                  },
+                },
                 {
                   key: "trials",
                   label: "Clinical Trials",
@@ -1284,15 +1429,17 @@ export default function DashboardResearcher() {
                     <span className="text-sm font-semibold">
                       {category.label}
                     </span>
-                    <span
-                      className={`text-sm font-bold ${
-                        isSelected
-                          ? "text-white/90"
-                          : category.colorClasses.count
-                      }`}
-                    >
-                      ({getCategoryCount(category.key)})
-                    </span>
+                    {category.key !== "profile" && (
+                      <span
+                        className={`text-sm font-bold ${
+                          isSelected
+                            ? "text-white/90"
+                            : category.colorClasses.count
+                        }`}
+                      >
+                        ({getCategoryCount(category.key)})
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -1353,6 +1500,359 @@ export default function DashboardResearcher() {
 
             {/* Grid of Items - Larger Cards - Full Width with 3 columns */}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              {selectedCategory === "profile" && (
+                <div className="col-span-full">
+                  {!userProfile?.researcher?.orcid ? (
+                    <div className="bg-white/95 backdrop-blur-xl rounded-xl shadow-lg border border-slate-200 p-6 sm:p-8">
+                      <div className="flex items-start gap-4">
+                        <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
+                          <LinkIcon className="w-6 h-6 text-indigo-600" />
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="text-lg font-semibold text-slate-900 mb-2">
+                            ORCID ID Not Added
+                          </h3>
+                          <p className="text-sm text-slate-600 mb-4">
+                            Add your ORCID ID to link your research activities and display your publication stats, research interests, and professional information.
+                          </p>
+                          <button
+                            onClick={() => navigate("/profile")}
+                            className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg transition-colors"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                            Add ORCID ID
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-white/95 backdrop-blur-xl rounded-xl shadow-lg border border-slate-200 p-6 sm:p-8">
+                      <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-200">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
+                            <CheckCircle className="w-6 h-6 text-green-600" />
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <div>
+                              <h3 className="text-lg font-semibold text-slate-900">
+                                ORCID Profile Connected
+                              </h3>
+                              <a
+                                href={orcidStats?.orcidUrl || `https://orcid.org/${userProfile.researcher.orcid}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-sm text-indigo-600 hover:text-indigo-700 flex items-center gap-1 mt-1"
+                              >
+                                {userProfile.researcher.orcid}
+                                <ExternalLink className="w-4 h-4" />
+                              </a>
+                            </div>
+                            {orcidStats && (
+                              <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 rounded-lg border border-blue-200">
+                                <FileText className="w-5 h-5 text-blue-600" />
+                                <div>
+                                  <p className="text-2xl font-bold text-blue-900">
+                                    {orcidStats.totalPublications || 0}
+                                  </p>
+                                  <p className="text-xs text-blue-700">Total works</p>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {loadingOrcidStats ? (
+                        <div className="flex items-center justify-center py-12">
+                          <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+                        </div>
+                      ) : orcidStats ? (
+                        <div className="space-y-6">
+                          {/* Biography at the top */}
+                          {orcidStats.biography && (
+                            <div className="bg-slate-50 rounded-lg p-5 border border-slate-200">
+                              <div className="flex items-center gap-2 mb-3">
+                                <User className="w-5 h-5 text-slate-600" />
+                                <span className="text-sm font-semibold text-slate-900">Biography</span>
+                              </div>
+                              <p className="text-sm text-slate-700 leading-relaxed">
+                                {orcidStats.biography}
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Profile Information Section as a list */}
+                          <div className="space-y-4">
+                            {/* Current Position */}
+                            {orcidStats.currentPosition && (
+                              <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <Briefcase className="w-5 h-5 text-slate-600" />
+                                  <span className="text-sm font-semibold text-slate-900">Current Position</span>
+                                </div>
+                                <p className="text-sm text-slate-700">{orcidStats.currentPosition}</p>
+                              </div>
+                            )}
+
+                            {/* Location */}
+                            {orcidStats.location && (
+                              <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <MapPin className="w-5 h-5 text-slate-600" />
+                                  <span className="text-sm font-semibold text-slate-900">Location</span>
+                                </div>
+                                <p className="text-sm text-slate-700">{orcidStats.location}</p>
+                              </div>
+                            )}
+
+                            {/* Research Interests */}
+                            {orcidStats.researchInterests && orcidStats.researchInterests.length > 0 && (
+                              <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                                <div className="flex items-center gap-2 mb-3">
+                                  <Sparkles className="w-5 h-5 text-slate-600" />
+                                  <span className="text-sm font-semibold text-slate-900">Research Interests</span>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  {orcidStats.researchInterests.slice(0, 10).map((interest, idx) => (
+                                    <span
+                                      key={idx}
+                                      className="inline-flex items-center px-3 py-1 rounded-md text-sm font-medium bg-indigo-100 text-indigo-800 hover:bg-indigo-200 transition-colors"
+                                    >
+                                      {interest}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* External Links */}
+                            {orcidStats.externalLinks && Object.keys(orcidStats.externalLinks).length > 1 && (
+                              <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                                <div className="flex items-center gap-2 mb-3">
+                                  <LinkIcon className="w-5 h-5 text-slate-600" />
+                                  <span className="text-sm font-semibold text-slate-900">External Links</span>
+                                </div>
+                                <div className="flex flex-wrap gap-3">
+                                  {orcidStats.externalLinks.googleScholar && (
+                                    <a
+                                      href={orcidStats.externalLinks.googleScholar}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+                                    >
+                                      Google Scholar
+                                      <ExternalLink className="w-4 h-4" />
+                                    </a>
+                                  )}
+                                  {orcidStats.externalLinks.researchGate && (
+                                    <a
+                                      href={orcidStats.externalLinks.researchGate}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+                                    >
+                                      ResearchGate
+                                      <ExternalLink className="w-4 h-4" />
+                                    </a>
+                                  )}
+                                  {orcidStats.externalLinks.pubmed && (
+                                    <a
+                                      href={orcidStats.externalLinks.pubmed}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+                                    >
+                                      PubMed
+                                      <ExternalLink className="w-4 h-4" />
+                                    </a>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Employment History */}
+                            {orcidStats.employments && orcidStats.employments.length > 0 && (
+                              <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                                <div className="flex items-center gap-2 mb-4">
+                                  <Briefcase className="w-5 h-5 text-slate-600" />
+                                  <span className="text-sm font-semibold text-slate-900">
+                                    Employment History
+                                  </span>
+                                </div>
+                                <div className="space-y-3 max-h-96 overflow-y-auto">
+                                  {orcidStats.employments.map((emp, idx) => (
+                                    <div key={idx} className="border-b border-slate-200 last:border-b-0 pb-3 last:pb-0">
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div className="flex-1">
+                                          <p className="text-sm font-semibold text-slate-900 mb-1">
+                                            {emp.roleTitle || "Position"}
+                                          </p>
+                                          <p className="text-sm text-slate-700 mb-1">
+                                            {emp.organization || "Organization"}
+                                          </p>
+                                          {emp.department && (
+                                            <p className="text-xs text-slate-600 mb-1">
+                                              {emp.department}
+                                            </p>
+                                          )}
+                                          {(emp.startDate || emp.endDate) && (
+                                            <p className="text-xs text-slate-500">
+                                              {emp.startDate || "?"} - {emp.endDate || "Present"}
+                                            </p>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Recent Publications */}
+                            {orcidStats.recentPublications && orcidStats.recentPublications.length > 0 && (
+                              <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                                <div className="bg-gradient-to-r from-indigo-50 to-blue-50 px-6 py-4 border-b border-slate-200">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                      <div className="p-2 bg-indigo-100 rounded-lg">
+                                        <BookOpen className="w-5 h-5 text-indigo-600" />
+                                      </div>
+                                      <div>
+                                        <h3 className="text-base font-bold text-slate-900">
+                                          Recent Publications
+                                        </h3>
+                                        {orcidStats.totalPublications > 5 && (
+                                          <p className="text-xs text-slate-600 mt-0.5">
+                                            Showing 5 of {orcidStats.totalPublications} publications
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="p-4 space-y-3 max-h-[500px] overflow-y-auto">
+                                  {orcidStats.recentPublications.map((pub, idx) => (
+                                    <div
+                                      key={idx}
+                                      className="group bg-slate-50 hover:bg-indigo-50 rounded-lg p-4 border border-slate-200 hover:border-indigo-300 transition-all duration-200 hover:shadow-md"
+                                    >
+                                      <a
+                                        href={pub.link || pub.url || "#"}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="block"
+                                      >
+                                        <h4 className="text-sm font-semibold text-slate-900 group-hover:text-indigo-700 line-clamp-2 mb-2 transition-colors">
+                                          {pub.title}
+                                        </h4>
+                                      </a>
+                                      <div className="space-y-2">
+                                        {pub.authors && pub.authors.length > 0 && (
+                                          <div className="flex items-start gap-2">
+                                            <Users className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
+                                            <p className="text-xs text-slate-600 line-clamp-2">
+                                              {pub.authors.slice(0, 4).join(", ")}
+                                              {pub.authors.length > 4 && ` +${pub.authors.length - 4} more`}
+                                            </p>
+                                          </div>
+                                        )}
+                                        <div className="flex items-center gap-4 flex-wrap">
+                                          {pub.journal && (
+                                            <div className="flex items-center gap-1.5">
+                                              <FileText className="w-3.5 h-3.5 text-slate-400" />
+                                              <span className="text-xs text-slate-600 font-medium">
+                                                {pub.journal}
+                                              </span>
+                                            </div>
+                                          )}
+                                          {pub.year && (
+                                            <div className="flex items-center gap-1.5">
+                                              <CalendarIcon className="w-3.5 h-3.5 text-slate-400" />
+                                              <span className="text-xs text-slate-600">
+                                                {pub.year}
+                                              </span>
+                                            </div>
+                                          )}
+                                        </div>
+                                        {(pub.link || pub.url) && (
+                                          <div className="pt-2 border-t border-slate-200">
+                                            <a
+                                              href={pub.link || pub.url}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="inline-flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-700 font-medium transition-colors"
+                                              onClick={(e) => e.stopPropagation()}
+                                            >
+                                              <ExternalLink className="w-3.5 h-3.5" />
+                                              View Publication
+                                            </a>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                                {orcidStats.totalPublications > 5 && (
+                                  <div className="bg-slate-50 px-6 py-4 border-t border-slate-200">
+                                    <a
+                                      href={orcidStats.orcidUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700 font-semibold transition-colors group"
+                                    >
+                                      <span>View all {orcidStats.totalPublications} publications on ORCID</span>
+                                      <ExternalLink className="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                                    </a>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ) : orcidError === "not_found" ? (
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-6">
+                          <div className="flex items-start gap-4">
+                            <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                              <Info className="w-6 h-6 text-amber-600" />
+                            </div>
+                            <div className="flex-1">
+                              <h3 className="text-lg font-semibold text-amber-900 mb-2">
+                                ORCID Profile Not Found
+                              </h3>
+                              <p className="text-sm text-amber-800 mb-4">
+                                We couldn't find your ORCID profile. Please check your ORCID ID or start your research to build your profile.
+                              </p>
+                              <div className="flex flex-wrap gap-3">
+                                <button
+                                  onClick={() => navigate("/profile")}
+                                  className="inline-flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold rounded-lg transition-colors"
+                                >
+                                  <Edit3 className="w-4 h-4" />
+                                  Check Your ORCID ID
+                                </button>
+                                <a
+                                  href={`https://orcid.org/${userProfile.researcher.orcid}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-2 px-4 py-2 bg-white hover:bg-amber-50 text-amber-700 text-sm font-semibold rounded-lg border border-amber-300 transition-colors"
+                                >
+                                  <ExternalLink className="w-4 h-4" />
+                                  Visit ORCID Profile
+                                </a>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-center py-8 text-sm text-slate-500">
+                          Unable to load ORCID stats. Please try again later.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {selectedCategory === "trials" &&
                 (loadingFiltered ? (
                   <div className="col-span-full text-center py-16">

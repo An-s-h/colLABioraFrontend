@@ -23,7 +23,6 @@ import {
   DollarSign,
   MessageSquare,
   Users,
-  Plus,
   AlertCircle,
 } from "lucide-react";
 
@@ -42,9 +41,8 @@ export default function OnboardResearcher() {
   const [researchInterestInput, setResearchInterestInput] = useState("");
   const [researchInterests, setResearchInterests] = useState([]);
   const [location, setLocation] = useState("");
-  const [educationHistory, setEducationHistory] = useState([
-    { institution: "", degree: "", field: "", year: "" },
-  ]);
+  const [institutionAffiliation, setInstitutionAffiliation] = useState("");
+  const [orcid, setOrcid] = useState("");
   const [skillsInput, setSkillsInput] = useState("");
   const [skills, setSkills] = useState([]);
   const [interestedInMeetings, setInterestedInMeetings] = useState(false);
@@ -162,24 +160,6 @@ export default function OnboardResearcher() {
     );
   }
 
-  function addEducationEntry() {
-    setEducationHistory((prev) => [
-      ...prev,
-      { institution: "", degree: "", field: "", year: "" },
-    ]);
-  }
-
-  function removeEducationEntry(index) {
-    setEducationHistory((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  function updateEducationEntry(index, field, value) {
-    setEducationHistory((prev) =>
-      prev.map((entry, i) =>
-        i === index ? { ...entry, [field]: value } : entry
-      )
-    );
-  }
 
   function parseLocation(locationString) {
     if (!locationString) return { city: "", country: "" };
@@ -210,7 +190,8 @@ export default function OnboardResearcher() {
       specialty,
       researchInterests,
       location: parseLocation(location),
-      educationHistory,
+      institutionAffiliation,
+      orcid,
       skills,
       interestedInMeetings,
       interestedInForums,
@@ -287,9 +268,8 @@ export default function OnboardResearcher() {
           specialties: specialty ? [specialty] : [],
           interests: researchInterests,
           location: locationData,
-          education: educationHistory.filter(
-            (e) => e.institution || e.degree || e.field
-          ),
+          institutionAffiliation,
+          orcid: orcid || undefined,
           skills,
           available: interestedInMeetings,
           interestedInMeetings,
@@ -380,9 +360,8 @@ export default function OnboardResearcher() {
           specialties: specialty ? [specialty] : [],
           interests: researchInterests,
           location: locationData,
-          education: educationHistory.filter(
-            (e) => e.institution || e.degree || e.field
-          ),
+          institutionAffiliation,
+          orcid: orcid || undefined,
           skills,
           available: interestedInMeetings,
           interestedInMeetings,
@@ -869,120 +848,55 @@ export default function OnboardResearcher() {
                       />
                     </div>
 
-                    {/* Education History */}
-                    <div className="space-y-1.5">
+                    {/* Institution Affiliation */}
+                    <div>
                       <label
                         className="block text-xs font-semibold mb-1"
                         style={{ color: "#2F3C96" }}
                       >
-                        Education History
+                        Institution Affiliation
                       </label>
-                      {educationHistory.map((edu, index) => (
-                        <div
-                          key={index}
-                          className="p-2 rounded-lg border space-y-1.5"
-                          style={{ borderColor: "#E8E8E8" }}
-                        >
-                          <div className="flex items-center justify-between mb-1">
-                            <span
-                              className="text-xs font-medium"
-                              style={{ color: "#2F3C96" }}
-                            >
-                              Education #{index + 1}
-                            </span>
-                            {educationHistory.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => removeEducationEntry(index)}
-                                className="text-[10px] hover:opacity-70"
-                                style={{ color: "#DC2626" }}
-                              >
-                                Remove
-                              </button>
-                            )}
-                          </div>
-                          <div className="grid grid-cols-2 gap-1.5">
-                            <Input
-                              placeholder="Institution"
-                              value={edu.institution}
-                              onChange={(e) =>
-                                updateEducationEntry(
-                                  index,
-                                  "institution",
-                                  e.target.value
-                                )
-                              }
-                              className="text-sm py-1 px-2 border rounded-lg"
-                              style={{
-                                borderColor: "#E8E8E8",
-                                color: "#2F3C96",
-                              }}
-                            />
-                            <Input
-                              placeholder="Degree (e.g. PhD, MD)"
-                              value={edu.degree}
-                              onChange={(e) =>
-                                updateEducationEntry(
-                                  index,
-                                  "degree",
-                                  e.target.value
-                                )
-                              }
-                              className="text-sm py-1 px-2 border rounded-lg"
-                              style={{
-                                borderColor: "#E8E8E8",
-                                color: "#2F3C96",
-                              }}
-                            />
-                          </div>
-                          <div className="grid grid-cols-2 gap-1.5">
-                            <Input
-                              placeholder="Field of Study"
-                              value={edu.field}
-                              onChange={(e) =>
-                                updateEducationEntry(
-                                  index,
-                                  "field",
-                                  e.target.value
-                                )
-                              }
-                              className="text-sm py-1 px-2 border rounded-lg"
-                              style={{
-                                borderColor: "#E8E8E8",
-                                color: "#2F3C96",
-                              }}
-                            />
-                            <Input
-                              placeholder="Year (e.g. 2020)"
-                              value={edu.year}
-                              onChange={(e) =>
-                                updateEducationEntry(
-                                  index,
-                                  "year",
-                                  e.target.value
-                                )
-                              }
-                              className="text-sm py-1 px-2 border rounded-lg"
-                              style={{
-                                borderColor: "#E8E8E8",
-                                color: "#2F3C96",
-                              }}
-                            />
-                          </div>
-                        </div>
-                      ))}
-                      <button
-                        type="button"
-                        onClick={addEducationEntry}
-                        className="flex items-center gap-1.5 text-sm font-medium px-2.5 py-1.5 rounded-lg transition-all"
+                      <Input
+                        placeholder="e.g. Harvard Medical School, MIT, Johns Hopkins University"
+                        value={institutionAffiliation}
+                        onChange={(e) => setInstitutionAffiliation(e.target.value)}
+                        className="w-full py-1.5 px-2.5 text-sm border rounded-lg transition-all focus:outline-none focus:ring-2"
                         style={{
+                          borderColor: "#E8E8E8",
                           color: "#2F3C96",
-                          backgroundColor: "rgba(208, 196, 226, 0.1)",
+                          "--tw-ring-color": "#D0C4E2",
                         }}
+                      />
+                    </div>
+
+                    {/* ORCID */}
+                    <div>
+                      <label
+                        className="block text-xs font-semibold mb-1"
+                        style={{ color: "#2F3C96" }}
                       >
-                        <Plus size={12} />
-                        Add Another Education
-                      </button>
+                        ORCID ID
+                        <span
+                          className="text-[10px] font-normal ml-1"
+                          style={{ color: "#787878" }}
+                        >
+                          (Optional)
+                        </span>
+                      </label>
+                      <Input
+                        placeholder="e.g. 0000-0000-0000-0000"
+                        value={orcid}
+                        onChange={(e) => setOrcid(e.target.value)}
+                        className="w-full py-1.5 px-2.5 text-sm border rounded-lg transition-all focus:outline-none focus:ring-2"
+                        style={{
+                          borderColor: "#E8E8E8",
+                          color: "#2F3C96",
+                          "--tw-ring-color": "#D0C4E2",
+                        }}
+                      />
+                      <p className="text-[10px] mt-0.5" style={{ color: "#787878" }}>
+                        Your ORCID ID helps link your research activities and publications
+                      </p>
                     </div>
 
                     {/* Skills */}

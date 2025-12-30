@@ -11,8 +11,11 @@ export default function Navbar() {
   const [isMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isDropdownOpen, setIsMenuOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const [isExploreDropdownOpen, setIsExploreDropdownOpen] = useState(false);
+  const [isMobileExploreOpen, setIsMobileExploreOpen] = useState(false);
   const menuRef = useRef(null);
   const notificationRef = useRef(null);
+  const exploreDropdownRef = useRef(null);
   const mobileMenuRef = useRef(null);
   const mobileMenuButtonRef = useRef(null);
   const scrollTimeoutRef = useRef(null);
@@ -29,12 +32,16 @@ export default function Navbar() {
 
   // Determine navigation items based on route and auth state
   // Landing page + NOT signed in: About, FAQ, Contact
-  // All other pages OR signed in: Trials, Publications, Experts, Forums
+  // All other pages OR signed in: Dashboard, Explore (dropdown), Trending, Forums
   const getNavItems = () => {
     if (isLandingPage && !user) {
       return ["About Us", "FAQ", "Contact"];
     } else {
-      // Filter out Trials, Publications, Experts on dashboard pages
+      // When signed in, show new navigation structure
+      if (user) {
+        return ["Dashboard", "Explore", "Trending", "Forums"];
+      }
+      // Filter out Trials, Publications, Experts on dashboard pages (when not signed in)
       const allNavItems = ["Trials", "Publications", "Experts", "Forums"];
       return isDashboardPage
         ? allNavItems.filter(
@@ -103,6 +110,12 @@ export default function Navbar() {
         !notificationRef.current.contains(event.target)
       ) {
         setIsNotificationOpen(false);
+      }
+      if (
+        exploreDropdownRef.current &&
+        !exploreDropdownRef.current.contains(event.target)
+      ) {
+        setIsExploreDropdownOpen(false);
       }
       // Only close mobile menu if it's rendered (open) and click is outside both the menu and the button
       if (
@@ -216,6 +229,21 @@ export default function Navbar() {
         </svg>
       ),
       // Regular navigation
+      Dashboard: (
+        <svg
+          className="w-5 h-5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M3 12l2-3m0 0l7-4 7 4M5 9v10a1 1 0 001 1h12a1 1 0 001-1V9m-9 4l4 2m-2-8l4-2m-6 2l-4-2"
+          />
+        </svg>
+      ),
       Trials: (
         <svg
           className="w-5 h-5"
@@ -273,6 +301,36 @@ export default function Navbar() {
             strokeLinejoin="round"
             strokeWidth={2}
             d="M8 12h.01M12 12h.01M16 12h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+          />
+        </svg>
+      ),
+      Explore: (
+        <svg
+          className="w-5 h-5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+          />
+        </svg>
+      ),
+      Trending: (
+        <svg
+          className="w-5 h-5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"
           />
         </svg>
       ),
@@ -345,14 +403,166 @@ export default function Navbar() {
               FAQ: "/faq",
               Contact: "/contact",
               // Regular navigation routes
-              Trials: "/trials",
-              Publications: "/publications",
-              Experts: "/experts",
+              Dashboard: getDashboardPath(),
+              Trending: "/trending",
               Forums: "/forums",
             };
             const route =
               routeMap[item] || `/${item.toLowerCase().replace(/\s+/g, "-")}`;
 
+            // Handle Explore dropdown separately
+            if (item === "Explore") {
+              return (
+                <Fragment key={item}>
+                  <div
+                    ref={exploreDropdownRef}
+                    className="relative"
+                    onMouseEnter={() => setIsExploreDropdownOpen(true)}
+                    onMouseLeave={() => setIsExploreDropdownOpen(false)}
+                  >
+                    <button className="relative group transition-all py-2 flex items-center gap-1">
+                      <span
+                        className="relative z-10 transition-colors duration-200"
+                        style={{
+                          color: "#2F3C96",
+                        }}
+                        onMouseEnter={(e) => (e.target.style.color = "#B8A5D5")}
+                        onMouseLeave={(e) => (e.target.style.color = "#2F3C96")}
+                      >
+                        {item}
+                      </span>
+                      <svg
+                        className="w-4 h-4 transition-transform duration-200"
+                        style={{
+                          color: "#2F3C96",
+                          transform: isExploreDropdownOpen
+                            ? "rotate(180deg)"
+                            : "rotate(0deg)",
+                        }}
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 9l-7 7-7-7"
+                        />
+                      </svg>
+                      <span
+                        className="absolute bottom-0 left-0 w-0 h-[3px] rounded-full transition-all duration-300 group-hover:w-full"
+                        style={{ backgroundColor: "#2F3C96" }}
+                      ></span>
+                    </button>
+
+                    {/* Explore Dropdown Menu */}
+                    <AnimatePresence>
+                      {isExploreDropdownOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                          transition={{ duration: 0.2 }}
+                          className="absolute top-full left-0 mt-2 w-48 backdrop-blur-xl rounded-2xl shadow-2xl border py-2 z-50"
+                          style={{
+                            backgroundColor: "rgba(245, 242, 248, 0.95)",
+                            borderColor: "#D0C4E2",
+                          }}
+                        >
+                          {[
+                            {
+                              label: "Publications",
+                              route: "/publications",
+                              icon: (
+                                <svg
+                                  className="w-4 h-4"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M12 6.253v13m0-13C6.5 6.253 2 10.998 2 17s4.5 10.747 10 10.747c5.5 0 10-4.998 10-10.747S17.5 6.253 12 6.253z"
+                                  />
+                                </svg>
+                              ),
+                            },
+                            {
+                              label: "Trials",
+                              route: "/trials",
+                              icon: (
+                                <svg
+                                  className="w-4 h-4"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                                  />
+                                </svg>
+                              ),
+                            },
+                            {
+                              label: "Experts",
+                              route: "/experts",
+                              icon: (
+                                <svg
+                                  className="w-4 h-4"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                                  />
+                                </svg>
+                              ),
+                            },
+                          ].map((subItem) => (
+                            <Link
+                              key={subItem.label}
+                              to={subItem.route}
+                              className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-all duration-200"
+                              style={{ color: "#2F3C96" }}
+                              onMouseEnter={(e) => {
+                                e.target.style.backgroundColor = "#E8E0EF";
+                                e.target.style.color = "#474F97";
+                              }}
+                              onMouseLeave={(e) => {
+                                e.target.style.backgroundColor = "transparent";
+                                e.target.style.color = "#2F3C96";
+                              }}
+                            >
+                              {subItem.icon}
+                              <span>{subItem.label}</span>
+                            </Link>
+                          ))}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                  {/* Vertical separator */}
+                  {index < navItems.length - 1 && (
+                    <div
+                      className="h-6 w-px"
+                      style={{ backgroundColor: "#D0C4E2" }}
+                    />
+                  )}
+                </Fragment>
+              );
+            }
+
+            // Regular navigation items
             return (
               <Fragment key={item}>
                 <Link to={route} className="relative group transition-all py-2">
@@ -1002,15 +1212,97 @@ export default function Navbar() {
                     FAQ: "/faq",
                     Contact: "/contact",
                     // Regular navigation routes
-                    Trials: "/trials",
-                    Publications: "/publications",
-                    Experts: "/experts",
+                    Dashboard: getDashboardPath(),
+                    Trending: "/trending",
                     Forums: "/forums",
                   };
                   const route =
                     routeMap[item] ||
                     `/${item.toLowerCase().replace(/\s+/g, "-")}`;
 
+                  // Handle Explore dropdown in mobile
+                  if (item === "Explore") {
+                    return (
+                      <div key={item}>
+                        <button
+                          onClick={() =>
+                            setIsMobileExploreOpen(!isMobileExploreOpen)
+                          }
+                          className="flex items-center justify-between w-full text-base font-medium rounded-xl py-2 px-3 transition-all duration-200 group"
+                          style={{ color: "#2F3C96" }}
+                          onMouseEnter={(e) => {
+                            e.target.style.backgroundColor = "#E8E0EF";
+                            e.target.style.color = "#474F97";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.target.style.backgroundColor = "transparent";
+                            e.target.style.color = "#2F3C96";
+                          }}
+                        >
+                          <div className="flex items-center gap-3">
+                            <span
+                              className="p-1.5 rounded-lg group-hover:scale-110 transition-all duration-200"
+                              style={{
+                                backgroundColor: "#E8E0EF",
+                                color: "#2F3C96",
+                              }}
+                            >
+                              {getIcon(item)}
+                            </span>
+                            {item}
+                          </div>
+                          <svg
+                            className="w-4 h-4 transition-transform duration-200"
+                            style={{
+                              color: "#2F3C96",
+                              transform: isMobileExploreOpen
+                                ? "rotate(180deg)"
+                                : "rotate(0deg)",
+                            }}
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M19 9l-7 7-7-7"
+                            />
+                          </svg>
+                        </button>
+                        {isMobileExploreOpen && (
+                          <div className="pl-6 mt-1 space-y-1">
+                            {[
+                              { label: "Publications", route: "/publications" },
+                              { label: "Trials", route: "/trials" },
+                              { label: "Experts", route: "/experts" },
+                            ].map((subItem) => (
+                              <Link
+                                key={subItem.label}
+                                to={subItem.route}
+                                onClick={() => setIsMobileMenuOpen(false)}
+                                className="flex items-center gap-3 w-full text-sm font-medium rounded-lg py-2 px-3 transition-all duration-200"
+                                style={{ color: "#2F3C96" }}
+                                onMouseEnter={(e) => {
+                                  e.target.style.backgroundColor = "#E8E0EF";
+                                  e.target.style.color = "#474F97";
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.target.style.backgroundColor = "transparent";
+                                  e.target.style.color = "#2F3C96";
+                                }}
+                              >
+                                {subItem.label}
+                              </Link>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  // Regular navigation items
                   return (
                     <Link
                       key={item}

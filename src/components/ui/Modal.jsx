@@ -37,7 +37,8 @@ export default function Modal({ isOpen, onClose, title, children }) {
 
           {/* Modal Content */}
           <motion.div
-            className="relative z-10 w-full max-w-2xl max-h-[90vh] overflow-hidden bg-white rounded-2xl shadow-2xl border border-slate-200/50"
+            className="relative z-10 w-full max-w-2xl max-h-[90vh] overflow-hidden bg-white rounded-2xl shadow-2xl border"
+            style={{ borderColor: "rgba(208, 196, 226, 0.5)" }}
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -50,9 +51,20 @@ export default function Modal({ isOpen, onClose, title, children }) {
             onClick={(e) => e.stopPropagation()}
           >
             {/* Gradient Header */}
-            <div className="sticky top-0 z-20 flex items-center justify-between px-6 py-4 bg-gradient-to-r from-indigo-50 via-white to-indigo-50 border-b border-slate-200/80 backdrop-blur-sm">
+            <div
+              className="sticky top-0 z-20 flex items-center justify-between px-6 py-4 backdrop-blur-sm border-b"
+              style={{
+                background: "linear-gradient(135deg, rgba(232, 224, 239, 0.8), rgba(255, 255, 255, 0.9), rgba(232, 224, 239, 0.8))",
+                borderColor: "rgba(208, 196, 226, 0.5)",
+              }}
+            >
               <motion.h2
-                className="text-xl font-bold bg-gradient-to-r from-indigo-700 to-indigo-600 bg-clip-text text-transparent"
+                className="text-xl font-bold bg-clip-text text-transparent"
+                style={{
+                  background: "linear-gradient(135deg, #2F3C96, #253075)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                }}
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.1, duration: 0.3 }}
@@ -61,7 +73,18 @@ export default function Modal({ isOpen, onClose, title, children }) {
               </motion.h2>
               <motion.button
                 onClick={onClose}
-                className="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all duration-200 group"
+                className="p-2 rounded-lg transition-all duration-200 group"
+                style={{
+                  color: "#787878",
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.color = "#2F3C96";
+                  e.target.style.backgroundColor = "rgba(232, 224, 239, 0.5)";
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.color = "#787878";
+                  e.target.style.backgroundColor = "transparent";
+                }}
                 aria-label="Close modal"
                 whileHover={{ scale: 1.1, rotate: 90 }}
                 whileTap={{ scale: 0.9 }}
@@ -69,7 +92,7 @@ export default function Modal({ isOpen, onClose, title, children }) {
                 animate={{ opacity: 1, rotate: 0 }}
                 transition={{ delay: 0.1, duration: 0.3 }}
               >
-                <X className="w-5 h-5 group-hover:text-indigo-600 transition-colors" />
+                <X className="w-5 h-5 transition-colors" />
               </motion.button>
             </div>
 

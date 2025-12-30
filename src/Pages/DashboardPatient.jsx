@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   Users,
@@ -43,6 +43,7 @@ import Modal from "../components/ui/Modal";
 import { MultiStepLoader } from "../components/ui/multi-step-loader";
 import { useProfile } from "../contexts/ProfileContext.jsx";
 import AnimatedBackground from "../components/ui/AnimatedBackground.jsx";
+import { getSimplifiedTitle } from "../utils/titleSimplifier.js";
 
 export default function DashboardPatient() {
   const [data, setData] = useState({
@@ -94,21 +95,19 @@ export default function DashboardPatient() {
   });
   const [followingStatus, setFollowingStatus] = useState({});
   const [favorites, setFavorites] = useState([]);
-  const [selectedCategory, setSelectedCategory] = useState("publications"); // "publications", "trials", "experts", "forums", "favorites", "trending"
+  const [selectedCategory, setSelectedCategory] = useState("publications"); // "publications", "trials", "experts", "forums", "favorites"
   const [userProfile, setUserProfile] = useState(null);
   const [forumsCategories, setForumsCategories] = useState([]);
-  const [trendingData, setTrendingData] = useState({
-    publications: [],
-    trials: [],
-  });
-  const [trialFilter, setTrialFilter] = useState(""); // Status filter for trials
+  const [trialFilter, setTrialFilter] = useState("RECRUITING"); // Status filter for trials - default to RECRUITING
   const [publicationSort, setPublicationSort] = useState("relevance"); // Sort option for publications
   const [showCollabioraExperts, setShowCollabioraExperts] = useState(true); // Toggle for Collabiora Experts
   const [showGlobalExperts, setShowGlobalExperts] = useState(false); // Toggle for Global Experts
   const [filterModalOpen, setFilterModalOpen] = useState(false);
   const [loadingFiltered, setLoadingFiltered] = useState(false);
   const [favoritingItems, setFavoritingItems] = useState(new Set()); // Track items being favorited/unfavorited
+  const [simplifiedTitles, setSimplifiedTitles] = useState(new Map()); // Cache of simplified titles
   const navigate = useNavigate();
+  const location = useLocation();
   const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
   const { updateProfileSignature, markDataFetched, generateProfileSignature } =
     useProfile();
@@ -218,11 +217,21 @@ export default function DashboardPatient() {
             );
             setGlobalExperts(sortedGlobalExperts);
 
-            // Trending data is not loaded - showing empty state
-            setTrendingData({
-              publications: [],
-              trials: [],
-            });
+            // Simplify publication titles
+            if (sortedData.publications && sortedData.publications.length > 0) {
+              sortedData.publications.forEach((pub) => {
+                if (pub.title && pub.title.length > 60) {
+                  // Only simplify if title is long enough
+                  getSimplifiedTitle(pub.title, base).then((simplified) => {
+                    setSimplifiedTitles((prev) => {
+                      const newMap = new Map(prev);
+                      newMap.set(pub.title, simplified);
+                      return newMap;
+                    });
+                  });
+                }
+              });
+            }
           }
 
           // Fetch favorites
@@ -232,7 +241,27 @@ export default function DashboardPatient() {
             );
             if (favResponse.ok) {
               const favData = await favResponse.json();
-              setFavorites(favData.items || []);
+              const favItems = favData.items || [];
+              setFavorites(favItems);
+
+              // Simplify publication titles in favorites
+              favItems.forEach((fav) => {
+                if (
+                  fav.type === "publication" &&
+                  fav.item?.title &&
+                  fav.item.title.length > 60
+                ) {
+                  getSimplifiedTitle(fav.item.title, base).then(
+                    (simplified) => {
+                      setSimplifiedTitles((prev) => {
+                        const newMap = new Map(prev);
+                        newMap.set(fav.item.title, simplified);
+                        return newMap;
+                      });
+                    }
+                  );
+                }
+              });
             }
           } catch (error) {
             console.error("Error fetching favorites:", error);
@@ -380,7 +409,12 @@ export default function DashboardPatient() {
       const res = await fetch(`${base}/api/ai/summary`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, type }),
+        body: JSON.stringify({
+          text,
+          type,
+          // Pass full trial object for structured summary
+          ...(type === "trial" && { trial: item }),
+        }),
       }).then((r) => r.json());
 
       setSummaryModal((prev) => ({
@@ -388,6 +422,8 @@ export default function DashboardPatient() {
         summary:
           res.summary ||
           (type === "publication"
+            ? { structured: false, summary: "Summary unavailable" }
+            : type === "trial"
             ? { structured: false, summary: "Summary unavailable" }
             : "Summary unavailable"),
         loading: false,
@@ -951,8 +987,10 @@ export default function DashboardPatient() {
         userProfile?.patient?.conditions?.[0] ||
         "oncology";
       params.set("q", userDisease);
-      // Default to RECRUITING if no filter is set
-      params.set("status", trialFilter || "RECRUITING");
+      // Only set status parameter if trialFilter is set (empty string means "all")
+      if (trialFilter) {
+        params.set("status", trialFilter);
+      }
 
       // Add location (country only for trials)
       if (userLocation?.country) {
@@ -1066,8 +1104,7 @@ export default function DashboardPatient() {
 
   // Effect to fetch filtered trials when filter changes
   useEffect(() => {
-    // Only fetch filtered trials if a filter is explicitly set
-    // On initial load, use the recommendations that were already fetched
+    // Fetch filtered trials when trials category is selected (defaults to RECRUITING)
     if (selectedCategory === "trials" && trialFilter && user?._id) {
       fetchFilteredTrials();
     }
@@ -1084,51 +1121,122 @@ export default function DashboardPatient() {
   // Skeleton loader for subsequent loads
   function SimpleLoader() {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/30 to-slate-100">
+      <div
+        className="min-h-screen"
+        style={{
+          background:
+            "linear-gradient(135deg, #F5F5F5, rgba(232, 233, 242, 0.3), #F5F5F5)",
+        }}
+      >
         <div className="px-4 sm:px-6 md:px-8 lg:px-12 mx-auto max-w-7xl pt-6 pb-12">
           {/* Top Bar Skeleton */}
           <div className="mb-8">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-gradient-to-br from-indigo-600 via-indigo-700 to-blue-700 rounded-2xl shadow-xl border border-indigo-500/50 relative overflow-hidden w-full p-5 sm:p-4 mt-18">
+            <div
+              className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-2xl shadow-xl border relative overflow-hidden w-full p-5 sm:p-4 mt-18"
+              style={{
+                background:
+                  "linear-gradient(135deg, #D0C4E2, #E8E0EF, #F5F2F8)",
+                borderColor: "rgba(208, 196, 226, 0.5)",
+              }}
+            >
+              {/* Decorative background elements skeleton */}
+              <div
+                className="absolute top-0 right-0 w-64 h-64 rounded-full -mr-32 -mt-32"
+                style={{ backgroundColor: "rgba(47, 60, 150, 0.1)" }}
+              ></div>
+              <div
+                className="absolute bottom-0 left-0 w-48 h-48 rounded-full -ml-24 -mb-24"
+                style={{ backgroundColor: "rgba(47, 60, 150, 0.1)" }}
+              ></div>
+
               <div className="relative z-10 flex items-center gap-4 flex-1 min-w-0 w-full sm:w-auto">
                 {/* Avatar Skeleton */}
-                <div className="w-12 h-12 bg-white/20 rounded-full animate-pulse"></div>
+                <div
+                  className="w-12 h-12 rounded-full animate-pulse"
+                  style={{ backgroundColor: "#2F3C96" }}
+                ></div>
                 {/* Profile Info Skeleton */}
                 <div className="flex flex-col gap-2 flex-1">
-                  <div className="h-5 w-32 bg-white/20 rounded animate-pulse"></div>
+                  <div
+                    className="h-5 w-48 rounded animate-pulse"
+                    style={{ backgroundColor: "rgba(47, 60, 150, 0.3)" }}
+                  ></div>
                   <div className="flex gap-2">
-                    <div className="h-6 w-24 bg-white/20 rounded-full animate-pulse"></div>
-                    <div className="h-6 w-28 bg-white/20 rounded-full animate-pulse"></div>
+                    <div
+                      className="h-6 w-24 rounded-full animate-pulse"
+                      style={{ backgroundColor: "rgba(47, 60, 150, 0.2)" }}
+                    ></div>
+                    <div
+                      className="h-6 w-28 rounded-full animate-pulse"
+                      style={{ backgroundColor: "rgba(47, 60, 150, 0.2)" }}
+                    ></div>
                   </div>
                 </div>
               </div>
               {/* Action Buttons Skeleton */}
               <div className="relative z-10 flex items-center gap-3 shrink-0">
-                <div className="h-10 w-24 bg-white/20 rounded-xl animate-pulse"></div>
-                <div className="h-10 w-32 bg-white/20 rounded-xl animate-pulse"></div>
-                <div className="h-10 w-24 bg-white/20 rounded-xl animate-pulse"></div>
+                <div
+                  className="h-10 w-24 rounded-xl animate-pulse"
+                  style={{ backgroundColor: "rgba(47, 60, 150, 0.2)" }}
+                ></div>
+                <div
+                  className="h-10 w-32 rounded-xl animate-pulse"
+                  style={{ backgroundColor: "rgba(47, 60, 150, 0.2)" }}
+                ></div>
+                <div
+                  className="h-10 w-24 rounded-xl animate-pulse"
+                  style={{ backgroundColor: "rgba(47, 60, 150, 0.2)" }}
+                ></div>
               </div>
             </div>
           </div>
 
           {/* Category Buttons Skeleton */}
           <div className="mb-6">
-            <div className="bg-white rounded-xl shadow-md border border-slate-200 p-2">
+            <div
+              className="bg-white rounded-xl shadow-md border p-2"
+              style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+            >
               <div className="flex items-center gap-2">
-                <div className="h-10 w-32 bg-slate-200 rounded-lg animate-pulse"></div>
-                <div className="h-10 w-28 bg-slate-200 rounded-lg animate-pulse"></div>
-                <div className="h-10 w-36 bg-slate-200 rounded-lg animate-pulse"></div>
-                <div className="h-10 w-40 bg-slate-200 rounded-lg animate-pulse"></div>
-                <div className="h-10 w-28 bg-slate-200 rounded-lg animate-pulse"></div>
+                <div
+                  className="h-10 w-32 rounded-lg animate-pulse"
+                  style={{ backgroundColor: "rgba(232, 224, 239, 0.6)" }}
+                ></div>
+                <div
+                  className="h-10 w-28 rounded-lg animate-pulse"
+                  style={{ backgroundColor: "rgba(232, 224, 239, 0.6)" }}
+                ></div>
+                <div
+                  className="h-10 w-36 rounded-lg animate-pulse"
+                  style={{ backgroundColor: "rgba(232, 224, 239, 0.6)" }}
+                ></div>
+                <div
+                  className="h-10 w-40 rounded-lg animate-pulse"
+                  style={{ backgroundColor: "rgba(232, 224, 239, 0.6)" }}
+                ></div>
+                <div
+                  className="h-10 w-28 rounded-lg animate-pulse"
+                  style={{ backgroundColor: "rgba(232, 224, 239, 0.6)" }}
+                ></div>
               </div>
             </div>
           </div>
 
           {/* Main Content Skeleton */}
-          <div className="bg-white rounded-2xl shadow-xl border border-slate-200/50 p-6 sm:p-8">
+          <div
+            className="bg-white rounded-2xl shadow-xl border p-6 sm:p-8"
+            style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+          >
             {/* Title Skeleton */}
             <div className="mb-8">
-              <div className="h-8 w-64 bg-slate-200 rounded-lg animate-pulse mb-2"></div>
-              <div className="h-4 w-96 bg-slate-200 rounded-lg animate-pulse"></div>
+              <div
+                className="h-8 w-64 rounded-lg animate-pulse mb-2"
+                style={{ backgroundColor: "rgba(232, 224, 239, 0.6)" }}
+              ></div>
+              <div
+                className="h-4 w-96 rounded-lg animate-pulse"
+                style={{ backgroundColor: "rgba(232, 224, 239, 0.6)" }}
+              ></div>
             </div>
 
             {/* Cards Grid Skeleton */}
@@ -1136,28 +1244,79 @@ export default function DashboardPatient() {
               {[1, 2, 3, 4, 5, 6].map((i) => (
                 <div
                   key={i}
-                  className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden"
+                  className="bg-white rounded-xl shadow-sm border overflow-hidden"
+                  style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
                 >
                   <div className="p-5">
-                    {/* Header Skeleton */}
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="h-6 w-24 bg-slate-200 rounded-full animate-pulse"></div>
-                      <div className="h-6 w-20 bg-slate-200 rounded-full animate-pulse"></div>
+                    {/* Match Progress Bar Skeleton */}
+                    <div className="mb-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div
+                          className="h-4 w-20 rounded-full animate-pulse"
+                          style={{
+                            backgroundColor: "rgba(232, 224, 239, 0.6)",
+                          }}
+                        ></div>
+                        <div
+                          className="h-5 w-16 rounded-full animate-pulse"
+                          style={{
+                            backgroundColor: "rgba(232, 224, 239, 0.6)",
+                          }}
+                        ></div>
+                      </div>
+                      {/* Progress Bar Skeleton */}
+                      <div
+                        className="w-full h-2.5 rounded-full animate-pulse"
+                        style={{ backgroundColor: "rgba(208, 196, 226, 0.3)" }}
+                      ></div>
                     </div>
                     {/* Title Skeleton */}
-                    <div className="h-6 w-full bg-slate-200 rounded-lg animate-pulse mb-3"></div>
-                    <div className="h-6 w-3/4 bg-slate-200 rounded-lg animate-pulse mb-3"></div>
-                    {/* Info Skeleton */}
-                    <div className="space-y-2 mb-3">
-                      <div className="h-4 w-full bg-slate-200 rounded animate-pulse"></div>
-                      <div className="h-4 w-2/3 bg-slate-200 rounded animate-pulse"></div>
+                    <div className="mb-4">
+                      <div
+                        className="h-6 w-full rounded-lg animate-pulse mb-2"
+                        style={{ backgroundColor: "rgba(232, 224, 239, 0.6)" }}
+                      ></div>
+                      <div
+                        className="h-6 w-3/4 rounded-lg animate-pulse"
+                        style={{ backgroundColor: "rgba(232, 224, 239, 0.6)" }}
+                      ></div>
                     </div>
-                    {/* Description Skeleton */}
-                    <div className="h-16 w-full bg-slate-100 rounded-lg animate-pulse mb-4"></div>
+                    {/* Info Skeleton */}
+                    <div className="space-y-1.5 mb-4">
+                      <div
+                        className="h-4 w-full rounded animate-pulse"
+                        style={{ backgroundColor: "rgba(232, 224, 239, 0.6)" }}
+                      ></div>
+                      <div
+                        className="h-4 w-2/3 rounded animate-pulse"
+                        style={{ backgroundColor: "rgba(232, 224, 239, 0.6)" }}
+                      ></div>
+                    </div>
+                    {/* Description Preview Skeleton */}
+                    <div className="mb-4">
+                      <div
+                        className="h-16 w-full rounded-lg animate-pulse border"
+                        style={{
+                          backgroundColor: "rgba(208, 196, 226, 0.2)",
+                          borderColor: "rgba(47, 60, 150, 0.2)",
+                        }}
+                      ></div>
+                    </div>
                     {/* Buttons Skeleton */}
                     <div className="flex gap-2">
-                      <div className="h-9 flex-1 bg-slate-200 rounded-lg animate-pulse"></div>
-                      <div className="h-9 w-9 bg-slate-200 rounded-lg animate-pulse"></div>
+                      <div
+                        className="h-9 flex-1 rounded-lg animate-pulse"
+                        style={{
+                          backgroundColor: "rgba(208, 196, 226, 0.2)",
+                        }}
+                      ></div>
+                      <div
+                        className="h-9 w-9 rounded-lg animate-pulse border"
+                        style={{
+                          backgroundColor: "rgba(232, 224, 239, 0.6)",
+                          borderColor: "rgba(208, 196, 226, 0.3)",
+                        }}
+                      ></div>
                     </div>
                   </div>
                 </div>
@@ -1199,8 +1358,6 @@ export default function DashboardPatient() {
         ).length;
       case "favorites":
         return favorites.length;
-      case "trending":
-        return trendingData.publications.length + trendingData.trials.length;
       default:
         return 0;
     }
@@ -1218,8 +1375,6 @@ export default function DashboardPatient() {
         return "Forums";
       case "favorites":
         return "Favorites";
-      case "trending":
-        return "Trending";
       default:
         return "";
     }
@@ -1283,7 +1438,8 @@ export default function DashboardPatient() {
                     className="text-base sm:text-lg font-bold mb-1"
                     style={{ color: "#2F3C96" }}
                   >
-                    Hello, {user?.username || "User"} 👋
+                    Hello, {user?.username || "User"} 👋 — here's your health
+                    dashboard
                   </h3>
                   <div
                     className="flex flex-wrap items-center gap-3 text-xs sm:text-sm"
@@ -1365,6 +1521,164 @@ export default function DashboardPatient() {
           </div>
         </div>
 
+        {/* Navigation Links Bar */}
+        <div className="mb-6">
+          <div
+            className="rounded-xl shadow-md border p-3"
+            style={{
+              background: "linear-gradient(135deg, #D0C4E2, #E8E0EF, #F5F2F8)",
+              borderColor: "rgba(208, 196, 226, 0.5)",
+            }}
+          >
+            <div className="flex items-center gap-3 overflow-x-auto">
+              {[
+                {
+                  label: "Dashboard",
+                  route: `/dashboard/${user?.role || "patient"}`,
+                  icon: (className) => (
+                    <svg
+                      className={className}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M3 12l2-3m0 0l7-4 7 4M5 9v10a1 1 0 001 1h12a1 1 0 001-1V9m-9 4l4 2m-2-8l4-2m-6 2l-4-2"
+                      />
+                    </svg>
+                  ),
+                },
+                {
+                  label: "Publications",
+                  route: "/publications",
+                  icon: (className) => (
+                    <svg
+                      className={className}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 6.253v13m0-13C6.5 6.253 2 10.998 2 17s4.5 10.747 10 10.747c5.5 0 10-4.998 10-10.747S17.5 6.253 12 6.253z"
+                      />
+                    </svg>
+                  ),
+                },
+                {
+                  label: "Trials",
+                  route: "/trials",
+                  icon: (className) => (
+                    <svg
+                      className={className}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                  ),
+                },
+                {
+                  label: "Experts",
+                  route: "/experts",
+                  icon: (className) => (
+                    <svg
+                      className={className}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13 10V3L4 14h7v7l9-11h-7z"
+                      />
+                    </svg>
+                  ),
+                },
+                {
+                  label: "Forums",
+                  route: "/forums",
+                  icon: (className) => (
+                    <svg
+                      className={className}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M8 12h.01M12 12h.01M16 12h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                  ),
+                },
+              ].map((navItem) => {
+                const Icon = navItem.icon;
+                const isActive =
+                  navItem.label === "Dashboard"
+                    ? location.pathname.startsWith("/dashboard")
+                    : location.pathname === navItem.route;
+                return (
+                  <button
+                    key={navItem.label}
+                    onClick={() => navigate(navItem.route)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg border transition-all duration-200 whitespace-nowrap"
+                    style={
+                      isActive
+                        ? {
+                            backgroundColor: "#2F3C96",
+                            color: "#FFFFFF",
+                            borderColor: "#2F3C96",
+                          }
+                        : {
+                            backgroundColor: "rgba(255, 255, 255, 0.6)",
+                            color: "#787878",
+                            borderColor: "rgba(47, 60, 150, 0.2)",
+                          }
+                    }
+                    onMouseEnter={(e) => {
+                      if (!isActive) {
+                        e.target.style.backgroundColor =
+                          "rgba(255, 255, 255, 0.8)";
+                        e.target.style.borderColor = "rgba(47, 60, 150, 0.3)";
+                        e.target.style.color = "#2F3C96";
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isActive) {
+                        e.target.style.backgroundColor =
+                          "rgba(255, 255, 255, 0.6)";
+                        e.target.style.borderColor = "rgba(47, 60, 150, 0.2)";
+                        e.target.style.color = "#787878";
+                      }
+                    }}
+                  >
+                    <Icon className="w-4 h-4 shrink-0" />
+                    <span className="text-sm font-semibold">
+                      {navItem.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
         {/* Main Content Section - Full Width */}
         <div className="mb-8">
           {/* Category Buttons Bar */}
@@ -1401,11 +1715,6 @@ export default function DashboardPatient() {
                   key: "favorites",
                   label: "Favorites",
                   icon: Star,
-                },
-                {
-                  key: "trending",
-                  label: "Trending",
-                  icon: Flame,
                 },
               ].map((category) => {
                 const Icon = category.icon;
@@ -1518,63 +1827,6 @@ export default function DashboardPatient() {
                   >
                     Your Personalized Recommendations
                   </h2>
-                  <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                    <div
-                      className="flex items-center gap-2 text-sm sm:text-base"
-                      style={{ color: "#787878" }}
-                    >
-                      <Sparkles
-                        className="w-4 h-4"
-                        style={{ color: "#2F3C96" }}
-                      />
-                      <span className="font-medium">Curated for you</span>
-                    </div>
-                    <span
-                      className="hidden sm:inline"
-                      style={{ color: "#D0C4E2" }}
-                    >
-                      •
-                    </span>
-                    <div
-                      className="flex items-center gap-2 text-sm sm:text-base"
-                      style={{ color: "#787878" }}
-                    >
-                      <Heart className="w-4 h-4" style={{ color: "#2F3C96" }} />
-                      <span>Your conditions</span>
-                    </div>
-                    <span
-                      className="hidden sm:inline"
-                      style={{ color: "#D0C4E2" }}
-                    >
-                      •
-                    </span>
-                    <div
-                      className="flex items-center gap-2 text-sm sm:text-base"
-                      style={{ color: "#787878" }}
-                    >
-                      <MapPin
-                        className="w-4 h-4"
-                        style={{ color: "#2F3C96" }}
-                      />
-                      <span>Your location</span>
-                    </div>
-                    <span
-                      className="hidden sm:inline"
-                      style={{ color: "#D0C4E2" }}
-                    >
-                      •
-                    </span>
-                    <div
-                      className="flex items-center gap-2 text-sm sm:text-base"
-                      style={{ color: "#787878" }}
-                    >
-                      <Activity
-                        className="w-4 h-4"
-                        style={{ color: "#2F3C96" }}
-                      />
-                      <span>Your activity</span>
-                    </div>
-                  </div>
                 </div>
                 <div
                   className="flex items-center gap-3 px-4 py-2 rounded-xl border"
@@ -1683,8 +1935,17 @@ export default function DashboardPatient() {
               {selectedCategory === "trials" &&
                 (loadingFiltered ? (
                   <div className="col-span-full text-center py-16">
-                    <div className="inline-flex items-center justify-center gap-2 text-indigo-600">
-                      <div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                    <div
+                      className="inline-flex items-center justify-center gap-2"
+                      style={{ color: "#2F3C96" }}
+                    >
+                      <div
+                        className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin"
+                        style={{
+                          borderColor: "#2F3C96",
+                          borderTopColor: "transparent",
+                        }}
+                      ></div>
                       <span className="text-sm font-medium">
                         Loading filtered trials...
                       </span>
@@ -1694,53 +1955,88 @@ export default function DashboardPatient() {
                   sortByMatchPercentage(data.trials).map((t, idx) => (
                     <div
                       key={idx}
-                      className="bg-white rounded-xl shadow-sm border border-slate-200 hover:shadow-lg hover:border-indigo-300 transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden"
+                      className="bg-white rounded-xl shadow-sm border transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden flex flex-col h-full"
+                      style={{
+                        borderColor: "rgba(208, 196, 226, 0.3)",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.boxShadow =
+                          "0 10px 15px -3px rgba(47, 60, 150, 0.1), 0 4px 6px -2px rgba(47, 60, 150, 0.05)";
+                        e.currentTarget.style.borderColor =
+                          "rgba(47, 60, 150, 0.4)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.boxShadow =
+                          "0 1px 2px 0 rgba(0, 0, 0, 0.05)";
+                        e.currentTarget.style.borderColor =
+                          "rgba(208, 196, 226, 0.3)";
+                      }}
                     >
-                      <div className="p-5">
+                      <div className="p-5 flex flex-col flex-grow">
                         {/* Match Progress Bar */}
                         {t.matchPercentage !== undefined && (
                           <div className="mb-4">
                             <div className="flex items-center justify-between mb-2">
                               <div className="flex items-center gap-2">
-                                <TrendingUp className="w-4 h-4 text-indigo-600" />
-                                <span className="text-sm font-bold text-indigo-700">
+                                <TrendingUp
+                                  className="w-4 h-4"
+                                  style={{ color: "#2F3C96" }}
+                                />
+                                <span
+                                  className="text-sm font-bold"
+                                  style={{ color: "#2F3C96" }}
+                                >
                                   {t.matchPercentage}% Match
                                 </span>
                               </div>
+                              {/* Status Badge */}
+                              {t.status && (
+                                <span
+                                  className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(
+                                    t.status
+                                  )}`}
+                                >
+                                  {t.status.replace(/_/g, " ")}
+                                </span>
+                              )}
                             </div>
                             {/* Progress Bar */}
-                            <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                            <div
+                              className="w-full h-2.5 rounded-full overflow-hidden"
+                              style={{
+                                backgroundColor: "rgba(208, 196, 226, 0.3)",
+                              }}
+                            >
                               <div
-                                className="h-full bg-gradient-to-r from-indigo-500 to-blue-500 rounded-full transition-all duration-500"
-                                style={{ width: `${t.matchPercentage}%` }}
+                                className="h-full rounded-full transition-all duration-500"
+                                style={{
+                                  width: `${t.matchPercentage}%`,
+                                  background:
+                                    "linear-gradient(90deg, #2F3C96, #253075)",
+                                }}
                               ></div>
                             </div>
                           </div>
                         )}
 
-                        {/* Header */}
-                        <div className="flex items-start justify-between mb-3">
-                          <span className="inline-flex items-center px-2.5 py-1 bg-indigo-100 text-indigo-700 text-xs font-medium rounded-full">
-                            <Beaker className="w-3 h-3 mr-1" />
-                            {t._id || t.id || `TRIAL-${idx + 1}`}
-                          </span>
-                          {t.status && (
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border bg-orange-50 text-orange-700 border-orange-200">
-                              {t.status.replace(/_/g, " ")}
-                            </span>
-                          )}
+                        {/* Title */}
+                        <div className="mb-4">
+                          <h3
+                            className="text-lg font-bold mb-0 line-clamp-3 leading-snug"
+                            style={{ color: "#2F3C96" }}
+                          >
+                            {t.title}
+                          </h3>
                         </div>
 
-                        {/* Title */}
-                        <h3 className="text-base font-bold text-slate-900 mb-3 line-clamp-2">
-                          {t.title}
-                        </h3>
-
                         {/* Basic Info */}
-                        <div className="space-y-1.5 mb-3 text-sm text-slate-700">
+                        <div className="space-y-1.5 mb-4">
                           {t.conditions && (
-                            <div className="flex items-center gap-2">
-                              <Info className="w-3.5 h-3.5 text-indigo-600" />
+                            <div
+                              className="flex items-center text-sm"
+                              style={{ color: "#787878" }}
+                            >
+                              <Info className="w-3.5 h-3.5 mr-2 shrink-0" />
                               <span className="line-clamp-1">
                                 {Array.isArray(t.conditions)
                                   ? t.conditions.join(", ")
@@ -1749,37 +2045,100 @@ export default function DashboardPatient() {
                             </div>
                           )}
                           {t.phase && (
-                            <div className="flex items-center gap-2 text-slate-600">
-                              <Calendar className="w-3.5 h-3.5" /> Phase{" "}
-                              {t.phase}
+                            <div
+                              className="flex items-center text-sm"
+                              style={{ color: "#787878" }}
+                            >
+                              <Calendar className="w-3.5 h-3.5 mr-2 shrink-0" />{" "}
+                              Phase {t.phase}
                             </div>
                           )}
                         </div>
 
-                        {/* Description with Info Button */}
+                        {/* Description/Details Preview */}
                         {(t.description || t.conditionDescription) && (
-                          <div className="mb-3">
+                          <div className="mb-4 flex-grow">
                             <button
                               onClick={() => openTrialDetailsModal(t)}
-                              className="w-full flex items-center gap-2 text-sm text-slate-700 hover:text-indigo-700 font-medium py-2 px-3 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
+                              className="w-full text-left text-sm py-2 px-3 rounded-lg transition-all duration-200 border group"
+                              style={{
+                                backgroundColor: "rgba(208, 196, 226, 0.2)",
+                                borderColor: "rgba(47, 60, 150, 0.2)",
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.backgroundColor =
+                                  "rgba(208, 196, 226, 0.3)";
+                                e.currentTarget.style.borderColor =
+                                  "rgba(47, 60, 150, 0.3)";
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.backgroundColor =
+                                  "rgba(208, 196, 226, 0.2)";
+                                e.currentTarget.style.borderColor =
+                                  "rgba(47, 60, 150, 0.2)";
+                              }}
                             >
-                              <Info className="w-4 h-4" />
-                              <span className="flex-1 text-left line-clamp-2">
-                                {t.description ||
-                                  t.conditionDescription ||
-                                  "View details for more information"}
-                              </span>
+                              <div className="flex items-start gap-2">
+                                <Info
+                                  className="w-4 h-4 mt-0.5 shrink-0 transition-colors duration-200"
+                                  style={{ color: "#2F3C96" }}
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <div
+                                    className="transition-colors duration-200"
+                                    style={{ color: "#787878" }}
+                                  >
+                                    <span className="line-clamp-2">
+                                      {t.description ||
+                                        t.conditionDescription ||
+                                        "View details for more information"}
+                                    </span>
+                                  </div>
+                                  <div
+                                    className="mt-1.5 flex items-center gap-1 font-medium transition-all duration-200"
+                                    style={{ color: "#2F3C96" }}
+                                  >
+                                    <span>Read more details</span>
+                                    <span className="inline-block group-hover:translate-x-0.5 transition-transform duration-200">
+                                      →
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
                             </button>
                           </div>
                         )}
 
-                        {/* Buttons */}
-                        <div className="flex gap-2 mt-4">
+                        {/* Spacer for trials without description */}
+                        {!t.description && !t.conditionDescription && (
+                          <div className="flex-grow"></div>
+                        )}
+
+                        {/* Action Buttons */}
+                        <div className="flex gap-2 mt-auto">
                           <button
                             onClick={() => generateSummary(t, "trial")}
-                            className="flex-1 flex items-center justify-center gap-2 py-2 bg-gradient-to-r from-slate-600 to-slate-700 text-white rounded-lg text-sm font-semibold hover:from-slate-700 hover:to-slate-800 transition-all shadow-sm"
+                            disabled={true}
+                            className="flex-1 flex items-center justify-center gap-2 py-2 text-white rounded-lg text-sm font-semibold transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                            style={{
+                              background:
+                                "linear-gradient(135deg, #2F3C96, #253075)",
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!e.target.disabled) {
+                                e.target.style.background =
+                                  "linear-gradient(135deg, #253075, #1C2454)";
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!e.target.disabled) {
+                                e.target.style.background =
+                                  "linear-gradient(135deg, #2F3C96, #253075)";
+                              }
+                            }}
                           >
-                            <Sparkles className="w-4 h-4" /> Summarize
+                            <Sparkles className="w-4 h-4" />
+                            Understand this trial
                           </button>
                           <button
                             onClick={() =>
@@ -1796,8 +2155,51 @@ export default function DashboardPatient() {
                                     fav.item?._id === (t._id || t.id))
                               )
                                 ? "bg-red-50 border-red-200 text-red-500"
-                                : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-red-500"
+                                : ""
                             }`}
+                            style={
+                              !favorites.some(
+                                (fav) =>
+                                  fav.type === "trial" &&
+                                  (fav.item?.id === (t._id || t.id) ||
+                                    fav.item?._id === (t._id || t.id))
+                              )
+                                ? {
+                                    backgroundColor: "rgba(208, 196, 226, 0.2)",
+                                    borderColor: "rgba(208, 196, 226, 0.3)",
+                                    color: "#787878",
+                                  }
+                                : {}
+                            }
+                            onMouseEnter={(e) => {
+                              if (
+                                !favorites.some(
+                                  (fav) =>
+                                    fav.type === "trial" &&
+                                    (fav.item?.id === (t._id || t.id) ||
+                                      fav.item?._id === (t._id || t.id))
+                                ) &&
+                                !e.currentTarget.disabled
+                              ) {
+                                e.currentTarget.style.backgroundColor =
+                                  "rgba(208, 196, 226, 0.3)";
+                                e.currentTarget.style.color = "#dc2626";
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (
+                                !favorites.some(
+                                  (fav) =>
+                                    fav.type === "trial" &&
+                                    (fav.item?.id === (t._id || t.id) ||
+                                      fav.item?._id === (t._id || t.id))
+                                )
+                              ) {
+                                e.currentTarget.style.backgroundColor =
+                                  "rgba(208, 196, 226, 0.2)";
+                                e.currentTarget.style.color = "#787878";
+                              }
+                            }}
                           >
                             {favoritingItems.has(
                               getFavoriteKey("trial", t._id || t.id, t)
@@ -1823,22 +2225,49 @@ export default function DashboardPatient() {
                         {/* Contact Button */}
                         <button
                           onClick={() => openContactModal(t)}
-                          className="w-full mt-3 flex items-center justify-center gap-2 py-2.5 px-4 text-sm text-slate-600 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors border border-slate-200 font-medium"
+                          className="flex items-center justify-center gap-2 py-2 text-xs font-medium rounded-lg transition-colors mt-3 w-full"
+                          style={{
+                            color: "#2F3C96",
+                            backgroundColor: "rgba(208, 196, 226, 0.2)",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.target.style.backgroundColor =
+                              "rgba(208, 196, 226, 0.3)";
+                            e.target.style.color = "#253075";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.target.style.backgroundColor =
+                              "rgba(208, 196, 226, 0.2)";
+                            e.target.style.color = "#2F3C96";
+                          }}
                         >
-                          <Send className="w-4 h-4" /> Contact Moderator
+                          <Send className="w-3.5 h-3.5" />
+                          Contact Moderator
                         </button>
                       </div>
                     </div>
                   ))
                 ) : (
                   <div className="col-span-full text-center py-16">
-                    <div className="inline-flex items-center justify-center w-20 h-20 bg-indigo-100 rounded-full mb-4">
-                      <Beaker className="w-10 h-10 text-indigo-400" />
+                    <div
+                      className="inline-flex items-center justify-center w-20 h-20 rounded-full mb-4"
+                      style={{ backgroundColor: "rgba(208, 196, 226, 0.3)" }}
+                    >
+                      <Beaker
+                        className="w-10 h-10"
+                        style={{ color: "#2F3C96" }}
+                      />
                     </div>
-                    <h3 className="text-lg font-semibold text-slate-800 mb-2">
+                    <h3
+                      className="text-lg font-semibold mb-2"
+                      style={{ color: "#2F3C96" }}
+                    >
                       No Clinical Trials Found
                     </h3>
-                    <p className="text-slate-600 text-sm max-w-md mx-auto">
+                    <p
+                      className="text-sm max-w-md mx-auto"
+                      style={{ color: "#787878" }}
+                    >
                       We're working on finding relevant clinical trials for you.
                       Check back soon!
                     </p>
@@ -1861,7 +2290,7 @@ export default function DashboardPatient() {
                       return (
                         <div
                           key={idx}
-                          className="bg-white rounded-xl shadow-sm border transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden"
+                          className="bg-white rounded-xl shadow-sm border transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden flex flex-col h-full"
                           style={{
                             borderColor: "rgba(208, 196, 226, 0.3)",
                           }}
@@ -1878,7 +2307,7 @@ export default function DashboardPatient() {
                               "rgba(208, 196, 226, 0.3)";
                           }}
                         >
-                          <div className="p-5">
+                          <div className="p-5 flex flex-col flex-grow">
                             {/* Match Progress Bar */}
                             {p.matchPercentage !== undefined && (
                               <div className="mb-4">
@@ -1915,45 +2344,23 @@ export default function DashboardPatient() {
                               </div>
                             )}
 
-                            {/* Journal Name - Below Progress Bar */}
-                            {p.journal && (
-                              <div className="mb-3">
-                                <div
-                                  className="flex items-center text-sm"
-                                  style={{ color: "#787878" }}
-                                >
-                                  <BookOpen className="w-3.5 h-3.5 mr-2 shrink-0" />
-                                  <span className="break-words">
-                                    {p.journal}
-                                  </span>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Publication Header */}
-                            <div className="flex items-start justify-between mb-3">
-                              <span
-                                className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full"
-                                style={{
-                                  backgroundColor: "rgba(47, 60, 150, 0.15)",
-                                  color: "#2F3C96",
-                                }}
+                            {/* Publication Title */}
+                            <div className="mb-4">
+                              <h3
+                                className="text-lg font-bold mb-0 line-clamp-3 leading-snug"
+                                style={{ color: "#2F3C96" }}
                               >
-                                <FileText className="w-3 h-3 mr-1" />
-                                {p.pmid ? `PMID: ${p.pmid}` : p.id || "PUB-001"}
-                              </span>
+                                {simplifiedTitles.get(p.title) ||
+                                  p.title ||
+                                  "Untitled Publication"}
+                              </h3>
                             </div>
 
-                            {/* Publication Title */}
-                            <h3
-                              className="text-base font-bold mb-3 line-clamp-2 leading-tight"
-                              style={{ color: "#2F3C96" }}
-                            >
-                              {p.title || "Untitled Publication"}
-                            </h3>
+                            {/* Journal Name - Below Title */}
+                            {}
 
                             {/* Basic Info - Authors and Published Date */}
-                            <div className="space-y-1.5 mb-3">
+                            <div className="space-y-1.5 mb-4">
                               {p.authors &&
                                 Array.isArray(p.authors) &&
                                 p.authors.length > 0 && (
@@ -1983,7 +2390,7 @@ export default function DashboardPatient() {
 
                             {/* Abstract Preview */}
                             {p.abstract && (
-                              <div className="mb-3">
+                              <div className="mb-4 flex-grow">
                                 <button
                                   onClick={() => openPublicationDetailsModal(p)}
                                   className="w-full text-left text-sm py-2 px-3 rounded-lg transition-all duration-200 border group"
@@ -2033,8 +2440,11 @@ export default function DashboardPatient() {
                               </div>
                             )}
 
+                            {/* Spacer for cards without abstract */}
+                            {!p.abstract && <div className="flex-grow"></div>}
+
                             {/* Action Buttons */}
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 mt-auto">
                               <button
                                 onClick={() =>
                                   generateSummary(p, "publication")
@@ -2588,20 +2998,6 @@ export default function DashboardPatient() {
                 </div>
               )}
 
-              {selectedCategory === "trending" && (
-                <div className="col-span-full text-center py-16">
-                  <div className="inline-flex items-center justify-center w-20 h-20 bg-orange-100 rounded-full mb-4">
-                    <Flame className="w-10 h-10 text-orange-400" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-slate-800 mb-2">
-                    No Trending Content
-                  </h3>
-                  <p className="text-slate-600 text-sm max-w-md mx-auto">
-                    Check back later for trending publications and trials!
-                  </p>
-                </div>
-              )}
-
               {selectedCategory === "favorites" &&
                 (favorites.length > 0 ? (
                   [...favorites]
@@ -2637,7 +3033,9 @@ export default function DashboardPatient() {
                               <Star className="w-5 h-5 text-amber-500 fill-amber-500" />
                             </div>
                             <h4 className="font-bold text-slate-900 text-base line-clamp-2 mb-3">
-                              {item.title || item.name || "Untitled"}
+                              {fav.type === "publication" && item.title
+                                ? simplifiedTitles.get(item.title) || item.title
+                                : item.title || item.name || "Untitled"}
                             </h4>
                             {item.journal && (
                               <div className="flex items-center gap-2 text-sm text-slate-600 mb-2">
@@ -2714,219 +3112,427 @@ export default function DashboardPatient() {
       <Modal
         isOpen={trialDetailsModal.open}
         onClose={closeTrialDetailsModal}
-        title="Trial Details"
+        title="Clinical Trial Details"
       >
         {trialDetailsModal.trial && (
-          <div className="space-y-6">
-            {/* Header */}
-            <div className="pb-4 border-b border-slate-200">
-              <div className="flex items-center gap-3 mb-2">
-                <Beaker className="w-5 h-5 text-indigo-600" />
-                <h4 className="font-bold text-slate-900 text-lg">
-                  {trialDetailsModal.trial.title}
-                </h4>
-              </div>
-              <div className="flex flex-wrap gap-2 mt-2">
-                <span className="inline-flex items-center px-2.5 py-1 bg-indigo-100 text-indigo-700 text-xs font-medium rounded-full border border-indigo-200">
-                  {trialDetailsModal.trial._id ||
-                    trialDetailsModal.trial.id ||
-                    "N/A"}
-                </span>
-                {trialDetailsModal.trial.status && (
-                  <span
-                    className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(
-                      trialDetailsModal.trial.status
-                    )}`}
+          <div className="flex flex-col h-full -mx-6 -my-6">
+            <div className="space-y-6 flex-1 overflow-y-auto px-6 pt-6 pb-24">
+              {/* Header */}
+              <div
+                className="pb-4 border-b sticky top-0 bg-white z-10 -mt-6 pt-6 -mx-6 px-6"
+                style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+              >
+                <div className="flex items-center gap-3 mb-2">
+                  <Beaker className="w-5 h-5" style={{ color: "#2F3C96" }} />
+                  <h4
+                    className="font-bold text-lg"
+                    style={{ color: "#2F3C96" }}
                   >
-                    {trialDetailsModal.trial.status.replace(/_/g, " ")}
-                  </span>
-                )}
-                {trialDetailsModal.trial.phase && (
-                  <span className="inline-flex items-center px-2.5 py-1 bg-slate-100 text-slate-700 text-xs font-medium rounded-full border border-slate-200">
-                    Phase {trialDetailsModal.trial.phase}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Description */}
-            {(trialDetailsModal.trial.description ||
-              trialDetailsModal.trial.conditionDescription) && (
-              <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-                <h4 className="font-bold text-slate-900 mb-3 flex items-center gap-2 text-base">
-                  <FileText className="w-5 h-5 text-indigo-600" />
-                  Description
-                </h4>
-                <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-line">
-                  {trialDetailsModal.trial.description ||
-                    trialDetailsModal.trial.conditionDescription}
-                </p>
-              </div>
-            )}
-
-            {/* Location */}
-            {trialDetailsModal.trial.location &&
-              trialDetailsModal.trial.location !== "Not specified" && (
-                <div className="bg-green-50 rounded-xl p-4 border border-green-200">
-                  <h4 className="font-bold text-slate-900 mb-3 flex items-center gap-2 text-base">
-                    <MapPin className="w-5 h-5 text-green-600" />
-                    Trial Locations
+                    {trialDetailsModal.trial.title}
                   </h4>
-                  <p className="text-sm text-slate-700 leading-relaxed">
-                    {trialDetailsModal.trial.location}
+                </div>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  <span
+                    className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full border"
+                    style={{
+                      backgroundColor: "rgba(209, 211, 229, 1)",
+                      color: "#253075",
+                      borderColor: "rgba(163, 167, 203, 1)",
+                    }}
+                  >
+                    {trialDetailsModal.trial._id ||
+                      trialDetailsModal.trial.id ||
+                      "N/A"}
+                  </span>
+                  {trialDetailsModal.trial.status && (
+                    <span
+                      className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(
+                        trialDetailsModal.trial.status
+                      )}`}
+                    >
+                      {trialDetailsModal.trial.status.replace(/_/g, " ")}
+                    </span>
+                  )}
+                  {trialDetailsModal.trial.phase && (
+                    <span
+                      className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full border"
+                      style={{
+                        backgroundColor: "#F5F5F5",
+                        color: "#787878",
+                        borderColor: "rgba(232, 232, 232, 1)",
+                      }}
+                    >
+                      Phase {trialDetailsModal.trial.phase}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* 1. Study Purpose */}
+              {(trialDetailsModal.trial.description ||
+                trialDetailsModal.trial.conditionDescription) && (
+                <div
+                  className="bg-gradient-to-br rounded-xl p-5 mt-10 border shadow-sm"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, rgba(232, 233, 242, 1), rgba(245, 242, 248, 1))",
+                    borderColor: "rgba(163, 167, 203, 1)",
+                  }}
+                >
+                  <h4
+                    className="font-bold mb-3 flex items-center gap-2 text-base"
+                    style={{ color: "#2F3C96" }}
+                  >
+                    <FileText
+                      className="w-5 h-5"
+                      style={{ color: "#2F3C96" }}
+                    />
+                    Study Purpose
+                  </h4>
+                  <p
+                    className="text-sm leading-relaxed whitespace-pre-line"
+                    style={{ color: "#787878" }}
+                  >
+                    {trialDetailsModal.trial.description ||
+                      trialDetailsModal.trial.conditionDescription}
                   </p>
                 </div>
               )}
 
-            {/* Conditions */}
-            {trialDetailsModal.trial.conditions?.length > 0 && (
-              <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
-                <h4 className="font-bold text-slate-900 mb-3 flex items-center gap-2 text-base">
-                  <Activity className="w-5 h-5 text-blue-600" />
-                  Conditions
-                </h4>
-                <div className="flex flex-wrap gap-2">
-                  {trialDetailsModal.trial.conditions.map((condition, idx) => (
-                    <span
-                      key={idx}
-                      className="px-3 py-1.5 bg-white text-blue-700 text-sm font-medium rounded-lg border border-blue-300 shadow-sm"
+              {/* 2. Who Can Join (Eligibility) */}
+              {trialDetailsModal.trial.eligibility && (
+                <div
+                  className="bg-gradient-to-br rounded-xl p-5 border shadow-sm"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, rgba(245, 242, 248, 1), rgba(232, 224, 239, 1))",
+                    borderColor: "#D0C4E2",
+                  }}
+                >
+                  <h4
+                    className="font-bold mb-4 flex items-center gap-2 text-base"
+                    style={{ color: "#2F3C96" }}
+                  >
+                    <ListChecks
+                      className="w-5 h-5"
+                      style={{ color: "#2F3C96" }}
+                    />
+                    Who Can Join (Eligibility)
+                  </h4>
+
+                  {/* Quick Eligibility Info Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                    {/* Gender */}
+                    <div
+                      className="bg-white rounded-lg p-3 border shadow-sm"
+                      style={{ borderColor: "rgba(232, 224, 239, 1)" }}
                     >
-                      {condition}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Eligibility */}
-            {trialDetailsModal.trial.eligibility && (
-              <div className="bg-gradient-to-br from-indigo-50 to-blue-50 rounded-xl p-5 border border-indigo-200">
-                <h4 className="font-bold text-slate-900 mb-4 flex items-center gap-2 text-base">
-                  <ListChecks className="w-5 h-5 text-indigo-600" />
-                  Eligibility Criteria
-                </h4>
-
-                {/* Quick Eligibility Info Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-                  {/* Gender */}
-                  <div className="bg-white rounded-lg p-3 border border-indigo-100 shadow-sm">
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <Users className="w-4 h-4 text-indigo-600" />
-                      <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                        Gender
-                      </span>
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <Users
+                          className="w-4 h-4"
+                          style={{ color: "#2F3C96" }}
+                        />
+                        <span
+                          className="text-xs font-semibold uppercase tracking-wide"
+                          style={{ color: "#787878" }}
+                        >
+                          Gender
+                        </span>
+                      </div>
+                      <p
+                        className="text-sm font-bold"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        {trialDetailsModal.trial.eligibility.gender || "All"}
+                      </p>
                     </div>
-                    <p className="text-sm font-bold text-slate-900">
-                      {trialDetailsModal.trial.eligibility.gender || "All"}
-                    </p>
+
+                    {/* Age Range */}
+                    <div
+                      className="bg-white rounded-lg p-3 border shadow-sm"
+                      style={{ borderColor: "rgba(232, 224, 239, 1)" }}
+                    >
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <Calendar
+                          className="w-4 h-4"
+                          style={{ color: "#2F3C96" }}
+                        />
+                        <span
+                          className="text-xs font-semibold uppercase tracking-wide"
+                          style={{ color: "#787878" }}
+                        >
+                          Age Range
+                        </span>
+                      </div>
+                      <p
+                        className="text-sm font-bold"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        {trialDetailsModal.trial.eligibility.minimumAge !==
+                          "Not specified" &&
+                        trialDetailsModal.trial.eligibility.minimumAge
+                          ? trialDetailsModal.trial.eligibility.minimumAge
+                          : "N/A"}
+                        {" - "}
+                        {trialDetailsModal.trial.eligibility.maximumAge !==
+                          "Not specified" &&
+                        trialDetailsModal.trial.eligibility.maximumAge
+                          ? trialDetailsModal.trial.eligibility.maximumAge
+                          : "N/A"}
+                      </p>
+                    </div>
+
+                    {/* Healthy Volunteers */}
+                    <div
+                      className="bg-white rounded-lg p-3 border shadow-sm"
+                      style={{ borderColor: "rgba(232, 224, 239, 1)" }}
+                    >
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <CheckCircle
+                          className="w-4 h-4"
+                          style={{ color: "#2F3C96" }}
+                        />
+                        <span
+                          className="text-xs font-semibold uppercase tracking-wide"
+                          style={{ color: "#787878" }}
+                        >
+                          Volunteers
+                        </span>
+                      </div>
+                      <p
+                        className="text-sm font-bold"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        {trialDetailsModal.trial.eligibility
+                          .healthyVolunteers || "Unknown"}
+                      </p>
+                    </div>
                   </div>
 
-                  {/* Age Range */}
-                  <div className="bg-white rounded-lg p-3 border border-indigo-100 shadow-sm">
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <Calendar className="w-4 h-4 text-indigo-600" />
-                      <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                        Age Range
-                      </span>
-                    </div>
-                    <p className="text-sm font-bold text-slate-900">
-                      {trialDetailsModal.trial.eligibility.minimumAge !==
-                        "Not specified" &&
-                      trialDetailsModal.trial.eligibility.minimumAge
-                        ? trialDetailsModal.trial.eligibility.minimumAge
-                        : "N/A"}
-                      {" - "}
-                      {trialDetailsModal.trial.eligibility.maximumAge !==
-                        "Not specified" &&
-                      trialDetailsModal.trial.eligibility.maximumAge
-                        ? trialDetailsModal.trial.eligibility.maximumAge
-                        : "N/A"}
-                    </p>
-                  </div>
+                  {/* Detailed Eligibility Criteria */}
+                  {trialDetailsModal.trial.eligibility.criteria &&
+                    trialDetailsModal.trial.eligibility.criteria !==
+                      "Not specified" && (
+                      <div
+                        className="mt-4 pt-4 border-t"
+                        style={{ borderColor: "#D0C4E2" }}
+                      >
+                        <h5
+                          className="font-semibold mb-3 flex items-center gap-2 text-sm"
+                          style={{ color: "#2F3C96" }}
+                        >
+                          <Info
+                            className="w-4 h-4"
+                            style={{ color: "#2F3C96" }}
+                          />
+                          Detailed Eligibility Criteria
+                        </h5>
+                        <div
+                          className="bg-white rounded-lg p-4 border"
+                          style={{ borderColor: "rgba(232, 224, 239, 1)" }}
+                        >
+                          <p
+                            className="text-sm leading-relaxed whitespace-pre-line"
+                            style={{ color: "#787878" }}
+                          >
+                            {trialDetailsModal.trial.eligibility.criteria}
+                          </p>
+                        </div>
+                      </div>
+                    )}
 
-                  {/* Healthy Volunteers */}
-                  <div className="bg-white rounded-lg p-3 border border-indigo-100 shadow-sm">
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <CheckCircle className="w-4 h-4 text-indigo-600" />
-                      <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                        Volunteers
-                      </span>
-                    </div>
-                    <p className="text-sm font-bold text-slate-900">
-                      {trialDetailsModal.trial.eligibility.healthyVolunteers ||
-                        "Unknown"}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Detailed Eligibility Criteria */}
-                {trialDetailsModal.trial.eligibility.criteria &&
-                  trialDetailsModal.trial.eligibility.criteria !==
-                    "Not specified" && (
-                    <div className="mt-4 pt-4 border-t border-indigo-200">
-                      <h5 className="font-semibold text-slate-800 mb-3 flex items-center gap-2 text-sm">
-                        <Info className="w-4 h-4 text-indigo-600" />
-                        Detailed Eligibility Criteria
+                  {/* Study Population Description */}
+                  {trialDetailsModal.trial.eligibility.population && (
+                    <div
+                      className="mt-4 pt-4 border-t"
+                      style={{ borderColor: "#D0C4E2" }}
+                    >
+                      <h5
+                        className="font-semibold mb-3 flex items-center gap-2 text-sm"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        <Users
+                          className="w-4 h-4"
+                          style={{ color: "#2F3C96" }}
+                        />
+                        Study Population
                       </h5>
-                      <div className="bg-white rounded-lg p-4 border border-indigo-100">
-                        <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-line">
-                          {trialDetailsModal.trial.eligibility.criteria}
+                      <div
+                        className="bg-white rounded-lg p-4 border"
+                        style={{ borderColor: "rgba(232, 224, 239, 1)" }}
+                      >
+                        <p
+                          className="text-sm leading-relaxed whitespace-pre-line"
+                          style={{ color: "#787878" }}
+                        >
+                          {trialDetailsModal.trial.eligibility.population}
                         </p>
                       </div>
                     </div>
                   )}
-              </div>
-            )}
+                </div>
+              )}
 
-            {/* Contacts */}
-            {trialDetailsModal.trial.contacts?.length > 0 && (
-              <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-                <h4 className="font-bold text-slate-900 mb-3 flex items-center gap-2 text-base">
-                  <User className="w-5 h-5 text-indigo-600" />
-                  Contact Information
-                </h4>
-                <div className="space-y-3">
-                  {trialDetailsModal.trial.contacts.map((contact, i) => (
-                    <div
-                      key={i}
-                      className="bg-white rounded-lg p-4 border border-slate-200 shadow-sm"
-                    >
-                      {contact.name && (
-                        <div className="font-bold text-slate-900 mb-2 text-sm">
-                          {contact.name}
-                        </div>
-                      )}
-                      <div className="space-y-1.5">
-                        {contact.email && (
-                          <a
-                            href={`mailto:${contact.email}`}
-                            className="flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+              {/* 3. Contact Information */}
+              {trialDetailsModal.trial.contacts?.length > 0 && (
+                <div
+                  className="bg-gradient-to-br rounded-xl p-5 border shadow-sm"
+                  style={{
+                    background: "linear-gradient(135deg, #F5F5F5, #F5F5F5)",
+                    borderColor: "rgba(232, 232, 232, 1)",
+                  }}
+                >
+                  <h4
+                    className="font-bold mb-4 flex items-center gap-2 text-base"
+                    style={{ color: "#2F3C96" }}
+                  >
+                    <Mail className="w-5 h-5" style={{ color: "#787878" }} />
+                    Contact Information
+                  </h4>
+                  <div className="space-y-3">
+                    {trialDetailsModal.trial.contacts.map((contact, i) => (
+                      <div
+                        key={i}
+                        className="bg-white rounded-lg p-4 border shadow-sm"
+                        style={{ borderColor: "rgba(232, 232, 232, 1)" }}
+                      >
+                        {contact.name && (
+                          <div
+                            className="font-bold mb-3 text-base flex items-center gap-2"
+                            style={{ color: "#2F3C96" }}
                           >
-                            <Mail className="w-4 h-4" />
-                            {contact.email}
-                          </a>
-                        )}
-                        {contact.phone && (
-                          <div className="flex items-center gap-2 text-sm text-slate-700">
-                            <span className="text-indigo-600">📞</span>
-                            {contact.phone}
+                            <User
+                              className="w-4 h-4"
+                              style={{ color: "#787878" }}
+                            />
+                            {contact.name}
                           </div>
                         )}
+                        <div className="space-y-2">
+                          {contact.email && (
+                            <a
+                              href={`mailto:${contact.email}`}
+                              className="flex items-center gap-2 text-sm font-medium transition-colors"
+                              style={{ color: "#2F3C96" }}
+                              onMouseEnter={(e) =>
+                                (e.target.style.color = "#253075")
+                              }
+                              onMouseLeave={(e) =>
+                                (e.target.style.color = "#2F3C96")
+                              }
+                            >
+                              <Mail className="w-4 h-4" />
+                              {contact.email}
+                            </a>
+                          )}
+                          {contact.phone && (
+                            <div
+                              className="flex items-center gap-2 text-sm"
+                              style={{ color: "#787878" }}
+                            >
+                              <span style={{ color: "#2F3C96" }}>📞</span>
+                              <a
+                                href={`tel:${contact.phone}`}
+                                className="transition-colors"
+                                style={{ color: "#787878" }}
+                                onMouseEnter={(e) =>
+                                  (e.target.style.color = "#2F3C96")
+                                }
+                                onMouseLeave={(e) =>
+                                  (e.target.style.color = "#787878")
+                                }
+                              >
+                                {contact.phone}
+                              </a>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* ClinicalTrials.gov Link */}
+              {/* Additional Information */}
+              <div
+                className="space-y-4 pt-4 border-t"
+                style={{ borderColor: "rgba(232, 232, 232, 1)" }}
+              >
+                {/* Conditions */}
+                {trialDetailsModal.trial.conditions?.length > 0 && (
+                  <div
+                    className="rounded-xl p-4 border"
+                    style={{
+                      backgroundColor: "rgba(245, 242, 248, 1)",
+                      borderColor: "#D0C4E2",
+                    }}
+                  >
+                    <h4
+                      className="font-bold mb-3 flex items-center gap-2 text-sm"
+                      style={{ color: "#2F3C96" }}
+                    >
+                      <Activity
+                        className="w-4 h-4"
+                        style={{ color: "#2F3C96" }}
+                      />
+                      Conditions Studied
+                    </h4>
+                    <div className="flex flex-wrap gap-2">
+                      {trialDetailsModal.trial.conditions.map(
+                        (condition, idx) => (
+                          <span
+                            key={idx}
+                            className="px-3 py-1.5 bg-white text-sm font-medium rounded-lg border shadow-sm"
+                            style={{ color: "#2F3C96", borderColor: "#D0C4E2" }}
+                          >
+                            {condition}
+                          </span>
+                        )
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Location */}
+                {trialDetailsModal.trial.location &&
+                  trialDetailsModal.trial.location !== "Not specified" && (
+                    <div className="bg-green-50 rounded-xl p-4 border border-green-200">
+                      <h4
+                        className="font-bold mb-3 flex items-center gap-2 text-sm"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        <MapPin className="w-4 h-4 text-green-600" />
+                        Trial Locations
+                      </h4>
+                      <p
+                        className="text-sm leading-relaxed"
+                        style={{ color: "#787878" }}
+                      >
+                        {trialDetailsModal.trial.location}
+                      </p>
+                    </div>
+                  )}
+              </div>
+            </div>
+
+            {/* Sticky Footer with ClinicalTrials.gov Link */}
             {trialDetailsModal.trial.clinicalTrialsGovUrl && (
-              <div className="pt-4 border-t border-slate-200">
+              <div
+                className=" -bottom-10 px-6 pb-6 pt-4 border-t bg-white/95 backdrop-blur-sm shadow-lg  "
+                style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+              >
                 <a
                   href={trialDetailsModal.trial.clinicalTrialsGovUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 py-2.5 px-4 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-semibold"
+                  className="flex items-center justify-center gap-2 py-3 px-4 text-white rounded-lg transition-colors text-sm font-semibold shadow-md hover:shadow-lg w-full"
+                  style={{ backgroundColor: "#2F3C96" }}
+                  onMouseEnter={(e) =>
+                    (e.target.style.backgroundColor = "#253075")
+                  }
+                  onMouseLeave={(e) =>
+                    (e.target.style.backgroundColor = "#2F3C96")
+                  }
                 >
                   <ExternalLink className="w-4 h-4" />
                   View Full Details on ClinicalTrials.gov
@@ -3345,7 +3951,7 @@ export default function DashboardPatient() {
 
             {/* Sticky Actions Footer */}
             <div
-              className="sticky bottom-0 px-6 py-4 border-t bg-white/95 backdrop-blur-sm shadow-lg"
+              className=" bottom-0 px-6 py-4 border-t bg-white/95 backdrop-blur-sm shadow-lg"
               style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
             >
               <div className="flex flex-wrap gap-3">
@@ -3525,23 +4131,33 @@ export default function DashboardPatient() {
         title="Key Insights"
       >
         <div className="space-y-4">
-          <div className="pb-4 border-b border-indigo-200">
+          <div
+            className="pb-4 border-b"
+            style={{ borderColor: "rgba(208, 196, 226, 0.5)" }}
+          >
             <div className="flex items-center gap-3 mb-2">
               {summaryModal.type === "trial" ? (
-                <Beaker className="w-5 h-5 text-indigo-600" />
+                <Beaker className="w-5 h-5" style={{ color: "#2F3C96" }} />
               ) : (
-                <FileText className="w-5 h-5 text-blue-600" />
+                <FileText className="w-5 h-5" style={{ color: "#2F3C96" }} />
               )}
-              <h4 className="font-bold text-indigo-900 text-lg">
+              <h4 className="font-bold text-lg" style={{ color: "#2F3C96" }}>
                 {summaryModal.title}
               </h4>
             </div>
             <span
-              className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
+              className="inline-block px-3 py-1 rounded-full text-xs font-semibold"
+              style={
                 summaryModal.type === "trial"
-                  ? "bg-indigo-100 text-indigo-700"
-                  : "bg-blue-100 text-blue-700"
-              }`}
+                  ? {
+                      backgroundColor: "rgba(232, 224, 239, 0.8)",
+                      color: "#2F3C96",
+                    }
+                  : {
+                      backgroundColor: "rgba(232, 224, 239, 0.8)",
+                      color: "#2F3C96",
+                    }
+              }
             >
               {summaryModal.type === "trial"
                 ? "Clinical Trial"
@@ -3550,19 +4166,40 @@ export default function DashboardPatient() {
           </div>
           {summaryModal.loading ? (
             <div className="space-y-4 py-4">
-              <div className="flex items-center gap-2 text-indigo-600 mb-4">
+              <div
+                className="flex items-center gap-2 mb-4"
+                style={{ color: "#2F3C96" }}
+              >
                 <Sparkles className="w-4 h-4 animate-pulse" />
                 <span className="text-sm font-medium">
                   Preparing structured insights…
                 </span>
               </div>
               <div className="animate-pulse space-y-3">
-                <div className="h-4 bg-indigo-100 rounded"></div>
-                <div className="h-4 bg-indigo-100 rounded w-5/6"></div>
-                <div className="h-4 bg-indigo-100 rounded w-4/6"></div>
-                <div className="h-4 bg-indigo-100 rounded w-full mt-2"></div>
-                <div className="h-4 bg-indigo-100 rounded w-5/6"></div>
-                <div className="h-4 bg-indigo-100 rounded w-3/4"></div>
+                <div
+                  className="h-4 rounded"
+                  style={{ backgroundColor: "rgba(232, 224, 239, 0.5)" }}
+                ></div>
+                <div
+                  className="h-4 rounded w-5/6"
+                  style={{ backgroundColor: "rgba(232, 224, 239, 0.5)" }}
+                ></div>
+                <div
+                  className="h-4 rounded w-4/6"
+                  style={{ backgroundColor: "rgba(232, 224, 239, 0.5)" }}
+                ></div>
+                <div
+                  className="h-4 rounded w-full mt-2"
+                  style={{ backgroundColor: "rgba(232, 224, 239, 0.5)" }}
+                ></div>
+                <div
+                  className="h-4 rounded w-5/6"
+                  style={{ backgroundColor: "rgba(232, 224, 239, 0.5)" }}
+                ></div>
+                <div
+                  className="h-4 rounded w-3/4"
+                  style={{ backgroundColor: "rgba(232, 224, 239, 0.5)" }}
+                ></div>
               </div>
             </div>
           ) : summaryModal.type === "publication" &&
@@ -3573,16 +4210,32 @@ export default function DashboardPatient() {
             <div className="space-y-5 py-2">
               {/* Core Message - Most Important First */}
               {summaryModal.summary.coreMessage && (
-                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-5 border-2 border-blue-200 shadow-sm">
+                <div
+                  className="rounded-xl p-5 border-2 shadow-sm"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, rgba(232, 224, 239, 0.6), rgba(245, 242, 248, 0.8))",
+                    borderColor: "rgba(208, 196, 226, 0.6)",
+                  }}
+                >
                   <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center shrink-0 mt-0.5">
+                    <div
+                      className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 mt-0.5"
+                      style={{ backgroundColor: "#2F3C96" }}
+                    >
                       <Sparkles className="w-5 h-5 text-white" />
                     </div>
                     <div className="flex-1">
-                      <h5 className="font-bold text-blue-900 text-base mb-2">
+                      <h5
+                        className="font-bold text-base mb-2"
+                        style={{ color: "#2F3C96" }}
+                      >
                         Key Finding
                       </h5>
-                      <p className="text-blue-800 text-sm leading-relaxed">
+                      <p
+                        className="text-sm leading-relaxed"
+                        style={{ color: "#253075" }}
+                      >
                         {summaryModal.summary.coreMessage}
                       </p>
                     </div>
@@ -3592,19 +4245,37 @@ export default function DashboardPatient() {
 
               {/* What Section */}
               {summaryModal.summary.what && (
-                <div className="bg-white rounded-lg p-4 border-l-4 border-indigo-500 shadow-sm hover:shadow-md transition-shadow">
+                <div
+                  className="bg-white rounded-lg p-4 border-l-4 shadow-sm hover:shadow-md transition-shadow"
+                  style={{ borderLeftColor: "#2F3C96" }}
+                >
                   <div className="flex items-start gap-3">
-                    <div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center shrink-0">
-                      <FileText className="w-4 h-4 text-indigo-600" />
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: "rgba(232, 224, 239, 0.6)" }}
+                    >
+                      <FileText
+                        className="w-4 h-4"
+                        style={{ color: "#2F3C96" }}
+                      />
                     </div>
                     <div className="flex-1">
-                      <h5 className="font-semibold text-slate-900 text-sm mb-2 flex items-center gap-2">
-                        <span className="w-6 h-6 bg-indigo-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                      <h5
+                        className="font-semibold text-sm mb-2 flex items-center gap-2"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        <span
+                          className="w-6 h-6 text-white rounded-full flex items-center justify-center text-xs font-bold"
+                          style={{ backgroundColor: "#2F3C96" }}
+                        >
                           1
                         </span>
                         What This Study Was About
                       </h5>
-                      <p className="text-slate-700 text-sm leading-relaxed">
+                      <p
+                        className="text-sm leading-relaxed"
+                        style={{ color: "#787878" }}
+                      >
                         {summaryModal.summary.what}
                       </p>
                     </div>
@@ -3614,19 +4285,34 @@ export default function DashboardPatient() {
 
               {/* Why Section */}
               {summaryModal.summary.why && (
-                <div className="bg-white rounded-lg p-4 border-l-4 border-blue-500 shadow-sm hover:shadow-md transition-shadow">
+                <div
+                  className="bg-white rounded-lg p-4 border-l-4 shadow-sm hover:shadow-md transition-shadow"
+                  style={{ borderLeftColor: "#D0C4E2" }}
+                >
                   <div className="flex items-start gap-3">
-                    <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center shrink-0">
-                      <Heart className="w-4 h-4 text-blue-600" />
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: "rgba(232, 224, 239, 0.6)" }}
+                    >
+                      <Heart className="w-4 h-4" style={{ color: "#2F3C96" }} />
                     </div>
                     <div className="flex-1">
-                      <h5 className="font-semibold text-slate-900 text-sm mb-2 flex items-center gap-2">
-                        <span className="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                      <h5
+                        className="font-semibold text-sm mb-2 flex items-center gap-2"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        <span
+                          className="w-6 h-6 text-white rounded-full flex items-center justify-center text-xs font-bold"
+                          style={{ backgroundColor: "#D0C4E2" }}
+                        >
                           2
                         </span>
                         Why This Research Matters
                       </h5>
-                      <p className="text-slate-700 text-sm leading-relaxed">
+                      <p
+                        className="text-sm leading-relaxed"
+                        style={{ color: "#787878" }}
+                      >
                         {summaryModal.summary.why}
                       </p>
                     </div>
@@ -3636,19 +4322,37 @@ export default function DashboardPatient() {
 
               {/* How Section */}
               {summaryModal.summary.how && (
-                <div className="bg-white rounded-lg p-4 border-l-4 border-emerald-500 shadow-sm hover:shadow-md transition-shadow">
+                <div
+                  className="bg-white rounded-lg p-4 border-l-4 shadow-sm hover:shadow-md transition-shadow"
+                  style={{ borderLeftColor: "#253075" }}
+                >
                   <div className="flex items-start gap-3">
-                    <div className="w-8 h-8 bg-emerald-100 rounded-lg flex items-center justify-center shrink-0">
-                      <ListChecks className="w-4 h-4 text-emerald-600" />
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: "rgba(232, 224, 239, 0.6)" }}
+                    >
+                      <ListChecks
+                        className="w-4 h-4"
+                        style={{ color: "#2F3C96" }}
+                      />
                     </div>
                     <div className="flex-1">
-                      <h5 className="font-semibold text-slate-900 text-sm mb-2 flex items-center gap-2">
-                        <span className="w-6 h-6 bg-emerald-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                      <h5
+                        className="font-semibold text-sm mb-2 flex items-center gap-2"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        <span
+                          className="w-6 h-6 text-white rounded-full flex items-center justify-center text-xs font-bold"
+                          style={{ backgroundColor: "#253075" }}
+                        >
                           3
                         </span>
                         How They Did The Study
                       </h5>
-                      <p className="text-slate-700 text-sm leading-relaxed">
+                      <p
+                        className="text-sm leading-relaxed"
+                        style={{ color: "#787878" }}
+                      >
                         {summaryModal.summary.how}
                       </p>
                     </div>
@@ -3658,19 +4362,41 @@ export default function DashboardPatient() {
 
               {/* So What Section */}
               {summaryModal.summary.soWhat && (
-                <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg p-4 border-l-4 border-purple-500 shadow-sm hover:shadow-md transition-shadow">
+                <div
+                  className="rounded-lg p-4 border-l-4 shadow-sm hover:shadow-md transition-shadow"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, rgba(232, 224, 239, 0.4), rgba(245, 242, 248, 0.6))",
+                    borderLeftColor: "#D0C4E2",
+                  }}
+                >
                   <div className="flex items-start gap-3">
-                    <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center shrink-0">
-                      <TrendingUp className="w-4 h-4 text-purple-600" />
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: "rgba(232, 224, 239, 0.6)" }}
+                    >
+                      <TrendingUp
+                        className="w-4 h-4"
+                        style={{ color: "#2F3C96" }}
+                      />
                     </div>
                     <div className="flex-1">
-                      <h5 className="font-semibold text-slate-900 text-sm mb-2 flex items-center gap-2">
-                        <span className="w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                      <h5
+                        className="font-semibold text-sm mb-2 flex items-center gap-2"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        <span
+                          className="w-6 h-6 text-white rounded-full flex items-center justify-center text-xs font-bold"
+                          style={{ backgroundColor: "#D0C4E2" }}
+                        >
                           4
                         </span>
                         What This Means For You
                       </h5>
-                      <p className="text-slate-700 text-sm leading-relaxed">
+                      <p
+                        className="text-sm leading-relaxed"
+                        style={{ color: "#787878" }}
+                      >
                         {summaryModal.summary.soWhat}
                       </p>
                     </div>
@@ -3680,16 +4406,31 @@ export default function DashboardPatient() {
 
               {/* Key Takeaway */}
               {summaryModal.summary.keyTakeaway && (
-                <div className="bg-amber-50 rounded-xl p-4 border-2 border-amber-200 shadow-sm">
+                <div
+                  className="rounded-xl p-4 border-2 shadow-sm"
+                  style={{
+                    backgroundColor: "rgba(232, 224, 239, 0.3)",
+                    borderColor: "rgba(208, 196, 226, 0.6)",
+                  }}
+                >
                   <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 bg-amber-400 rounded-full flex items-center justify-center shrink-0">
+                    <div
+                      className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: "#2F3C96" }}
+                    >
                       <AlertCircle className="w-5 h-5 text-white" />
                     </div>
                     <div className="flex-1">
-                      <h5 className="font-bold text-amber-900 text-sm mb-2">
+                      <h5
+                        className="font-bold text-sm mb-2"
+                        style={{ color: "#2F3C96" }}
+                      >
                         Remember This
                       </h5>
-                      <p className="text-amber-800 text-sm leading-relaxed font-medium">
+                      <p
+                        className="text-sm leading-relaxed font-medium"
+                        style={{ color: "#253075" }}
+                      >
                         {summaryModal.summary.keyTakeaway}
                       </p>
                     </div>
@@ -3697,10 +4438,134 @@ export default function DashboardPatient() {
                 </div>
               )}
             </div>
+          ) : summaryModal.type === "trial" &&
+            summaryModal.summary &&
+            typeof summaryModal.summary === "object" &&
+            summaryModal.summary.structured ? (
+            // Structured Trial Summary
+            <div className="space-y-4">
+              {/* General Summary */}
+              {summaryModal.summary.generalSummary && (
+                <div
+                  className="bg-white rounded-lg p-4 border-l-4 shadow-sm hover:shadow-md transition-shadow"
+                  style={{ borderLeftColor: "#2F3C96" }}
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: "rgba(232, 224, 239, 0.6)" }}
+                    >
+                      <Info className="w-4 h-4" style={{ color: "#2F3C96" }} />
+                    </div>
+                    <div className="flex-1">
+                      <h5
+                        className="font-semibold text-sm mb-2"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        Overview
+                      </h5>
+                      <p
+                        className="text-sm leading-relaxed"
+                        style={{ color: "#787878" }}
+                      >
+                        {summaryModal.summary.generalSummary}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* What Happens (Procedures, Schedule, Treatments) */}
+              {summaryModal.summary.procedures && (
+                <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-green-100">
+                      <Activity className="w-4 h-4 text-green-600" />
+                    </div>
+                    <div className="flex-1">
+                      <h5
+                        className="font-semibold text-sm mb-2 flex items-center gap-2"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        <span className="w-6 h-6 text-white rounded-full flex items-center justify-center text-xs font-bold bg-green-500">
+                          1
+                        </span>
+                        What Happens (Procedures, Schedule, Treatments)
+                      </h5>
+                      <p
+                        className="text-sm leading-relaxed"
+                        style={{ color: "#787878" }}
+                      >
+                        {summaryModal.summary.procedures}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Potential Risks and Benefits */}
+              {summaryModal.summary.risksBenefits && (
+                <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-lg p-4 border border-amber-200 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-amber-100">
+                      <AlertCircle className="w-4 h-4 text-amber-600" />
+                    </div>
+                    <div className="flex-1">
+                      <h5
+                        className="font-semibold text-sm mb-2 flex items-center gap-2"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        <span className="w-6 h-6 text-white rounded-full flex items-center justify-center text-xs font-bold bg-amber-500">
+                          2
+                        </span>
+                        Potential Risks and Benefits
+                      </h5>
+                      <p
+                        className="text-sm leading-relaxed"
+                        style={{ color: "#787878" }}
+                      >
+                        {summaryModal.summary.risksBenefits}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* What Participants Need to Do */}
+              {summaryModal.summary.participantRequirements && (
+                <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg p-4 border border-purple-200 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-purple-100">
+                      <CheckCircle className="w-4 h-4 text-purple-600" />
+                    </div>
+                    <div className="flex-1">
+                      <h5
+                        className="font-semibold text-sm mb-2 flex items-center gap-2"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        <span className="w-6 h-6 text-white rounded-full flex items-center justify-center text-xs font-bold bg-purple-500">
+                          3
+                        </span>
+                        What Participants Need to Do
+                      </h5>
+                      <p
+                        className="text-sm leading-relaxed"
+                        style={{ color: "#787878" }}
+                      >
+                        {summaryModal.summary.participantRequirements}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           ) : (
-            // Fallback for non-structured summaries (trials or old format)
+            // Fallback for non-structured summaries (old format)
             <div className="py-2">
-              <p className="text-indigo-800 text-sm leading-relaxed whitespace-pre-wrap">
+              <p
+                className="text-sm leading-relaxed whitespace-pre-wrap"
+                style={{ color: "#2F3C96" }}
+              >
                 {typeof summaryModal.summary === "object"
                   ? summaryModal.summary.summary || "Summary unavailable"
                   : summaryModal.summary || "Summary unavailable"}
@@ -3916,10 +4781,6 @@ export default function DashboardPatient() {
                     {contactModal.trial?.title || "Trial"}
                   </h4>
                 </div>
-                <p className="text-sm text-slate-600">
-                  Trial ID:{" "}
-                  {contactModal.trial?.id || contactModal.trial?._id || "N/A"}
-                </p>
               </div>
 
               <div>
@@ -4010,7 +4871,7 @@ export default function DashboardPatient() {
                       setFilterModalOpen(false);
                     }}
                     className={`w-full text-left px-4 py-2 rounded-lg border transition-all ${
-                      !trialFilter
+                      !trialFilter || trialFilter === ""
                         ? "bg-indigo-50 border-indigo-300 text-indigo-700 font-medium"
                         : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
                     }`}
