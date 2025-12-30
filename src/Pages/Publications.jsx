@@ -28,6 +28,10 @@ import FreeSearchesIndicator, {
   useFreeSearches,
 } from "../components/FreeSearchesIndicator.jsx";
 import apiFetch from "../utils/api.js";
+import {
+  incrementLocalSearchCount,
+  syncWithBackend,
+} from "../utils/searchLimit.js";
 
 export default function Publications() {
   const navigate = useNavigate();
@@ -160,6 +164,8 @@ export default function Publications() {
           { duration: 4000 }
         );
         setLoading(false);
+        // Sync with backend to update local storage
+        syncWithBackend().catch(console.error);
         window.dispatchEvent(new Event("freeSearchUsed"));
         return;
       }
@@ -169,6 +175,9 @@ export default function Publications() {
 
       // Handle remaining searches from server response
       if (!isUserSignedIn && data.remaining !== undefined) {
+        // Increment local storage count (for immediate UI update)
+        incrementLocalSearchCount();
+        
         const remaining = data.remaining;
         if (remaining === 0) {
           toast(
@@ -183,7 +192,10 @@ export default function Publications() {
             { duration: 3000 }
           );
         }
+        // Update remaining searches indicator and sync with backend
         window.dispatchEvent(new Event("freeSearchUsed"));
+        // Sync with backend to ensure accuracy
+        syncWithBackend().catch(console.error);
       }
 
       // Sort by matchPercentage in descending order (highest first)
@@ -293,6 +305,8 @@ export default function Publications() {
               { duration: 4000 }
             );
             setLoading(false);
+            // Sync with backend to update local storage
+            syncWithBackend().catch(console.error);
             window.dispatchEvent(new Event("freeSearchUsed"));
             return;
           }
@@ -305,6 +319,9 @@ export default function Publications() {
 
           // Handle remaining searches from server response
           if (!isUserSignedIn && data.remaining !== undefined) {
+            // Increment local storage count (for immediate UI update)
+            incrementLocalSearchCount();
+            
             const remaining = data.remaining;
             if (remaining === 0) {
               toast(
@@ -319,7 +336,10 @@ export default function Publications() {
                 { duration: 3000 }
               );
             }
+            // Update remaining searches indicator and sync with backend
             window.dispatchEvent(new Event("freeSearchUsed"));
+            // Sync with backend to ensure accuracy
+            syncWithBackend().catch(console.error);
           }
 
           // Sort by matchPercentage in descending order (highest first)

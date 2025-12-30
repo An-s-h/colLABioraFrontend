@@ -4,98 +4,65 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles, X, LogIn, ArrowRight, Loader2 } from "lucide-react";
-import apiFetch from "../utils/api.js";
+import {
+  getLocalRemainingSearches,
+  syncWithBackend,
+  shouldSyncWithBackend,
+  resetLocalSearchCount,
+  MAX_FREE_SEARCHES,
+} from "../utils/searchLimit.js";
 
-const FREE_SEARCHES_TOTAL = 6;
 const FREE_SEARCHES_POPUP_KEY = "free_searches_popup_shown";
-const FREE_SEARCHES_CACHE_KEY = "free_searches_cache";
-const CACHE_TTL = 30000; // 30 seconds cache
-
-// Helper to get cached searches
-function getCachedSearches() {
-  try {
-    const cached = localStorage.getItem(FREE_SEARCHES_CACHE_KEY);
-    if (!cached) return null;
-    const { value, timestamp } = JSON.parse(cached);
-    const now = Date.now();
-    if (now - timestamp < CACHE_TTL) {
-      return value;
-    }
-    localStorage.removeItem(FREE_SEARCHES_CACHE_KEY);
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-// Helper to cache searches
-function setCachedSearches(value) {
-  try {
-    localStorage.setItem(
-      FREE_SEARCHES_CACHE_KEY,
-      JSON.stringify({ value, timestamp: Date.now() })
-    );
-  } catch {
-    // Ignore storage errors
-  }
-}
 
 export default function FreeSearchesIndicator({ user, onSearch }) {
   const navigate = useNavigate();
-  // Initialize with cached value for instant display
-  const cachedValue = getCachedSearches();
-  const [freeSearches, setFreeSearches] = useState(
-    cachedValue !== null ? cachedValue : FREE_SEARCHES_TOTAL
-  );
-  const [loadingSearches, setLoadingSearches] = useState(cachedValue === null);
+  // Initialize with local storage value for instant display
+  const localRemaining = getLocalRemainingSearches();
+  const [freeSearches, setFreeSearches] = useState(localRemaining);
+  const [loadingSearches, setLoadingSearches] = useState(false);
   const [showPopup, setShowPopup] = useState(false);
 
   useEffect(() => {
     if (user) {
+      // User is signed in - reset local count and hide indicator
+      resetLocalSearchCount();
       setShowPopup(false);
+      setFreeSearches(null);
       return;
     }
 
-    // Load free searches from server with caching
-    const updateFreeSearches = async (forceRefresh = false) => {
-      // Check cache first (unless forcing refresh)
-      if (!forceRefresh) {
-        const cached = getCachedSearches();
-        if (cached !== null) {
-          setFreeSearches(cached);
-          setLoadingSearches(false);
-          // Still fetch in background to update cache
-          updateFreeSearches(true);
-          return;
-        }
-      }
+    // Update from local storage immediately
+    const updateFromLocal = () => {
+      const remaining = getLocalRemainingSearches();
+      setFreeSearches(remaining);
+    };
 
-      setLoadingSearches(true);
-      try {
-        const response = await apiFetch("/api/search/remaining");
-        if (response && response.ok) {
-          const data = await response.json();
-          const newValue = data.unlimited
-            ? null
-            : data.remaining ?? FREE_SEARCHES_TOTAL;
-          setFreeSearches(newValue);
-          setCachedSearches(newValue);
-        } else {
-          // Fallback to cached or default if API fails
-          const cached = getCachedSearches();
-          setFreeSearches(cached !== null ? cached : FREE_SEARCHES_TOTAL);
+    // Sync with backend
+    const syncAndUpdate = async (forceSync = false) => {
+      if (forceSync || shouldSyncWithBackend()) {
+        setLoadingSearches(true);
+        try {
+          const result = await syncWithBackend();
+          if (result.unlimited) {
+            setFreeSearches(null);
+          } else {
+            setFreeSearches(result.remaining);
+          }
+        } catch (error) {
+          console.error("Error syncing with backend:", error);
+          // Fallback to local storage value
+          updateFromLocal();
+        } finally {
+          setLoadingSearches(false);
         }
-      } catch (error) {
-        console.error("Error fetching remaining searches:", error);
-        // Use cached value on error
-        const cached = getCachedSearches();
-        setFreeSearches(cached !== null ? cached : FREE_SEARCHES_TOTAL);
-      } finally {
-        setLoadingSearches(false);
+      } else {
+        // Just update from local storage
+        updateFromLocal();
       }
     };
 
-    updateFreeSearches();
+    // Initial sync
+    syncAndUpdate(true);
 
     // Check if popup has been shown before
     const popupShown = localStorage.getItem(FREE_SEARCHES_POPUP_KEY);
@@ -107,18 +74,24 @@ export default function FreeSearchesIndicator({ user, onSearch }) {
 
     // Listen for custom event for same-tab updates
     const handleFreeSearchUsed = () => {
-      // Clear cache immediately when search is used to force fresh fetch
-      localStorage.removeItem(FREE_SEARCHES_CACHE_KEY);
-      // Small delay to ensure backend has updated the count
+      // Update from local storage immediately
+      updateFromLocal();
+      // Sync with backend after a short delay
       setTimeout(() => {
-        updateFreeSearches(true); // Force refresh
+        syncAndUpdate(true);
       }, 500);
     };
 
     window.addEventListener("freeSearchUsed", handleFreeSearchUsed);
 
+    // Periodic sync with backend (every 5 seconds)
+    const syncInterval = setInterval(() => {
+      syncAndUpdate();
+    }, 5000);
+
     return () => {
       window.removeEventListener("freeSearchUsed", handleFreeSearchUsed);
+      clearInterval(syncInterval);
     };
   }, [user]);
 
@@ -305,34 +278,39 @@ export default function FreeSearchesIndicator({ user, onSearch }) {
 
 // Export function to check and get remaining free searches
 export function useFreeSearches() {
-  const [freeSearches, setFreeSearches] = useState(FREE_SEARCHES_TOTAL);
+  const [freeSearches, setFreeSearches] = useState(
+    getLocalRemainingSearches()
+  );
 
   useEffect(() => {
+    const user = JSON.parse(localStorage.getItem("user") || "null");
+    const token = localStorage.getItem("token");
+
+    // Signed-in users have unlimited searches
+    if (user && token) {
+      resetLocalSearchCount();
+      setFreeSearches(null);
+      return;
+    }
+
     const updateFreeSearches = async () => {
-      const user = JSON.parse(localStorage.getItem("user") || "null");
-      const token = localStorage.getItem("token");
+      // Update from local storage immediately
+      const localRemaining = getLocalRemainingSearches();
+      setFreeSearches(localRemaining);
 
-      // Signed-in users have unlimited searches
-      if (user && token) {
-        setFreeSearches(null);
-        return;
-      }
-
-      try {
-        const response = await apiFetch("/api/search/remaining");
-        if (response && response.ok) {
-          const data = await response.json();
-          if (data.unlimited) {
+      // Sync with backend if needed
+      if (shouldSyncWithBackend()) {
+        try {
+          const result = await syncWithBackend();
+          if (result.unlimited) {
             setFreeSearches(null);
           } else {
-            setFreeSearches(data.remaining ?? FREE_SEARCHES_TOTAL);
+            setFreeSearches(result.remaining);
           }
-        } else {
-          setFreeSearches(FREE_SEARCHES_TOTAL);
+        } catch (error) {
+          console.error("Error syncing with backend:", error);
+          // Keep local value on error
         }
-      } catch (error) {
-        console.error("Error fetching remaining searches:", error);
-        setFreeSearches(FREE_SEARCHES_TOTAL);
       }
     };
 
@@ -354,25 +332,23 @@ export function useFreeSearches() {
       return true;
     }
 
-    // Check remaining searches from server
+    // Check local storage first for immediate feedback
+    const localRemaining = getLocalRemainingSearches();
+    if (localRemaining <= 0) {
+      return false;
+    }
+
+    // Also check with backend (backend is source of truth)
     try {
-      const response = await apiFetch("/api/search/remaining");
-      if (response && response.ok) {
-        const data = await response.json();
-        if (data.unlimited) {
-          return true;
-        }
-        const remaining = data.remaining ?? 0;
-        if (remaining <= 0) {
-          return false;
-        }
-        // The actual decrement happens on the server when the search is performed
+      const result = await syncWithBackend();
+      if (result.unlimited) {
         return true;
       }
-      return false;
+      return result.remaining > 0;
     } catch (error) {
       console.error("Error checking search limit:", error);
-      return false;
+      // If backend check fails, use local storage value
+      return localRemaining > 0;
     }
   };
 
@@ -385,17 +361,15 @@ export function useFreeSearches() {
       return null;
     }
 
-    try {
-      const response = await apiFetch("/api/search/remaining");
-      if (response && response.ok) {
-        const data = await response.json();
-        return data.unlimited ? null : data.remaining ?? FREE_SEARCHES_TOTAL;
-      }
-      return FREE_SEARCHES_TOTAL;
-    } catch (error) {
-      console.error("Error getting remaining searches:", error);
-      return FREE_SEARCHES_TOTAL;
+    // Return local value immediately, sync in background
+    const localRemaining = getLocalRemainingSearches();
+    
+    // Sync with backend if needed
+    if (shouldSyncWithBackend()) {
+      syncWithBackend().catch(console.error);
     }
+
+    return localRemaining;
   };
 
   return { freeSearches, checkAndUseSearch, getRemainingSearches };
