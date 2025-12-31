@@ -46,7 +46,7 @@ export default function ResearchInterestInput({
       return matchesTerm || matchesScopeNote || matchesSynonym;
     });
 
-    // Sort by relevance (exact matches first, then by position of match)
+    // Sort by relevance - prioritize alphabetical terms over code-like terms
     return filtered
       .sort((a, b) => {
         const aTerm = a.term.toLowerCase();
@@ -54,9 +54,29 @@ export default function ResearchInterestInput({
         const aStarts = aTerm.startsWith(searchTerm);
         const bStarts = bTerm.startsWith(searchTerm);
         
+        // Both start with search term
+        if (aStarts && bStarts) {
+          // Check if next character after search term is a letter (alphabetical) or hyphen/number (code-like)
+          const aNextChar = aTerm[searchTerm.length];
+          const bNextChar = bTerm[searchTerm.length];
+          
+          // Check if next character is alphabetical (letter) or code-like (hyphen, number, etc.)
+          const aIsAlphabetical = aNextChar && /[a-z]/.test(aNextChar);
+          const bIsAlphabetical = bNextChar && /[a-z]/.test(bNextChar);
+          
+          // Prioritize alphabetical terms over code-like terms
+          if (aIsAlphabetical && !bIsAlphabetical) return -1;
+          if (!aIsAlphabetical && bIsAlphabetical) return 1;
+          
+          // Both same type, sort alphabetically
+          return aTerm.localeCompare(bTerm);
+        }
+        
+        // One starts with search term, prioritize it
         if (aStarts && !bStarts) return -1;
         if (!aStarts && bStarts) return 1;
         
+        // Neither starts with search term, sort alphabetically
         return aTerm.localeCompare(bTerm);
       })
       .slice(0, maxSuggestions);
