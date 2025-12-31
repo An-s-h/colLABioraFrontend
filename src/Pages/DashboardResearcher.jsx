@@ -39,6 +39,7 @@ import Modal from "../components/ui/Modal";
 import { MultiStepLoader } from "../components/ui/multi-step-loader";
 import { useProfile } from "../contexts/ProfileContext.jsx";
 import AnimatedBackgroundDiff from "../components/ui/AnimatedBackgroundDiff.jsx";
+import ScrollToTop from "../components/ui/ScrollToTop.jsx";
 
 export default function DashboardResearcher() {
   const [data, setData] = useState({
@@ -4297,6 +4298,7 @@ export default function DashboardResearcher() {
           </div>
         )}
       </Modal>
+      <ScrollToTop />
     </div>
   );
 }

@@ -44,6 +44,7 @@ import { MultiStepLoader } from "../components/ui/multi-step-loader";
 import { useProfile } from "../contexts/ProfileContext.jsx";
 import AnimatedBackground from "../components/ui/AnimatedBackground.jsx";
 import { getSimplifiedTitle } from "../utils/titleSimplifier.js";
+import ScrollToTop from "../components/ui/ScrollToTop.jsx";
 
 export default function DashboardPatient() {
   const [data, setData] = useState({
@@ -1351,7 +1352,17 @@ export default function DashboardPatient() {
       case "trials":
         return data.trials.length;
       case "experts":
-        return globalExperts.length + data.experts.length;
+        // Count unique experts by name to avoid duplicates
+        const expertNames = new Set();
+        [...data.experts, ...globalExperts].forEach((expert) => {
+          if (expert.name) {
+            expertNames.add(expert.name);
+          } else if (expert.id || expert._id || expert.orcid) {
+            // Fallback to ID if no name
+            expertNames.add(expert.id || expert._id || expert.orcid);
+          }
+        });
+        return expertNames.size - 1;
       case "forums":
         return forumsCategories.filter(
           (category) => (category.threadCount || 0) >= 2
@@ -1520,8 +1531,6 @@ export default function DashboardPatient() {
             </div>
           </div>
         </div>
-
-        
 
         {/* Main Content Section - Full Width */}
         <div className="mb-8">
@@ -1694,84 +1703,6 @@ export default function DashboardPatient() {
                   </p>
                 </div>
               </div>
-
-              {/* Expert Type Toggles - Only show for experts category */}
-              {selectedCategory === "experts" && (
-                <div className="mb-6 flex items-center gap-3 flex-wrap">
-                  <button
-                    onClick={() => {
-                      // Toggle: selecting this one deselects the other
-                      setShowCollabioraExperts(true);
-                      setShowGlobalExperts(false);
-                    }}
-                    className={`relative flex items-center gap-2 px-5 py-2.5 rounded-xl border-2 transition-all duration-200 font-semibold cursor-pointer hover:shadow-md ${
-                      showCollabioraExperts
-                        ? "bg-emerald-600 text-white border-emerald-600 shadow-lg scale-105"
-                        : "bg-white text-slate-700 border-slate-300 hover:border-emerald-300 hover:bg-emerald-50"
-                    }`}
-                  >
-                    <div
-                      className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
-                        showCollabioraExperts
-                          ? "bg-white border-white"
-                          : "bg-slate-200 border-slate-400"
-                      }`}
-                    >
-                      {showCollabioraExperts && (
-                        <div className="w-2 h-2 bg-emerald-600 rounded-full"></div>
-                      )}
-                    </div>
-                    <Users className="w-4 h-4 shrink-0" />
-                    <span className="text-sm font-bold">
-                      Collabiora Experts
-                    </span>
-                    <span
-                      className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                        showCollabioraExperts
-                          ? "bg-white/30 text-white"
-                          : "bg-slate-200 text-slate-600"
-                      }`}
-                    >
-                      {data.experts.length}
-                    </span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      // Toggle: selecting this one deselects the other
-                      setShowGlobalExperts(true);
-                      setShowCollabioraExperts(false);
-                    }}
-                    className={`relative flex items-center gap-2 px-5 py-2.5 rounded-xl border-2 transition-all duration-200 font-semibold cursor-pointer hover:shadow-md ${
-                      showGlobalExperts
-                        ? "bg-purple-600 text-white border-purple-600 shadow-lg scale-105"
-                        : "bg-white text-slate-700 border-slate-300 hover:border-purple-300 hover:bg-purple-50"
-                    }`}
-                  >
-                    <div
-                      className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
-                        showGlobalExperts
-                          ? "bg-white border-white"
-                          : "bg-slate-200 border-slate-400"
-                      }`}
-                    >
-                      {showGlobalExperts && (
-                        <div className="w-2 h-2 bg-purple-600 rounded-full"></div>
-                      )}
-                    </div>
-                    <Users className="w-4 h-4 shrink-0" />
-                    <span className="text-sm font-bold">Global Experts</span>
-                    <span
-                      className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                        showGlobalExperts
-                          ? "bg-white/30 text-white"
-                          : "bg-slate-200 text-slate-600"
-                      }`}
-                    >
-                      {globalExperts.length}
-                    </span>
-                  </button>
-                </div>
-              )}
             </div>
 
             {/* Grid of Items - Larger Cards - Full Width with 3 columns */}
@@ -1962,8 +1893,7 @@ export default function DashboardPatient() {
                         <div className="flex gap-2 mt-auto">
                           <button
                             onClick={() => generateSummary(t, "trial")}
-                            disabled={true}
-                            className="flex-1 flex items-center justify-center gap-2 py-2 text-white rounded-lg text-sm font-semibold transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="flex-1 flex items-center justify-center gap-2 py-2 text-white rounded-lg text-sm font-semibold transition-all shadow-sm"
                             style={{
                               background:
                                 "linear-gradient(135deg, #2F3C96, #253075)",
@@ -2424,353 +2354,1288 @@ export default function DashboardPatient() {
                 ))}
 
               {selectedCategory === "experts" && (
-                <>
-                  {/* Experts Grid */}
+                <div className="col-span-full">
+                  {/* Experts List - Recommended Experts First, Then Global Experts */}
                   {(() => {
-                    const filteredExperts = [];
-                    if (showCollabioraExperts) {
-                      filteredExperts.push(
-                        ...sortByMatchPercentage(data.experts)
-                      );
-                    }
-                    if (showGlobalExperts) {
-                      filteredExperts.push(
-                        ...sortByMatchPercentage(globalExperts)
-                      );
-                    }
+                    const collabioraExperts = sortByMatchPercentage(
+                      data.experts
+                    ).slice(0, 6);
+                    const globalExpertsList =
+                      sortByMatchPercentage(globalExperts);
+                    const hasRecommendedExperts = collabioraExperts.length > 0;
+                    const hasGlobalExperts = globalExpertsList.length > 0;
 
-                    return filteredExperts.length > 0 ? (
-                      filteredExperts.map((e, idx) => {
-                        const expertId =
-                          e.name ||
-                          e.id ||
-                          e._id ||
-                          e.userId ||
-                          `expert-${idx}`;
-                        const itemId = e.name || e.orcid || e.id || e._id;
-                        const isCuralinkExpert = !!(e._id || e.userId); // Check if it's a CuraLink expert
-                        const medicalInterests = isCuralinkExpert
-                          ? [...(e.specialties || []), ...(e.interests || [])]
-                          : e.researchInterests || [];
-                        const locationText =
-                          isCuralinkExpert && e.location
-                            ? typeof e.location === "string"
-                              ? e.location
-                              : `${e.location.city || ""}${
-                                  e.location.city && e.location.country
-                                    ? ", "
-                                    : ""
-                                }${e.location.country || ""}`.trim()
-                            : e.location || null;
-
-                        // Check if expert is favorited by exact name match (consistent with Experts.jsx)
-                        const isFavorited = favorites.some((fav) => {
-                          if (fav.type !== "expert") return false;
-
-                          // Check by exact name match (primary identifier)
-                          if (e.name && fav.item?.name) {
-                            return fav.item.name === e.name;
-                          }
-
-                          // Fallback: check by id
-                          if (
-                            fav.item?.id === itemId ||
-                            fav.item?._id === itemId ||
-                            fav.item?.orcid === itemId
-                          ) {
-                            return true;
-                          }
-
-                          return false;
-                        });
-
-                        return (
-                          <div
-                            key={expertId}
-                            className="bg-white rounded-xl shadow-sm border border-slate-200 hover:shadow-lg hover:border-purple-300 transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden"
-                          >
-                            <div className="p-5">
-                              {/* Match Badge Banner */}
-                              {e.matchPercentage !== undefined && (
-                                <div className="mb-3 -mt-2 -mx-5 px-5 py-2 bg-gradient-to-r from-purple-50 to-indigo-50 border-b border-purple-100">
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                      <TrendingUp className="w-4 h-4 text-purple-600" />
-                                      <span className="text-sm font-bold text-purple-700">
-                                        {e.matchPercentage}% Match
-                                      </span>
-                                    </div>
-                                    {e.matchExplanation && (
-                                      <span className="text-xs text-purple-600 truncate flex-1 ml-2 max-w-[200px] sm:max-w-none">
-                                        {e.matchExplanation}
-                                      </span>
-                                    )}
+                    return hasRecommendedExperts || hasGlobalExperts ? (
+                      <div className="space-y-8">
+                        {/* Recommended Experts Section */}
+                        {hasRecommendedExperts && (
+                          <>
+                            <div className="col-span-full">
+                              <div
+                                className="mb-8 p-6 rounded-2xl border-2 shadow-lg"
+                                style={{
+                                  background:
+                                    "linear-gradient(135deg, rgba(47, 60, 150, 0.1), rgba(37, 48, 117, 0.05))",
+                                  borderColor: "rgba(208, 196, 226, 0.3)",
+                                }}
+                              >
+                                <div className="flex items-start gap-4">
+                                  <div
+                                    className="w-12 h-12 rounded-xl flex items-center justify-center shadow-md"
+                                    style={{
+                                      background:
+                                        "linear-gradient(135deg, #2F3C96, #253075)",
+                                    }}
+                                  >
+                                    <UserPlus className="w-6 h-6 text-white" />
                                   </div>
-                                </div>
-                              )}
-
-                              <div className="flex items-start gap-4 mb-4">
-                                {/* Avatar */}
-                                <div className="w-14 h-14 bg-gradient-to-br from-purple-600 via-purple-600 to-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-xl shadow-md shrink-0 ring-2 ring-purple-100">
-                                  {e.name?.charAt(0)?.toUpperCase() || "E"}
-                                </div>
-
-                                {/* Main Content */}
-                                <div className="flex-1 min-w-0">
-                                  {/* Header */}
-                                  <div className="flex items-start justify-between mb-1.5">
-                                    <div className="flex-1 min-w-0">
-                                      <h3 className="text-base font-bold text-slate-900 mb-1 leading-tight">
-                                        {e.name || "Unknown Expert"}
-                                      </h3>
-                                      {e.orcid && (
-                                        <span className="text-sm text-slate-500 font-mono">
-                                          {e.orcid}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <button
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        toggleFavorite("expert", itemId, e);
-                                      }}
-                                      disabled={favoritingItems.has(
-                                        getFavoriteKey("expert", itemId, e)
-                                      )}
-                                      title={
-                                        isFavorited
-                                          ? "Remove from favorites"
-                                          : "Add to favorites"
-                                      }
-                                      className={`p-1.5 rounded-md border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
-                                        isFavorited
-                                          ? "bg-red-50 border-red-200 text-red-500 shadow-sm"
-                                          : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-red-500"
-                                      }`}
+                                  <div className="flex-1">
+                                    <h3
+                                      className="text-2xl font-bold mb-2 flex items-center gap-2"
+                                      style={{ color: "#2F3C96" }}
                                     >
-                                      {favoritingItems.has(
-                                        getFavoriteKey("expert", itemId, e)
-                                      ) ? (
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                      ) : (
-                                        <Heart
-                                          className={`w-4 h-4 ${
-                                            isFavorited ? "fill-current" : ""
-                                          }`}
-                                        />
-                                      )}
-                                    </button>
+                                      Recommended Experts
+                                      <span
+                                        className="text-sm font-normal px-3 py-1 rounded-full"
+                                        style={{
+                                          backgroundColor:
+                                            "rgba(208, 196, 226, 0.3)",
+                                          color: "#253075",
+                                        }}
+                                      >
+                                        {collabioraExperts.length}{" "}
+                                        {collabioraExperts.length === 1
+                                          ? "Expert"
+                                          : "Experts"}
+                                      </span>
+                                    </h3>
+                                    <p
+                                      className="text-sm leading-relaxed"
+                                      style={{ color: "#787878" }}
+                                    >
+                                      Connect with leading researchers and
+                                      experts in your field. Explore their
+                                      profiles, publications, and research
+                                      interests.
+                                    </p>
                                   </div>
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                                {collabioraExperts.map((e, idx) => {
+                                  const isCuralinkExpert = !!(
+                                    e._id || e.userId
+                                  );
+                                  const expertId =
+                                    e.name ||
+                                    e.id ||
+                                    e._id ||
+                                    e.userId ||
+                                    `expert-${idx}`;
+                                  const itemId =
+                                    e.name || e.orcid || e.id || e._id;
+                                  const medicalInterests = isCuralinkExpert
+                                    ? [
+                                        ...(e.specialties || []),
+                                        ...(e.interests || []),
+                                      ]
+                                    : e.researchInterests || [];
+                                  const locationText =
+                                    isCuralinkExpert && e.location
+                                      ? typeof e.location === "string"
+                                        ? e.location
+                                        : `${e.location.city || ""}${
+                                            e.location.city &&
+                                            e.location.country
+                                              ? ", "
+                                              : ""
+                                          }${e.location.country || ""}`.trim()
+                                      : e.location || null;
 
-                                  {/* Basic Info */}
-                                  <div className="space-y-1 mb-3">
-                                    {isCuralinkExpert ? (
-                                      <>
-                                        {locationText && (
-                                          <div className="flex items-center text-sm text-slate-600">
-                                            <MapPin className="w-3.5 h-3.5 mr-1.5 shrink-0" />
-                                            <span>{locationText}</span>
+                                  // Check if expert is favorited by exact name match (consistent with Experts.jsx)
+                                  const isFavorited = favorites.some((fav) => {
+                                    if (fav.type !== "expert") return false;
+
+                                    // Check by exact name match (primary identifier)
+                                    if (e.name && fav.item?.name) {
+                                      return fav.item.name === e.name;
+                                    }
+
+                                    // Fallback: check by id
+                                    if (
+                                      fav.item?.id === itemId ||
+                                      fav.item?._id === itemId ||
+                                      fav.item?.orcid === itemId
+                                    ) {
+                                      return true;
+                                    }
+
+                                    return false;
+                                  });
+
+                                  return (
+                                    <div
+                                      key={expertId}
+                                      className="bg-white rounded-xl shadow-sm border transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden flex flex-col h-full"
+                                      style={{
+                                        borderColor: "rgba(208, 196, 226, 0.3)",
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        e.currentTarget.style.boxShadow =
+                                          "0 10px 15px -3px rgba(47, 60, 150, 0.1), 0 4px 6px -2px rgba(47, 60, 150, 0.05)";
+                                        e.currentTarget.style.borderColor =
+                                          "rgba(47, 60, 150, 0.4)";
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.currentTarget.style.boxShadow =
+                                          "0 1px 2px 0 rgba(0, 0, 0, 0.05)";
+                                        e.currentTarget.style.borderColor =
+                                          "rgba(208, 196, 226, 0.3)";
+                                      }}
+                                    >
+                                      <div className="p-5 flex flex-col flex-grow">
+                                        {/* Match Progress Bar */}
+                                        {e.matchPercentage !== undefined && (
+                                          <div className="mb-4">
+                                            <div className="flex items-center justify-between mb-2">
+                                              <div className="flex items-center gap-2">
+                                                <TrendingUp
+                                                  className="w-4 h-4"
+                                                  style={{ color: "#2F3C96" }}
+                                                />
+                                                <span
+                                                  className="text-sm font-bold"
+                                                  style={{ color: "#2F3C96" }}
+                                                >
+                                                  {e.matchPercentage}% Match
+                                                </span>
+                                              </div>
+                                              {isCuralinkExpert && (
+                                                <div
+                                                  className="flex items-center gap-1.5 px-2 py-1 rounded-md"
+                                                  style={{
+                                                    backgroundColor:
+                                                      "rgba(208, 196, 226, 0.2)",
+                                                    border:
+                                                      "1px solid rgba(208, 196, 226, 0.3)",
+                                                  }}
+                                                >
+                                                  <CheckCircle
+                                                    className="w-3.5 h-3.5"
+                                                    style={{ color: "#2F3C96" }}
+                                                  />
+                                                  <span
+                                                    className="text-xs font-semibold"
+                                                    style={{ color: "#2F3C96" }}
+                                                  >
+                                                    On Platform
+                                                  </span>
+                                                </div>
+                                              )}
+                                            </div>
+                                            {/* Progress Bar */}
+                                            <div
+                                              className="w-full h-2.5 rounded-full overflow-hidden"
+                                              style={{
+                                                backgroundColor:
+                                                  "rgba(208, 196, 226, 0.3)",
+                                              }}
+                                            >
+                                              <div
+                                                className="h-full rounded-full transition-all duration-500"
+                                                style={{
+                                                  width: `${e.matchPercentage}%`,
+                                                  background:
+                                                    "linear-gradient(90deg, #2F3C96, #253075)",
+                                                }}
+                                              ></div>
+                                            </div>
                                           </div>
                                         )}
-                                      </>
-                                    ) : (
-                                      <>
-                                        {e.currentPosition && (
-                                          <div className="flex items-start text-sm text-slate-700">
-                                            <Briefcase className="w-3.5 h-3.5 mr-1.5 shrink-0 mt-0.5" />
-                                            <span className="flex-1 leading-relaxed">
-                                              {e.currentPosition}
-                                            </span>
-                                          </div>
-                                        )}
-                                        {!e.currentPosition &&
-                                          e.affiliation && (
-                                            <div className="flex items-start text-sm text-slate-700">
-                                              <Building2 className="w-3.5 h-3.5 mr-1.5 shrink-0 mt-0.5" />
-                                              <span className="flex-1 leading-relaxed">
-                                                {e.affiliation}
+
+                                        {/* Available for Meetings - Moved inside card */}
+                                        {isCuralinkExpert &&
+                                          e.available === true && (
+                                            <div
+                                              className="mb-4 flex items-center gap-2 px-3 py-2 rounded-lg border"
+                                              style={{
+                                                backgroundColor:
+                                                  "rgba(208, 196, 226, 0.2)",
+                                                borderColor:
+                                                  "rgba(208, 196, 226, 0.3)",
+                                                color: "#2F3C96",
+                                              }}
+                                            >
+                                              <Calendar className="w-4 h-4" />
+                                              <span className="text-xs font-semibold">
+                                                Available for Meetings
                                               </span>
                                             </div>
                                           )}
-                                        {e.location && (
-                                          <div className="flex items-center text-sm text-slate-600">
-                                            <MapPin className="w-3.5 h-3.5 mr-1.5 shrink-0" />
-                                            <span>{e.location}</span>
+
+                                        <div className="flex items-start gap-4 mb-4">
+                                          {/* Avatar */}
+                                          <div
+                                            className="w-14 h-14 rounded-lg flex items-center justify-center text-white font-bold text-xl shadow-md shrink-0 ring-2"
+                                            style={{
+                                              background:
+                                                "linear-gradient(135deg, #2F3C96, #253075)",
+                                              ringColor:
+                                                "rgba(208, 196, 226, 0.3)",
+                                            }}
+                                          >
+                                            {e.name?.charAt(0)?.toUpperCase() ||
+                                              "E"}
                                           </div>
-                                        )}
-                                      </>
-                                    )}
-                                  </div>
 
-                                  {/* Biography */}
-                                  {(e.biography || e.bio) && (
-                                    <div className="mb-3">
-                                      <p className="text-sm text-slate-700 leading-relaxed line-clamp-2">
-                                        {e.biography || e.bio}
-                                      </p>
-                                    </div>
-                                  )}
+                                          {/* Main Content */}
+                                          <div className="flex-1 min-w-0">
+                                            {/* Header */}
+                                            <div className="mb-1.5">
+                                              <h3
+                                                className="text-lg font-bold mb-1 leading-tight"
+                                                style={{ color: "#2F3C96" }}
+                                              >
+                                                {e.name || "Unknown Expert"}
+                                              </h3>
+                                              {e.orcid && (
+                                                <span className="text-sm text-slate-500 font-mono">
+                                                  {e.orcid}
+                                                </span>
+                                              )}
+                                            </div>
 
-                                  {/* Research Interests / Medical Interests */}
-                                  {medicalInterests.length > 0 && (
-                                    <div className="mb-3">
-                                      <div className="flex flex-wrap gap-1.5">
-                                        {medicalInterests
-                                          .slice(0, 5)
-                                          .map((interest, idx) => (
-                                            <span
-                                              key={idx}
-                                              className="text-xs bg-gradient-to-r from-purple-50 to-slate-50 text-purple-700 px-2 py-0.5 rounded-md border border-purple-200"
-                                            >
-                                              {interest}
-                                            </span>
-                                          ))}
-                                        {medicalInterests.length > 5 && (
-                                          <span className="text-xs text-slate-500 px-2 py-0.5">
-                                            +{medicalInterests.length - 5}
-                                          </span>
-                                        )}
+                                            {/* Basic Info */}
+                                            <div className="space-y-1.5 mb-3">
+                                              {isCuralinkExpert ? (
+                                                <>
+                                                  {locationText && (
+                                                    <div
+                                                      className="flex items-center text-sm"
+                                                      style={{
+                                                        color: "#787878",
+                                                      }}
+                                                    >
+                                                      <MapPin className="w-3.5 h-3.5 mr-2 shrink-0" />
+                                                      <span>
+                                                        {locationText}
+                                                      </span>
+                                                    </div>
+                                                  )}
+                                                </>
+                                              ) : (
+                                                <>
+                                                  {e.currentPosition && (
+                                                    <div
+                                                      className="flex items-start text-sm"
+                                                      style={{
+                                                        color: "#787878",
+                                                      }}
+                                                    >
+                                                      <Briefcase className="w-3.5 h-3.5 mr-2 shrink-0 mt-0.5" />
+                                                      <span className="flex-1 leading-relaxed">
+                                                        {e.currentPosition}
+                                                      </span>
+                                                    </div>
+                                                  )}
+                                                  {!e.currentPosition &&
+                                                    e.affiliation && (
+                                                      <div
+                                                        className="flex items-start text-sm"
+                                                        style={{
+                                                          color: "#787878",
+                                                        }}
+                                                      >
+                                                        <Building2 className="w-3.5 h-3.5 mr-2 shrink-0 mt-0.5" />
+                                                        <span className="flex-1 leading-relaxed">
+                                                          {e.affiliation}
+                                                        </span>
+                                                      </div>
+                                                    )}
+                                                  {e.location && (
+                                                    <div
+                                                      className="flex items-center text-sm"
+                                                      style={{
+                                                        color: "#787878",
+                                                      }}
+                                                    >
+                                                      <MapPin className="w-3.5 h-3.5 mr-2 shrink-0" />
+                                                      <span>{e.location}</span>
+                                                    </div>
+                                                  )}
+                                                </>
+                                              )}
+                                            </div>
+
+                                            {/* Biography */}
+                                            {(e.biography || e.bio) && (
+                                              <div className="mb-3">
+                                                <p
+                                                  className="text-sm leading-relaxed line-clamp-2"
+                                                  style={{ color: "#787878" }}
+                                                >
+                                                  {e.biography || e.bio}
+                                                </p>
+                                              </div>
+                                            )}
+
+                                            {/* Research Interests / Medical Interests */}
+                                            {medicalInterests.length > 0 && (
+                                              <div className="mb-3">
+                                                <div className="flex flex-wrap gap-1.5">
+                                                  {medicalInterests
+                                                    .slice(0, 5)
+                                                    .map((interest, idx) => (
+                                                      <span
+                                                        key={idx}
+                                                        className="text-xs px-2 py-0.5 rounded-md border"
+                                                        style={{
+                                                          backgroundColor:
+                                                            "rgba(208, 196, 226, 0.2)",
+                                                          color: "#2F3C96",
+                                                          borderColor:
+                                                            "rgba(208, 196, 226, 0.3)",
+                                                        }}
+                                                      >
+                                                        {interest}
+                                                      </span>
+                                                    ))}
+                                                  {medicalInterests.length >
+                                                    5 && (
+                                                    <span className="text-xs text-slate-500 px-2 py-0.5">
+                                                      +
+                                                      {medicalInterests.length -
+                                                        5}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        {/* Action Buttons */}
+                                        <div className="flex gap-2 mt-auto">
+                                          {isCuralinkExpert ? (
+                                            <>
+                                              <button
+                                                onClick={() => {
+                                                  const expertUserId =
+                                                    e._id || e.userId || e.id;
+                                                  if (expertUserId) {
+                                                    const params =
+                                                      new URLSearchParams();
+                                                    if (e.name)
+                                                      params.set(
+                                                        "name",
+                                                        e.name
+                                                      );
+                                                    if (locationText)
+                                                      params.set(
+                                                        "location",
+                                                        locationText
+                                                      );
+                                                    if (e.bio)
+                                                      params.set("bio", e.bio);
+                                                    navigate(
+                                                      `/curalink-expert/profile/${expertUserId}?${params.toString()}`
+                                                    );
+                                                  }
+                                                }}
+                                                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-white rounded-lg text-xs font-semibold transition-all shadow-sm"
+                                                style={{
+                                                  background:
+                                                    "linear-gradient(135deg, #2F3C96, #253075)",
+                                                }}
+                                                onMouseEnter={(e) => {
+                                                  e.target.style.background =
+                                                    "linear-gradient(135deg, #253075, #1C2454)";
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                  e.target.style.background =
+                                                    "linear-gradient(135deg, #2F3C96, #253075)";
+                                                }}
+                                              >
+                                                <Info className="w-3.5 h-3.5" />
+                                                View Profile
+                                              </button>
+                                            </>
+                                          ) : (
+                                            <>
+                                              {e.email && (
+                                                <a
+                                                  href={`mailto:${e.email}`}
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    toast.success(
+                                                      "Message sent successfully!"
+                                                    );
+                                                  }}
+                                                  className="flex items-center gap-1.5 px-3 py-2 text-white rounded-lg text-xs font-semibold transition-all shadow-sm"
+                                                  style={{
+                                                    background:
+                                                      "linear-gradient(135deg, #2F3C96, #253075)",
+                                                  }}
+                                                  onMouseEnter={(e) => {
+                                                    e.target.style.background =
+                                                      "linear-gradient(135deg, #253075, #1C2454)";
+                                                  }}
+                                                  onMouseLeave={(e) => {
+                                                    e.target.style.background =
+                                                      "linear-gradient(135deg, #2F3C96, #253075)";
+                                                  }}
+                                                >
+                                                  <Mail className="w-3.5 h-3.5" />
+                                                  Contact
+                                                </a>
+                                              )}
+                                              <button
+                                                onClick={() => {
+                                                  const params =
+                                                    new URLSearchParams();
+                                                  params.set(
+                                                    "name",
+                                                    e.name || ""
+                                                  );
+                                                  if (e.affiliation)
+                                                    params.set(
+                                                      "affiliation",
+                                                      e.affiliation
+                                                    );
+                                                  if (e.location)
+                                                    params.set(
+                                                      "location",
+                                                      e.location
+                                                    );
+                                                  if (e.orcid)
+                                                    params.set(
+                                                      "orcid",
+                                                      e.orcid
+                                                    );
+                                                  if (e.biography)
+                                                    params.set(
+                                                      "biography",
+                                                      e.biography
+                                                    );
+                                                  if (
+                                                    e.researchInterests &&
+                                                    Array.isArray(
+                                                      e.researchInterests
+                                                    )
+                                                  ) {
+                                                    params.set(
+                                                      "researchInterests",
+                                                      JSON.stringify(
+                                                        e.researchInterests
+                                                      )
+                                                    );
+                                                  }
+                                                  params.set(
+                                                    "from",
+                                                    "dashboard"
+                                                  );
+                                                  navigate(
+                                                    `/expert/profile?${params.toString()}`
+                                                  );
+                                                }}
+                                                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-white rounded-lg text-xs font-semibold transition-all shadow-sm"
+                                                style={{
+                                                  background:
+                                                    "linear-gradient(135deg, #2F3C96, #253075)",
+                                                }}
+                                                onMouseEnter={(e) => {
+                                                  e.target.style.background =
+                                                    "linear-gradient(135deg, #253075, #1C2454)";
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                  e.target.style.background =
+                                                    "linear-gradient(135deg, #2F3C96, #253075)";
+                                                }}
+                                              >
+                                                <Info className="w-3.5 h-3.5" />
+                                                View Profile
+                                              </button>
+                                              <button
+                                                onClick={(event) => {
+                                                  event.stopPropagation();
+                                                  openGlobalExpertDetailsModal(
+                                                    e
+                                                  );
+                                                }}
+                                                className="p-2 rounded-lg border transition-all"
+                                                style={{
+                                                  backgroundColor:
+                                                    "rgba(208, 196, 226, 0.2)",
+                                                  borderColor:
+                                                    "rgba(208, 196, 226, 0.3)",
+                                                  color: "#787878",
+                                                }}
+                                                onMouseEnter={(e) => {
+                                                  e.currentTarget.style.backgroundColor =
+                                                    "rgba(208, 196, 226, 0.3)";
+                                                  e.currentTarget.style.color =
+                                                    "#2F3C96";
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                  e.currentTarget.style.backgroundColor =
+                                                    "rgba(208, 196, 226, 0.2)";
+                                                  e.currentTarget.style.color =
+                                                    "#787878";
+                                                }}
+                                              >
+                                                <Info className="w-3.5 h-3.5" />
+                                              </button>
+                                            </>
+                                          )}
+
+                                          <button
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              toggleFavorite(
+                                                "expert",
+                                                itemId,
+                                                e
+                                              );
+                                            }}
+                                            disabled={favoritingItems.has(
+                                              getFavoriteKey(
+                                                "expert",
+                                                itemId,
+                                                e
+                                              )
+                                            )}
+                                            title={
+                                              isFavorited
+                                                ? "Remove from favorites"
+                                                : "Add to favorites"
+                                            }
+                                            className={`p-2 rounded-lg border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                                              isFavorited
+                                                ? "bg-red-50 border-red-200 text-red-500"
+                                                : ""
+                                            }`}
+                                            style={
+                                              !isFavorited
+                                                ? {
+                                                    backgroundColor:
+                                                      "rgba(208, 196, 226, 0.2)",
+                                                    borderColor:
+                                                      "rgba(208, 196, 226, 0.3)",
+                                                    color: "#787878",
+                                                  }
+                                                : {}
+                                            }
+                                            onMouseEnter={(e) => {
+                                              if (
+                                                !isFavorited &&
+                                                !e.currentTarget.disabled
+                                              ) {
+                                                e.currentTarget.style.backgroundColor =
+                                                  "rgba(208, 196, 226, 0.3)";
+                                                e.currentTarget.style.color =
+                                                  "#dc2626";
+                                              }
+                                            }}
+                                            onMouseLeave={(e) => {
+                                              if (!isFavorited) {
+                                                e.currentTarget.style.backgroundColor =
+                                                  "rgba(208, 196, 226, 0.2)";
+                                                e.currentTarget.style.color =
+                                                  "#787878";
+                                              }
+                                            }}
+                                          >
+                                            {favoritingItems.has(
+                                              getFavoriteKey(
+                                                "expert",
+                                                itemId,
+                                                e
+                                              )
+                                            ) ? (
+                                              <Loader2 className="w-4 h-4 animate-spin" />
+                                            ) : (
+                                              <Heart
+                                                className={`w-4 h-4 ${
+                                                  isFavorited
+                                                    ? "fill-current"
+                                                    : ""
+                                                }`}
+                                              />
+                                            )}
+                                          </button>
+                                        </div>
                                       </div>
                                     </div>
-                                  )}
-                                </div>
-                              </div>
-
-                              {/* Action Buttons */}
-                              <div
-                                className={`flex ${
-                                  isCuralinkExpert ? "flex-col" : "items-center"
-                                } gap-2 pt-3 border-t border-slate-100`}
-                              >
-                                {isCuralinkExpert ? (
-                                  <>
-                                    {e.available === true ? (
-                                      <div className="flex items-center justify-center gap-1.5 px-3 py-2 bg-gradient-to-r from-purple-500/10 to-purple-600/10 border border-purple-300 rounded-lg">
-                                        <Calendar className="w-3.5 h-3.5 text-purple-600" />
-                                        <span className="text-xs font-semibold text-purple-700">
-                                          Available for Meetings
-                                        </span>
-                                      </div>
-                                    ) : (
-                                      <div className="flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg">
-                                        <Calendar className="w-3.5 h-3.5 text-slate-500" />
-                                        <span className="text-xs font-semibold text-slate-600">
-                                          Not Available for Collaboration
-                                        </span>
-                                      </div>
-                                    )}
-                                    <button
-                                      onClick={() => {
-                                        const expertUserId =
-                                          e._id || e.userId || e.id;
-                                        if (expertUserId) {
-                                          const params = new URLSearchParams();
-                                          if (e.name)
-                                            params.set("name", e.name);
-                                          if (locationText)
-                                            params.set(
-                                              "location",
-                                              locationText
-                                            );
-                                          if (e.bio) params.set("bio", e.bio);
-                                          navigate(
-                                            `/curalink-expert/profile/${expertUserId}?${params.toString()}`
-                                          );
-                                        }
-                                      }}
-                                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-gradient-to-r from-purple-600 to-indigo-700 text-white rounded-md text-xs font-semibold hover:from-purple-700 hover:to-indigo-800 transition-all shadow-sm hover:shadow-md"
-                                    >
-                                      <Info className="w-3.5 h-3.5" />
-                                      View Profile
-                                    </button>
-                                  </>
-                                ) : (
-                                  <>
-                                    {e.email && (
-                                      <a
-                                        href={`mailto:${e.email}`}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          toast.success(
-                                            "Message sent successfully!"
-                                          );
-                                        }}
-                                        className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-purple-600 to-indigo-700 text-white rounded-md text-xs font-semibold hover:from-purple-700 hover:to-indigo-800 transition-all shadow-sm hover:shadow-md"
-                                      >
-                                        <Mail className="w-3.5 h-3.5" />
-                                        Contact
-                                      </a>
-                                    )}
-                                    <button
-                                      onClick={() => {
-                                        const params = new URLSearchParams();
-                                        params.set("name", e.name || "");
-                                        if (e.affiliation)
-                                          params.set(
-                                            "affiliation",
-                                            e.affiliation
-                                          );
-                                        if (e.location)
-                                          params.set("location", e.location);
-                                        if (e.orcid)
-                                          params.set("orcid", e.orcid);
-                                        if (e.biography)
-                                          params.set("biography", e.biography);
-                                        if (
-                                          e.researchInterests &&
-                                          Array.isArray(e.researchInterests)
-                                        ) {
-                                          params.set(
-                                            "researchInterests",
-                                            JSON.stringify(e.researchInterests)
-                                          );
-                                        }
-                                        params.set("from", "dashboard");
-                                        navigate(
-                                          `/expert/profile?${params.toString()}`
-                                        );
-                                      }}
-                                      className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 text-white rounded-md text-xs font-semibold hover:bg-indigo-700 transition-all"
-                                    >
-                                      <Info className="w-3.5 h-3.5" />
-                                      View Profile
-                                    </button>
-                                    <button
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        openGlobalExpertDetailsModal(e);
-                                      }}
-                                      className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-700 rounded-md text-xs font-semibold hover:bg-slate-200 hover:text-blue-700 transition-all"
-                                    >
-                                      <Info className="w-3.5 h-3.5" />
-                                      Details
-                                    </button>
-                                  </>
-                                )}
+                                  );
+                                })}
                               </div>
                             </div>
-                          </div>
-                        );
-                      })
+                          </>
+                        )}
+
+                        {/* Global Experts Section */}
+                        {hasGlobalExperts && (
+                          <>
+                            {hasRecommendedExperts && (
+                              <div className="col-span-full my-8 flex items-center gap-4">
+                                <div
+                                  className="flex-1 h-px"
+                                  style={{
+                                    background:
+                                      "linear-gradient(90deg, transparent, rgba(47, 60, 150, 0.3), transparent)",
+                                  }}
+                                ></div>
+                                <div
+                                  className="px-4 py-2 rounded-full"
+                                  style={{
+                                    backgroundColor: "rgba(208, 196, 226, 0.2)",
+                                    border:
+                                      "2px solid rgba(208, 196, 226, 0.3)",
+                                  }}
+                                >
+                                  <span
+                                    className="text-xs font-semibold"
+                                    style={{ color: "#2F3C96" }}
+                                  >
+                                    Global Research Experts
+                                  </span>
+                                </div>
+                                <div
+                                  className="flex-1 h-px"
+                                  style={{
+                                    background:
+                                      "linear-gradient(90deg, transparent, rgba(47, 60, 150, 0.3), transparent)",
+                                  }}
+                                ></div>
+                              </div>
+                            )}
+                            <div className="col-span-full">
+                              <div
+                                className="mb-8 p-6 rounded-2xl border-2 shadow-lg"
+                                style={{
+                                  background:
+                                    "linear-gradient(135deg, rgba(47, 60, 150, 0.1), rgba(37, 48, 117, 0.05))",
+                                  borderColor: "rgba(208, 196, 226, 0.3)",
+                                }}
+                              >
+                                <div className="flex items-start gap-4">
+                                  <div
+                                    className="w-12 h-12 rounded-xl flex items-center justify-center shadow-md"
+                                    style={{
+                                      background:
+                                        "linear-gradient(135deg, #2F3C96, #253075)",
+                                    }}
+                                  >
+                                    <BookOpen className="w-6 h-6 text-white" />
+                                  </div>
+                                  <div className="flex-1">
+                                    <h3
+                                      className="text-2xl font-bold mb-2 flex items-center gap-2"
+                                      style={{ color: "#2F3C96" }}
+                                    >
+                                      Global Research Experts
+                                      <span
+                                        className="text-sm font-normal px-3 py-1 rounded-full"
+                                        style={{
+                                          backgroundColor:
+                                            "rgba(208, 196, 226, 0.3)",
+                                          color: "#253075",
+                                        }}
+                                      >
+                                        {globalExpertsList.length}{" "}
+                                        {globalExpertsList.length === 1
+                                          ? "Researcher"
+                                          : "Researchers"}
+                                      </span>
+                                    </h3>
+                                    <p
+                                      className="text-sm leading-relaxed"
+                                      style={{ color: "#787878" }}
+                                    >
+                                      Discover leading researchers and their
+                                      published work in your field. Explore
+                                      their publications, research interests,
+                                      and academic achievements.
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                                {globalExpertsList.map((e, idx) => {
+                                  const isCuralinkExpert = !!(
+                                    e._id || e.userId
+                                  );
+                                  const expertId =
+                                    e.name ||
+                                    e.id ||
+                                    e._id ||
+                                    e.userId ||
+                                    `expert-${idx}`;
+                                  const itemId =
+                                    e.name || e.orcid || e.id || e._id;
+                                  const medicalInterests = isCuralinkExpert
+                                    ? [
+                                        ...(e.specialties || []),
+                                        ...(e.interests || []),
+                                      ]
+                                    : e.researchInterests || [];
+                                  const locationText =
+                                    isCuralinkExpert && e.location
+                                      ? typeof e.location === "string"
+                                        ? e.location
+                                        : `${e.location.city || ""}${
+                                            e.location.city &&
+                                            e.location.country
+                                              ? ", "
+                                              : ""
+                                          }${e.location.country || ""}`.trim()
+                                      : e.location || null;
+
+                                  const isFavorited = favorites.some((fav) => {
+                                    if (fav.type !== "expert") return false;
+                                    if (e.name && fav.item?.name) {
+                                      return fav.item.name === e.name;
+                                    }
+                                    if (
+                                      fav.item?.id === itemId ||
+                                      fav.item?._id === itemId ||
+                                      fav.item?.orcid === itemId
+                                    ) {
+                                      return true;
+                                    }
+                                    return false;
+                                  });
+
+                                  return (
+                                    <div
+                                      key={expertId}
+                                      className="bg-white rounded-xl shadow-sm border transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden flex flex-col h-full"
+                                      style={{
+                                        borderColor: "rgba(208, 196, 226, 0.3)",
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        e.currentTarget.style.boxShadow =
+                                          "0 10px 15px -3px rgba(47, 60, 150, 0.1), 0 4px 6px -2px rgba(47, 60, 150, 0.05)";
+                                        e.currentTarget.style.borderColor =
+                                          "rgba(47, 60, 150, 0.4)";
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.currentTarget.style.boxShadow =
+                                          "0 1px 2px 0 rgba(0, 0, 0, 0.05)";
+                                        e.currentTarget.style.borderColor =
+                                          "rgba(208, 196, 226, 0.3)";
+                                      }}
+                                    >
+                                      <div className="p-5 flex flex-col flex-grow">
+                                        {/* Match Progress Bar */}
+                                        {e.matchPercentage !== undefined && (
+                                          <div className="mb-4">
+                                            <div className="flex items-center justify-between mb-2">
+                                              <div className="flex items-center gap-2">
+                                                <TrendingUp
+                                                  className="w-4 h-4"
+                                                  style={{ color: "#2F3C96" }}
+                                                />
+                                                <span
+                                                  className="text-sm font-bold"
+                                                  style={{ color: "#2F3C96" }}
+                                                >
+                                                  {e.matchPercentage}% Match
+                                                </span>
+                                              </div>
+                                              {isCuralinkExpert && (
+                                                <div
+                                                  className="flex items-center gap-1.5 px-2 py-1 rounded-md"
+                                                  style={{
+                                                    backgroundColor:
+                                                      "rgba(208, 196, 226, 0.2)",
+                                                    border:
+                                                      "1px solid rgba(208, 196, 226, 0.3)",
+                                                  }}
+                                                >
+                                                  <CheckCircle
+                                                    className="w-3.5 h-3.5"
+                                                    style={{ color: "#2F3C96" }}
+                                                  />
+                                                  <span
+                                                    className="text-xs font-semibold"
+                                                    style={{ color: "#2F3C96" }}
+                                                  >
+                                                    On Platform
+                                                  </span>
+                                                </div>
+                                              )}
+                                            </div>
+                                            {/* Progress Bar */}
+                                            <div
+                                              className="w-full h-2.5 rounded-full overflow-hidden"
+                                              style={{
+                                                backgroundColor:
+                                                  "rgba(208, 196, 226, 0.3)",
+                                              }}
+                                            >
+                                              <div
+                                                className="h-full rounded-full transition-all duration-500"
+                                                style={{
+                                                  width: `${e.matchPercentage}%`,
+                                                  background:
+                                                    "linear-gradient(90deg, #2F3C96, #253075)",
+                                                }}
+                                              ></div>
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {/* Available for Meetings - Moved inside card */}
+                                        {isCuralinkExpert &&
+                                          e.available === true && (
+                                            <div
+                                              className="mb-4 flex items-center gap-2 px-3 py-2 rounded-lg border"
+                                              style={{
+                                                backgroundColor:
+                                                  "rgba(208, 196, 226, 0.2)",
+                                                borderColor:
+                                                  "rgba(208, 196, 226, 0.3)",
+                                                color: "#2F3C96",
+                                              }}
+                                            >
+                                              <Calendar className="w-4 h-4" />
+                                              <span className="text-xs font-semibold">
+                                                Available for Meetings
+                                              </span>
+                                            </div>
+                                          )}
+
+                                        <div className="flex items-start gap-4 mb-4">
+                                          {/* Avatar */}
+                                          <div
+                                            className="w-14 h-14 rounded-lg flex items-center justify-center text-white font-bold text-xl shadow-md shrink-0 ring-2"
+                                            style={{
+                                              background:
+                                                "linear-gradient(135deg, #2F3C96, #253075)",
+                                              ringColor:
+                                                "rgba(208, 196, 226, 0.3)",
+                                            }}
+                                          >
+                                            {e.name?.charAt(0)?.toUpperCase() ||
+                                              "E"}
+                                          </div>
+
+                                          {/* Main Content */}
+                                          <div className="flex-1 min-w-0">
+                                            {/* Header */}
+                                            <div className="mb-1.5">
+                                              <h3
+                                                className="text-lg font-bold mb-1 leading-tight"
+                                                style={{ color: "#2F3C96" }}
+                                              >
+                                                {e.name || "Unknown Expert"}
+                                              </h3>
+                                              {e.orcid && (
+                                                <span className="text-sm text-slate-500 font-mono">
+                                                  {e.orcid}
+                                                </span>
+                                              )}
+                                            </div>
+
+                                            {/* Basic Info */}
+                                            <div className="space-y-1.5 mb-3">
+                                              {isCuralinkExpert ? (
+                                                <>
+                                                  {locationText && (
+                                                    <div
+                                                      className="flex items-center text-sm"
+                                                      style={{
+                                                        color: "#787878",
+                                                      }}
+                                                    >
+                                                      <MapPin className="w-3.5 h-3.5 mr-2 shrink-0" />
+                                                      <span>
+                                                        {locationText}
+                                                      </span>
+                                                    </div>
+                                                  )}
+                                                </>
+                                              ) : (
+                                                <>
+                                                  {e.currentPosition && (
+                                                    <div
+                                                      className="flex items-start text-sm"
+                                                      style={{
+                                                        color: "#787878",
+                                                      }}
+                                                    >
+                                                      <Briefcase className="w-3.5 h-3.5 mr-2 shrink-0 mt-0.5" />
+                                                      <span className="flex-1 leading-relaxed">
+                                                        {e.currentPosition}
+                                                      </span>
+                                                    </div>
+                                                  )}
+                                                  {!e.currentPosition &&
+                                                    e.affiliation && (
+                                                      <div
+                                                        className="flex items-start text-sm"
+                                                        style={{
+                                                          color: "#787878",
+                                                        }}
+                                                      >
+                                                        <Building2 className="w-3.5 h-3.5 mr-2 shrink-0 mt-0.5" />
+                                                        <span className="flex-1 leading-relaxed">
+                                                          {e.affiliation}
+                                                        </span>
+                                                      </div>
+                                                    )}
+                                                  {e.location && (
+                                                    <div
+                                                      className="flex items-center text-sm"
+                                                      style={{
+                                                        color: "#787878",
+                                                      }}
+                                                    >
+                                                      <MapPin className="w-3.5 h-3.5 mr-2 shrink-0" />
+                                                      <span>{e.location}</span>
+                                                    </div>
+                                                  )}
+                                                </>
+                                              )}
+                                            </div>
+
+                                            {/* Biography */}
+                                            {(e.biography || e.bio) && (
+                                              <div className="mb-3">
+                                                <p
+                                                  className="text-sm leading-relaxed line-clamp-2"
+                                                  style={{ color: "#787878" }}
+                                                >
+                                                  {e.biography || e.bio}
+                                                </p>
+                                              </div>
+                                            )}
+
+                                            {/* Research Interests / Medical Interests */}
+                                            {medicalInterests.length > 0 && (
+                                              <div className="mb-3">
+                                                <div className="flex flex-wrap gap-1.5">
+                                                  {medicalInterests
+                                                    .slice(0, 5)
+                                                    .map((interest, idx) => (
+                                                      <span
+                                                        key={idx}
+                                                        className="text-xs px-2 py-0.5 rounded-md border"
+                                                        style={{
+                                                          backgroundColor:
+                                                            "rgba(208, 196, 226, 0.2)",
+                                                          color: "#2F3C96",
+                                                          borderColor:
+                                                            "rgba(208, 196, 226, 0.3)",
+                                                        }}
+                                                      >
+                                                        {interest}
+                                                      </span>
+                                                    ))}
+                                                  {medicalInterests.length >
+                                                    5 && (
+                                                    <span className="text-xs text-slate-500 px-2 py-0.5">
+                                                      +
+                                                      {medicalInterests.length -
+                                                        5}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        {/* Action Buttons */}
+                                        <div className="flex gap-2 mt-auto">
+                                          {isCuralinkExpert ? (
+                                            <>
+                                              <button
+                                                onClick={() => {
+                                                  const expertUserId =
+                                                    e._id || e.userId || e.id;
+                                                  if (expertUserId) {
+                                                    const params =
+                                                      new URLSearchParams();
+                                                    if (e.name)
+                                                      params.set(
+                                                        "name",
+                                                        e.name
+                                                      );
+                                                    if (locationText)
+                                                      params.set(
+                                                        "location",
+                                                        locationText
+                                                      );
+                                                    if (e.bio)
+                                                      params.set("bio", e.bio);
+                                                    navigate(
+                                                      `/curalink-expert/profile/${expertUserId}?${params.toString()}`
+                                                    );
+                                                  }
+                                                }}
+                                                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-white rounded-lg text-xs font-semibold transition-all shadow-sm"
+                                                style={{
+                                                  background:
+                                                    "linear-gradient(135deg, #2F3C96, #253075)",
+                                                }}
+                                                onMouseEnter={(e) => {
+                                                  e.target.style.background =
+                                                    "linear-gradient(135deg, #253075, #1C2454)";
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                  e.target.style.background =
+                                                    "linear-gradient(135deg, #2F3C96, #253075)";
+                                                }}
+                                              >
+                                                <Info className="w-3.5 h-3.5" />
+                                                View Profile
+                                              </button>
+                                            </>
+                                          ) : (
+                                            <>
+                                              {e.email && (
+                                                <a
+                                                  href={`mailto:${e.email}`}
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    toast.success(
+                                                      "Message sent successfully!"
+                                                    );
+                                                  }}
+                                                  className="flex items-center gap-1.5 px-3 py-2 text-white rounded-lg text-xs font-semibold transition-all shadow-sm"
+                                                  style={{
+                                                    background:
+                                                      "linear-gradient(135deg, #2F3C96, #253075)",
+                                                  }}
+                                                  onMouseEnter={(e) => {
+                                                    e.target.style.background =
+                                                      "linear-gradient(135deg, #253075, #1C2454)";
+                                                  }}
+                                                  onMouseLeave={(e) => {
+                                                    e.target.style.background =
+                                                      "linear-gradient(135deg, #2F3C96, #253075)";
+                                                  }}
+                                                >
+                                                  <Mail className="w-3.5 h-3.5" />
+                                                  Contact
+                                                </a>
+                                              )}
+                                              <button
+                                                onClick={() => {
+                                                  const params =
+                                                    new URLSearchParams();
+                                                  params.set(
+                                                    "name",
+                                                    e.name || ""
+                                                  );
+                                                  if (e.affiliation)
+                                                    params.set(
+                                                      "affiliation",
+                                                      e.affiliation
+                                                    );
+                                                  if (e.location)
+                                                    params.set(
+                                                      "location",
+                                                      e.location
+                                                    );
+                                                  if (e.orcid)
+                                                    params.set(
+                                                      "orcid",
+                                                      e.orcid
+                                                    );
+                                                  if (e.biography)
+                                                    params.set(
+                                                      "biography",
+                                                      e.biography
+                                                    );
+                                                  if (
+                                                    e.researchInterests &&
+                                                    Array.isArray(
+                                                      e.researchInterests
+                                                    )
+                                                  ) {
+                                                    params.set(
+                                                      "researchInterests",
+                                                      JSON.stringify(
+                                                        e.researchInterests
+                                                      )
+                                                    );
+                                                  }
+                                                  params.set(
+                                                    "from",
+                                                    "dashboard"
+                                                  );
+                                                  navigate(
+                                                    `/expert/profile?${params.toString()}`
+                                                  );
+                                                }}
+                                                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-white rounded-lg text-xs font-semibold transition-all shadow-sm"
+                                                style={{
+                                                  background:
+                                                    "linear-gradient(135deg, #2F3C96, #253075)",
+                                                }}
+                                                onMouseEnter={(e) => {
+                                                  e.target.style.background =
+                                                    "linear-gradient(135deg, #253075, #1C2454)";
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                  e.target.style.background =
+                                                    "linear-gradient(135deg, #2F3C96, #253075)";
+                                                }}
+                                              >
+                                                <Info className="w-3.5 h-3.5" />
+                                                View Profile
+                                              </button>
+                                              <button
+                                                onClick={(event) => {
+                                                  event.stopPropagation();
+                                                  openGlobalExpertDetailsModal(
+                                                    e
+                                                  );
+                                                }}
+                                                className="p-2 rounded-lg border transition-all"
+                                                style={{
+                                                  backgroundColor:
+                                                    "rgba(208, 196, 226, 0.2)",
+                                                  borderColor:
+                                                    "rgba(208, 196, 226, 0.3)",
+                                                  color: "#787878",
+                                                }}
+                                                onMouseEnter={(e) => {
+                                                  e.currentTarget.style.backgroundColor =
+                                                    "rgba(208, 196, 226, 0.3)";
+                                                  e.currentTarget.style.color =
+                                                    "#2F3C96";
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                  e.currentTarget.style.backgroundColor =
+                                                    "rgba(208, 196, 226, 0.2)";
+                                                  e.currentTarget.style.color =
+                                                    "#787878";
+                                                }}
+                                              >
+                                                <Info className="w-3.5 h-3.5" />
+                                              </button>
+                                            </>
+                                          )}
+
+                                          <button
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              toggleFavorite(
+                                                "expert",
+                                                itemId,
+                                                e
+                                              );
+                                            }}
+                                            disabled={favoritingItems.has(
+                                              getFavoriteKey(
+                                                "expert",
+                                                itemId,
+                                                e
+                                              )
+                                            )}
+                                            title={
+                                              isFavorited
+                                                ? "Remove from favorites"
+                                                : "Add to favorites"
+                                            }
+                                            className={`p-2 rounded-lg border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                                              isFavorited
+                                                ? "bg-red-50 border-red-200 text-red-500"
+                                                : ""
+                                            }`}
+                                            style={
+                                              !isFavorited
+                                                ? {
+                                                    backgroundColor:
+                                                      "rgba(208, 196, 226, 0.2)",
+                                                    borderColor:
+                                                      "rgba(208, 196, 226, 0.3)",
+                                                    color: "#787878",
+                                                  }
+                                                : {}
+                                            }
+                                            onMouseEnter={(e) => {
+                                              if (
+                                                !isFavorited &&
+                                                !e.currentTarget.disabled
+                                              ) {
+                                                e.currentTarget.style.backgroundColor =
+                                                  "rgba(208, 196, 226, 0.3)";
+                                                e.currentTarget.style.color =
+                                                  "#dc2626";
+                                              }
+                                            }}
+                                            onMouseLeave={(e) => {
+                                              if (!isFavorited) {
+                                                e.currentTarget.style.backgroundColor =
+                                                  "rgba(208, 196, 226, 0.2)";
+                                                e.currentTarget.style.color =
+                                                  "#787878";
+                                              }
+                                            }}
+                                          >
+                                            {favoritingItems.has(
+                                              getFavoriteKey(
+                                                "expert",
+                                                itemId,
+                                                e
+                                              )
+                                            ) ? (
+                                              <Loader2 className="w-4 h-4 animate-spin" />
+                                            ) : (
+                                              <Heart
+                                                className={`w-4 h-4 ${
+                                                  isFavorited
+                                                    ? "fill-current"
+                                                    : ""
+                                                }`}
+                                              />
+                                            )}
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
                     ) : (
                       <div className="col-span-full text-center py-16">
-                        <div className="inline-flex items-center justify-center w-20 h-20 bg-purple-100 rounded-full mb-4">
-                          <Users className="w-10 h-10 text-purple-400" />
+                        <div
+                          className="inline-flex items-center justify-center w-20 h-20 rounded-full mb-4"
+                          style={{
+                            backgroundColor: "rgba(208, 196, 226, 0.3)",
+                          }}
+                        >
+                          <Users
+                            className="w-10 h-10"
+                            style={{ color: "#2F3C96" }}
+                          />
                         </div>
-                        <h3 className="text-lg font-semibold text-slate-800 mb-2">
+                        <h3
+                          className="text-lg font-semibold mb-2"
+                          style={{ color: "#2F3C96" }}
+                        >
                           No Experts Found
                         </h3>
-                        <p className="text-slate-600 text-sm max-w-md mx-auto">
-                          {showCollabioraExperts && data.experts.length === 0
-                            ? "No Collabiora Experts found. Try switching to Global Experts."
-                            : showGlobalExperts && globalExperts.length === 0
-                            ? "No Global Experts found. Try switching to Collabiora Experts."
-                            : "We're searching for relevant experts for you. Check back soon!"}
+                        <p
+                          className="text-sm max-w-md mx-auto"
+                          style={{ color: "#787878" }}
+                        >
+                          We're searching for relevant experts for you. Check
+                          back soon!
                         </p>
                       </div>
                     );
                   })()}
-                </>
+                </div>
               )}
 
               {selectedCategory === "forums" && (
@@ -5130,6 +5995,7 @@ export default function DashboardPatient() {
           background: #94a3b8;
         }
       `}</style>
+      <ScrollToTop />
     </div>
   );
 }

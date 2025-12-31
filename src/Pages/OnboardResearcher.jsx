@@ -7,6 +7,8 @@ import Button from "../components/ui/Button.jsx";
 import AnimatedBackgroundDiff from "../components/ui/AnimatedBackgroundDiff.jsx";
 import SmartSearchInput from "../components/SmartSearchInput.jsx";
 import LocationInput from "../components/LocationInput.jsx";
+import SpecialtyInput from "../components/SpecialtyInput.jsx";
+import ResearchInterestInput from "../components/ResearchInterestInput.jsx";
 import { useAuth0Social } from "../hooks/useAuth0Social.js";
 import {
   User,
@@ -53,6 +55,7 @@ export default function OnboardResearcher() {
   const [error, setError] = useState("");
   const [isGenderDropdownOpen, setIsGenderDropdownOpen] = useState(false);
   const [gender, setGender] = useState("");
+  const [isSkillsDropdownOpen, setIsSkillsDropdownOpen] = useState(false);
   const [socialLoginLoading, setSocialLoginLoading] = useState(null);
   const [showTermsDialog, setShowTermsDialog] = useState(false);
   const navigate = useNavigate();
@@ -122,6 +125,18 @@ export default function OnboardResearcher() {
     "Medical Devices",
   ];
 
+  // Research skills options
+  const researchSkills = [
+    "Clinical Trials",
+    "Industry Research",
+    "Qualitative Research",
+    "Quantitative Research",
+    "Translational Research",
+    "Public Health Research",
+    "Regulatory / Compliance Research",
+    "Academic Research",
+  ];
+
   function capitalizeText(text) {
     if (!text || typeof text !== "string") return text;
     return text
@@ -159,7 +174,6 @@ export default function OnboardResearcher() {
       prev.includes(skill) ? prev.filter((s) => s !== skill) : [...prev, skill]
     );
   }
-
 
   function parseLocation(locationString) {
     if (!locationString) return { city: "", country: "" };
@@ -420,6 +434,51 @@ export default function OnboardResearcher() {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [isGenderDropdownOpen]);
+
+  // Close skills dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        isSkillsDropdownOpen &&
+        !event.target.closest("[data-skills-dropdown]")
+      ) {
+        setIsSkillsDropdownOpen(false);
+      }
+    };
+
+    if (isSkillsDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isSkillsDropdownOpen]);
+
+  // Inject scrollbar styles for skills dropdown
+  useEffect(() => {
+    const styleId = "skills-dropdown-scrollbar-styles";
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement("style");
+      style.id = styleId;
+      style.textContent = `
+        .skills-dropdown::-webkit-scrollbar {
+          width: 6px;
+        }
+        .skills-dropdown::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .skills-dropdown::-webkit-scrollbar-thumb {
+          background-color: rgba(47, 60, 150, 0.3);
+          border-radius: 3px;
+        }
+        .skills-dropdown::-webkit-scrollbar-thumb:hover {
+          background-color: rgba(47, 60, 150, 0.5);
+        }
+      `;
+      document.head.appendChild(style);
+    }
+  }, []);
 
   return (
     <Layout>
@@ -682,16 +741,19 @@ export default function OnboardResearcher() {
                         className="block text-xs font-semibold mb-1"
                         style={{ color: "#2F3C96" }}
                       >
-                        Specialty
+                        Medical Specialty
                       </label>
-                      <SmartSearchInput
+                      <SpecialtyInput
                         value={specialty}
                         onChange={setSpecialty}
                         placeholder="e.g. Oncology, Cardiology"
-                        extraTerms={commonSpecialties}
                         maxSuggestions={8}
-                        autoSubmitOnSelect={true}
                         inputClassName="w-full py-1.5 px-3 text-sm border rounded-lg transition-all focus:outline-none focus:ring-2"
+                        style={{
+                          borderColor: "#E8E8E8",
+                          color: "#2F3C96",
+                          "--tw-ring-color": "#D0C4E2",
+                        }}
                       />
                     </div>
 
@@ -711,18 +773,26 @@ export default function OnboardResearcher() {
                       </label>
                       <div className="flex gap-1.5">
                         <div className="relative flex-1">
-                          <SmartSearchInput
+                          <ResearchInterestInput
                             value={researchInterestInput}
                             onChange={setResearchInterestInput}
-                            onSubmit={handleResearchInterestSubmit}
-                            placeholder="Search or add research interests..."
-                            extraTerms={[
-                              ...commonResearchInterests,
-                              ...commonSpecialties,
-                            ]}
+                            onSelect={(term) => {
+                              handleResearchInterestSubmit(term);
+                            }}
+                            placeholder="Search research interests from MeSH database..."
                             maxSuggestions={8}
-                            autoSubmitOnSelect={true}
                             inputClassName="w-full py-1.5 px-3 text-sm border rounded-lg transition-all focus:outline-none focus:ring-2"
+                            onKeyPress={(e) => {
+                              if (
+                                e.key === "Enter" &&
+                                researchInterestInput.trim()
+                              ) {
+                                e.preventDefault();
+                                handleResearchInterestSubmit(
+                                  researchInterestInput
+                                );
+                              }
+                            }}
                           />
                         </div>
                         {researchInterestInput &&
@@ -848,18 +918,20 @@ export default function OnboardResearcher() {
                       />
                     </div>
 
-                    {/* Institution Affiliation */}
+                    {/* Institution */}
                     <div>
                       <label
                         className="block text-xs font-semibold mb-1"
                         style={{ color: "#2F3C96" }}
                       >
-                        Institution Affiliation
+                        Institution
                       </label>
                       <Input
                         placeholder="e.g. Harvard Medical School, MIT, Johns Hopkins University"
                         value={institutionAffiliation}
-                        onChange={(e) => setInstitutionAffiliation(e.target.value)}
+                        onChange={(e) =>
+                          setInstitutionAffiliation(e.target.value)
+                        }
                         className="w-full py-1.5 px-2.5 text-sm border rounded-lg transition-all focus:outline-none focus:ring-2"
                         style={{
                           borderColor: "#E8E8E8",
@@ -894,46 +966,122 @@ export default function OnboardResearcher() {
                           "--tw-ring-color": "#D0C4E2",
                         }}
                       />
-                      <p className="text-[10px] mt-0.5" style={{ color: "#787878" }}>
-                        Your ORCID ID helps link your research activities and publications
+                      <p
+                        className="text-[10px] mt-0.5"
+                        style={{ color: "#787878" }}
+                      >
+                        Your ORCID ID helps link your research activities and
+                        publications
                       </p>
                     </div>
 
                     {/* Skills */}
-                    <div className="space-y-1.5">
+                    <div className="space-y-1.5" data-skills-dropdown>
                       <label
                         className="block text-xs font-semibold mb-1"
                         style={{ color: "#2F3C96" }}
                       >
                         Skills
                       </label>
-                      <div className="flex gap-1.5">
-                        <Input
-                          placeholder="e.g. Python, R, Clinical Trials Design"
-                          value={skillsInput}
-                          onChange={(e) => setSkillsInput(e.target.value)}
-                          onKeyPress={(e) => {
-                            if (e.key === "Enter" && skillsInput.trim()) {
-                              handleSkillSubmit(skillsInput);
-                            }
-                          }}
-                          className="flex-1 py-1.5 px-2.5 text-sm border rounded-lg"
+                      <div className="relative" style={{ overflow: "visible" }}>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setIsSkillsDropdownOpen(!isSkillsDropdownOpen)
+                          }
+                          className="w-full py-1.5 px-2.5 text-sm border rounded-lg transition-all focus:outline-none focus:ring-2 flex items-center justify-between"
                           style={{
                             borderColor: "#E8E8E8",
                             color: "#2F3C96",
+                            backgroundColor: "#FFFFFF",
+                            "--tw-ring-color": "#D0C4E2",
                           }}
-                        />
-                        {skillsInput && skillsInput.trim().length >= 2 && (
-                          <Button
-                            onClick={() => handleSkillSubmit(skillsInput)}
-                            className="px-3 py-1.5 rounded-lg font-semibold text-sm"
+                        >
+                          <span
+                            className="text-xs"
                             style={{
-                              backgroundColor: "#2F3C96",
-                              color: "#FFFFFF",
+                              color: skills.length > 0 ? "#2F3C96" : "#787878",
                             }}
                           >
-                            Add
-                          </Button>
+                            {skills.length > 0
+                              ? `${skills.length} skill${
+                                  skills.length > 1 ? "s" : ""
+                                } selected`
+                              : "Select research skills"}
+                          </span>
+                          <ChevronDown
+                            size={14}
+                            className={`transition-transform ${
+                              isSkillsDropdownOpen ? "rotate-180" : ""
+                            }`}
+                            style={{ color: "#787878" }}
+                          />
+                        </button>
+                        {isSkillsDropdownOpen && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-40 overflow-y-auto skills-dropdown"
+                            style={{
+                              borderColor: "#E8E8E8",
+                              boxShadow: "0 4px 12px rgba(0, 0, 0, 0.1)",
+                              top: "100%",
+                              left: 0,
+                              scrollbarWidth: "thin",
+                              scrollbarColor:
+                                "rgba(47, 60, 150, 0.3) transparent",
+                            }}
+                          >
+                            {researchSkills.map((skill) => (
+                              <button
+                                key={skill}
+                                type="button"
+                                onClick={() => {
+                                  toggleSkill(skill);
+                                }}
+                                className="w-full text-left px-2.5 py-1.5 text-xs hover:bg-opacity-10 transition-all flex items-center gap-2"
+                                style={{
+                                  backgroundColor: skills.includes(skill)
+                                    ? "rgba(47, 60, 150, 0.1)"
+                                    : "transparent",
+                                  color: "#2F3C96",
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (!skills.includes(skill)) {
+                                    e.currentTarget.style.backgroundColor =
+                                      "rgba(208, 196, 226, 0.1)";
+                                  }
+                                }}
+                                onMouseLeave={(e) => {
+                                  if (!skills.includes(skill)) {
+                                    e.currentTarget.style.backgroundColor =
+                                      "transparent";
+                                  }
+                                }}
+                              >
+                                <div
+                                  className="w-3.5 h-3.5 rounded border flex items-center justify-center"
+                                  style={{
+                                    borderColor: skills.includes(skill)
+                                      ? "#2F3C96"
+                                      : "#E8E8E8",
+                                    backgroundColor: skills.includes(skill)
+                                      ? "#2F3C96"
+                                      : "transparent",
+                                  }}
+                                >
+                                  {skills.includes(skill) && (
+                                    <CheckCircle
+                                      size={10}
+                                      style={{ color: "#FFFFFF" }}
+                                    />
+                                  )}
+                                </div>
+                                <span>{skill}</span>
+                              </button>
+                            ))}
+                          </motion.div>
                         )}
                       </div>
                       {skills.length > 0 && (
