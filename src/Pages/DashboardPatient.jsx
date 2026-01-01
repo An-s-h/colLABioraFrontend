@@ -5836,12 +5836,7 @@ export default function DashboardPatient() {
             className="pb-4 border-b"
             style={{ borderColor: "rgba(208, 196, 226, 0.5)" }}
           >
-            <div className="flex items-center gap-3 mb-2">
-              {summaryModal.type === "trial" ? (
-                <Beaker className="w-5 h-5" style={{ color: "#2F3C96" }} />
-              ) : (
-                <FileText className="w-5 h-5" style={{ color: "#2F3C96" }} />
-              )}
+            <div className="mb-2">
               <h4 className="font-bold text-lg" style={{ color: "#2F3C96" }}>
                 {summaryModal.title}
               </h4>
