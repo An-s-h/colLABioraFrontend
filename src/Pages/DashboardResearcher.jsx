@@ -34,6 +34,9 @@ import {
   GraduationCap,
   Award,
   Loader2,
+  AlertCircle,
+  MessageSquare,
+  Clock,
 } from "lucide-react";
 import Modal from "../components/ui/Modal";
 import { MultiStepLoader } from "../components/ui/multi-step-loader";
@@ -51,8 +54,10 @@ export default function DashboardResearcher() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isFirstLoad, setIsFirstLoad] = useState(true); // Track if this is the first load (cache miss)
-  const [selectedCategory, setSelectedCategory] = useState("profile"); // "profile", "trials", "publications", "globalExperts", "collaborators", "favorites"
-  const [trialFilter, setTrialFilter] = useState(""); // Status filter for trials
+  const [selectedCategory, setSelectedCategory] = useState("profile"); // "profile", "collaborators", "forums", "publications", "trials", "favorites"
+  const [trialFilter, setTrialFilter] = useState("RECRUITING"); // Status filter for trials - default to RECRUITING
+  const [forumsCategories, setForumsCategories] = useState([]);
+  const [forumThreads, setForumThreads] = useState({}); // Map of categoryId to threads array
   const [publicationSort, setPublicationSort] = useState("relevance"); // Sort option for publications
   const [filterModalOpen, setFilterModalOpen] = useState(false);
   const [loadingFiltered, setLoadingFiltered] = useState(false);
@@ -114,35 +119,42 @@ export default function DashboardResearcher() {
   // Fetch ORCID stats
   const fetchOrcidStats = async (orcidId, userId) => {
     if (!orcidId || !userId) return;
-    
+
     setLoadingOrcidStats(true);
     setOrcidError(null);
     try {
       // Use the curalink-expert/profile endpoint which fetches ORCID data
-      const response = await fetch(`${base}/api/curalink-expert/profile/${userId}`);
+      const response = await fetch(
+        `${base}/api/curalink-expert/profile/${userId}`
+      );
       if (response.ok) {
         const data = await response.json();
         const orcidId = data.profile?.orcid || data.profile?.orcidId;
         if (orcidId) {
-          const publications = data.profile?.publications || data.profile?.works || [];
+          const publications =
+            data.profile?.publications || data.profile?.works || [];
           const totalWorks = data.profile.totalWorks || publications.length;
           const hasBiography = !!data.profile.biography;
           const hasAffiliation = !!data.profile.affiliation;
           const hasCurrentPosition = !!data.profile.currentPosition;
-          const hasEmployments = data.profile.employments && data.profile.employments.length > 0;
-          const hasEducations = data.profile.educations && data.profile.educations.length > 0;
-          
+          const hasEmployments =
+            data.profile.employments && data.profile.employments.length > 0;
+          const hasEducations =
+            data.profile.educations && data.profile.educations.length > 0;
+
           // Check if ORCID profile is invalid - if we have an ORCID ID but no data at all
           // (no publications, no biography, no employment, no education, etc.)
-          const hasNoData = !totalWorks && 
-                           !hasBiography && 
-                           !hasAffiliation && 
-                           !hasCurrentPosition && 
-                           !hasEmployments && 
-                           !hasEducations &&
-                           !data.profile.location &&
-                           (!data.profile.researchInterests || data.profile.researchInterests.length === 0);
-          
+          const hasNoData =
+            !totalWorks &&
+            !hasBiography &&
+            !hasAffiliation &&
+            !hasCurrentPosition &&
+            !hasEmployments &&
+            !hasEducations &&
+            !data.profile.location &&
+            (!data.profile.researchInterests ||
+              data.profile.researchInterests.length === 0);
+
           if (hasNoData) {
             // Invalid ORCID - no data found
             setOrcidError("not_found");
@@ -154,13 +166,16 @@ export default function DashboardResearcher() {
               const yearB = b.year || 0;
               return yearB - yearA;
             });
-            
+
             // Format location - handle both string and object formats
             let locationText = null;
             if (data.profile.location) {
               if (typeof data.profile.location === "string") {
                 locationText = data.profile.location;
-              } else if (data.profile.location.city || data.profile.location.country) {
+              } else if (
+                data.profile.location.city ||
+                data.profile.location.country
+              ) {
                 locationText = [
                   data.profile.location.city,
                   data.profile.location.country,
@@ -202,10 +217,13 @@ export default function DashboardResearcher() {
         if (response.status === 404) {
           try {
             const errorData = await response.json();
-            const errorMessage = errorData.error || errorData.message || response.statusText || "";
-            if (errorMessage.toLowerCase().includes("404") || 
-                errorMessage.toLowerCase().includes("not found") || 
-                errorMessage.toLowerCase().includes("resource was not found")) {
+            const errorMessage =
+              errorData.error || errorData.message || response.statusText || "";
+            if (
+              errorMessage.toLowerCase().includes("404") ||
+              errorMessage.toLowerCase().includes("not found") ||
+              errorMessage.toLowerCase().includes("resource was not found")
+            ) {
               setOrcidError("not_found");
             } else {
               setOrcidError("error");
@@ -222,7 +240,11 @@ export default function DashboardResearcher() {
         } else {
           setOrcidError("error");
         }
-        console.error("Failed to fetch ORCID profile:", response.status, response.statusText);
+        console.error(
+          "Failed to fetch ORCID profile:",
+          response.status,
+          response.statusText
+        );
       }
     } catch (error) {
       console.error("Error fetching ORCID stats:", error);
@@ -368,7 +390,10 @@ export default function DashboardResearcher() {
 
                 // Fetch ORCID stats if user has ORCID ID
                 if (profile.researcher?.orcid) {
-                  fetchOrcidStats(profile.researcher.orcid, userData._id || userData.id);
+                  fetchOrcidStats(
+                    profile.researcher.orcid,
+                    userData._id || userData.id
+                  );
                 }
               }
             }
@@ -633,12 +658,23 @@ export default function DashboardResearcher() {
       const res = await fetch(`${base}/api/ai/summary`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({
+          text,
+          type,
+          // Pass full trial object for structured summary
+          ...(type === "trial" && { trial: item }),
+        }),
       }).then((r) => r.json());
 
       setSummaryModal((prev) => ({
         ...prev,
-        summary: res.summary || "Summary unavailable",
+        summary:
+          res.summary ||
+          (type === "publication"
+            ? { structured: false, summary: "Summary unavailable" }
+            : type === "trial"
+            ? { structured: false, summary: "Summary unavailable" }
+            : "Summary unavailable"),
         loading: false,
       }));
     } catch (e) {
@@ -695,19 +731,35 @@ export default function DashboardResearcher() {
       checkId = item.pmid || item.id || item._id || itemId;
     } else if (type === "trial") {
       checkId = item.id || item._id || itemId;
+    } else if (type === "thread" || type === "forum") {
+      checkId = item._id || item.id || itemId;
     }
 
-    const isFavorited = favorites.some(
-      (fav) =>
-        fav.type === type &&
-        (fav.item?.id === checkId ||
+    // Check if favorited - for thread/forum types, allow matching between both types
+    const isFavorited = favorites.some((fav) => {
+      // For thread/forum types, allow matching between both types
+      if (
+        (type === "thread" || type === "forum") &&
+        (fav.type === "thread" || fav.type === "forum")
+      ) {
+        return (
           fav.item?._id === checkId ||
-          fav.item?.orcid === checkId ||
-          fav.item?.pmid === checkId ||
-          (type === "expert" && fav.item?.name === item.name) ||
-          (type === "publication" && fav.item?.title === item.title) ||
-          (type === "trial" && fav.item?.title === item.title))
-    );
+          fav.item?.id === checkId ||
+          (fav.item?.name && item.name && fav.item.name === item.name)
+        );
+      }
+      // For other types, match exactly
+      if (fav.type !== type) return false;
+      return (
+        fav.item?.id === checkId ||
+        fav.item?._id === checkId ||
+        fav.item?.orcid === checkId ||
+        fav.item?.pmid === checkId ||
+        (type === "expert" && fav.item?.name === item.name) ||
+        (type === "publication" && fav.item?.title === item.title) ||
+        (type === "trial" && fav.item?.title === item.title)
+      );
+    });
 
     // Optimistic UI update - update immediately
     const previousFavorites = [...favorites];
@@ -716,6 +768,17 @@ export default function DashboardResearcher() {
     if (isFavorited) {
       // Optimistically remove from favorites
       optimisticFavorites = favorites.filter((fav) => {
+        // For thread/forum types, allow matching between both types
+        if (
+          (type === "thread" || type === "forum") &&
+          (fav.type === "thread" || fav.type === "forum")
+        ) {
+          return !(
+            fav.item?._id === checkId ||
+            fav.item?.id === checkId ||
+            (fav.item?.name && item.name && fav.item.name === item.name)
+          );
+        }
         if (fav.type !== type) return true;
         return !(
           fav.item?.id === checkId ||
@@ -742,10 +805,14 @@ export default function DashboardResearcher() {
         itemToStore.pmid = item.pmid;
       }
 
+      // Use "thread" as the type for forum favorites (consistent with backend)
+      const favoriteType =
+        type === "forum" || type === "thread" ? "thread" : type;
+
       optimisticFavorites = [
         ...favorites,
         {
-          type,
+          type: favoriteType,
           item: itemToStore,
           _id: `temp-${Date.now()}`,
         },
@@ -781,11 +848,15 @@ export default function DashboardResearcher() {
           itemToStore.pmid = item.pmid;
         }
 
+        // Use "thread" as the type for forum favorites (consistent with backend)
+        const favoriteType =
+          type === "forum" || type === "thread" ? "thread" : type;
+
         await fetch(`${base}/api/favorites/${user._id || user.id}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            type,
+            type: favoriteType,
             item: itemToStore,
           }),
         });
@@ -991,7 +1062,11 @@ export default function DashboardResearcher() {
         } catch (e) {
           errorData = { error: `Server error: ${response.status}` };
         }
-        console.error("Error fetching filtered trials:", response.status, errorData);
+        console.error(
+          "Error fetching filtered trials:",
+          response.status,
+          errorData
+        );
         // Only show error toast if it's not a search limit error (handled by the API)
         if (response.status !== 429) {
           toast.error(errorData.error || "Failed to load filtered trials");
@@ -1055,21 +1130,74 @@ export default function DashboardResearcher() {
     return statusColors[status] || "bg-gray-100 text-gray-800 border-gray-200";
   }
 
+  // Load forums categories on mount
+  useEffect(() => {
+    const loadForumsCategories = async () => {
+      try {
+        const response = await fetch(`${base}/api/forums/categories`);
+        if (response.ok) {
+          const data = await response.json();
+          setForumsCategories(data.categories || []);
+        }
+      } catch (error) {
+        console.error("Error loading forums categories:", error);
+      }
+    };
+    loadForumsCategories();
+  }, [base]);
+
+  // Load forum threads when forums category is selected
+  useEffect(() => {
+    if (selectedCategory === "forums" && forumsCategories.length > 0) {
+      const fetchForumThreads = async () => {
+        const threadsMap = {};
+        const forumsWithThreads = forumsCategories.filter(
+          (category) => (category.threadCount || 0) >= 2
+        );
+
+        // Fetch threads for each category (limit to 3 most recent per category)
+        for (const category of forumsWithThreads) {
+          try {
+            const response = await fetch(
+              `${base}/api/forums/threads?categoryId=${category._id}`
+            );
+            if (response.ok) {
+              const data = await response.json();
+              threadsMap[category._id] = (data.threads || []).slice(0, 3); // Get top 3 threads
+            }
+          } catch (error) {
+            console.error(
+              `Error fetching threads for category ${category._id}:`,
+              error
+            );
+          }
+        }
+        setForumThreads(threadsMap);
+      };
+
+      fetchForumThreads();
+    }
+  }, [selectedCategory, forumsCategories, base]);
+
   // Reset filters when switching categories
   useEffect(() => {
     if (selectedCategory !== "trials") {
-      setTrialFilter("");
+      setTrialFilter("RECRUITING"); // Keep RECRUITING as default
     }
     if (selectedCategory !== "publications") {
       setPublicationSort("relevance");
     }
   }, [selectedCategory]);
 
-  // Effect to fetch filtered trials when filter changes
+  // Effect to fetch filtered trials when filter changes or category is selected
   useEffect(() => {
-    // Only fetch filtered trials if a filter is explicitly set
-    // On initial load, use the recommendations that were already fetched
-    if (selectedCategory === "trials" && trialFilter && user?._id) {
+    // Always fetch trials when trials category is selected (defaults to RECRUITING)
+    if (selectedCategory === "trials" && user?._id) {
+      // If no filter is set, use RECRUITING as default
+      if (!trialFilter) {
+        setTrialFilter("RECRUITING");
+      }
+      // Fetch filtered trials
       fetchFilteredTrials();
     }
   }, [trialFilter, selectedCategory, user?._id]);
@@ -1091,7 +1219,14 @@ export default function DashboardResearcher() {
         <div className="px-4 sm:px-6 md:px-8 lg:px-12 mx-auto max-w-7xl pt-6 pb-12 relative">
           {/* Top Bar Skeleton */}
           <div className="mb-8">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-gradient-to-br from-indigo-600 via-indigo-700 to-blue-700 rounded-2xl shadow-xl border border-indigo-500/50 relative overflow-hidden w-full p-5 sm:p-4 mt-18">
+            <div
+              className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-2xl shadow-xl border relative overflow-hidden w-full p-5 sm:p-4 mt-18"
+              style={{
+                background:
+                  "linear-gradient(135deg, #D0C4E2, #E8E0EF, #F5F2F8)",
+                borderColor: "rgba(208, 196, 226, 0.5)",
+              }}
+            >
               <div className="relative z-10 flex items-center gap-4 flex-1 min-w-0 w-full sm:w-auto">
                 {/* Avatar Skeleton */}
                 <div className="w-12 h-12 bg-white/20 rounded-full animate-pulse"></div>
@@ -1192,14 +1327,16 @@ export default function DashboardResearcher() {
     switch (category) {
       case "profile":
         return userProfile?.researcher?.orcid ? 1 : 0;
-      case "trials":
-        return data.trials.length;
+      case "collaborators":
+        return data.experts.length + globalExperts.length;
+      case "forums":
+        return forumsCategories.filter(
+          (category) => (category.threadCount || 0) >= 2
+        ).length;
       case "publications":
         return data.publications.length;
-      case "globalExperts":
-        return globalExperts.length;
-      case "collaborators":
-        return data.experts.length;
+      case "trials":
+        return data.trials.length;
       case "favorites":
         return favorites.length;
       default:
@@ -1211,14 +1348,14 @@ export default function DashboardResearcher() {
     switch (category) {
       case "profile":
         return "Your Profile";
-      case "trials":
-        return "Trials";
-      case "publications":
-        return "Publications";
-      case "globalExperts":
-        return "Global Experts";
       case "collaborators":
         return "Collaborators";
+      case "forums":
+        return "Forums";
+      case "publications":
+        return "Publications";
+      case "trials":
+        return "Clinical Trials";
       case "favorites":
         return "Favorites";
       default:
@@ -1238,32 +1375,70 @@ export default function DashboardResearcher() {
     : "Not specified";
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/30 to-slate-100">
-      <div className="px-4 sm:px-6 md:px-8 lg:px-12 mx-auto max-w-7xl pt-6 pb-12">
+    <div className="min-h-screen relative">
+      <style>{`
+        .category-button-hover:hover:not(:active) {
+          background-color: rgba(255, 255, 255, 0.8) !important;
+          border-color: rgba(47, 60, 150, 0.3) !important;
+        }
+      `}</style>
+      <AnimatedBackgroundDiff />
+      <div className="px-4 sm:px-6 md:px-8 lg:px-12 mx-auto max-w-7xl pt-6 pb-12 relative">
         {/* Top Bar with Profile and Insights */}
         <div className="mb-8">
           {/* Profile Section with Insights */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-gradient-to-br from-indigo-600 via-indigo-700 to-blue-700 rounded-2xl shadow-xl border border-indigo-500/50 relative overflow-hidden w-full p-5 sm:p-4 mt-18">
+          <div
+            className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-2xl shadow-xl border relative overflow-hidden w-full p-5 sm:p-4 mt-18"
+            style={{
+              background: "linear-gradient(135deg, #D0C4E2, #E8E0EF, #F5F2F8)",
+              borderColor: "rgba(208, 196, 226, 0.5)",
+            }}
+          >
             {/* Decorative background elements */}
-            <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32"></div>
-            <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/5 rounded-full -ml-24 -mb-24"></div>
+            <div
+              className="absolute top-0 right-0 w-64 h-64 rounded-full -mr-32 -mt-32"
+              style={{ backgroundColor: "rgba(47, 60, 150, 0.1)" }}
+            ></div>
+            <div
+              className="absolute bottom-0 left-0 w-48 h-48 rounded-full -ml-24 -mb-24"
+              style={{ backgroundColor: "rgba(47, 60, 150, 0.1)" }}
+            ></div>
 
             <div className="relative z-10 flex items-center gap-4 flex-1 min-w-0 w-full sm:w-auto">
               {/* Avatar */}
-              <div className="w-12 h-12 bg-white/25 backdrop-blur-sm rounded-full flex items-center justify-center text-white font-bold text-xl shadow-lg ring-2 ring-white/30 shrink-0">
+              <div
+                className="w-12 h-12 backdrop-blur-sm rounded-full flex items-center justify-center text-white font-bold text-xl shadow-lg ring-2 shrink-0"
+                style={{
+                  backgroundColor: "#2F3C96",
+                  ringColor: "rgba(47, 60, 150, 0.5)",
+                }}
+              >
                 {user?.username?.charAt(0)?.toUpperCase() || "R"}
               </div>
 
               {/* Profile Info */}
               <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-6 flex-1 min-w-0">
                 <div className="flex-1 min-w-0">
-                  <h3 className="text-base sm:text-lg font-bold text-white mb-1">
+                  <h3
+                    className="text-base sm:text-lg font-bold mb-1"
+                    style={{ color: "#2F3C96" }}
+                  >
                     Hello, {user?.username || "Researcher"} 👋
                   </h3>
-                  <div className="flex flex-wrap items-center gap-3 text-xs sm:text-sm text-indigo-100">
+                  <div
+                    className="flex flex-wrap items-center gap-3 text-xs sm:text-sm"
+                    style={{ color: "#787878" }}
+                  >
                     {userProfile?.researcher?.specialties &&
                       userProfile.researcher.specialties.length > 0 && (
-                        <span className="flex items-center gap-1.5 bg-white/10 px-2.5 py-1 rounded-full">
+                        <span
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+                          style={{
+                            backgroundColor: "rgba(47, 60, 150, 0.15)",
+                            border: "1px solid rgba(47, 60, 150, 0.3)",
+                            color: "#2F3C96",
+                          }}
+                        >
                           <Briefcase className="w-3.5 h-3.5 shrink-0" />
                           <span className="truncate max-w-[150px] sm:max-w-none">
                             Specialties:{" "}
@@ -1273,7 +1448,14 @@ export default function DashboardResearcher() {
                       )}
                     {userProfile?.researcher?.interests &&
                       userProfile.researcher.interests.length > 0 && (
-                        <span className="flex items-center gap-1.5 bg-white/10 px-2.5 py-1 rounded-full">
+                        <span
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+                          style={{
+                            backgroundColor: "rgba(47, 60, 150, 0.15)",
+                            border: "1px solid rgba(47, 60, 150, 0.3)",
+                            color: "#2F3C96",
+                          }}
+                        >
                           <Beaker className="w-3.5 h-3.5 shrink-0" />
                           <span className="truncate max-w-[150px] sm:max-w-none">
                             Research Interests:{" "}
@@ -1285,14 +1467,28 @@ export default function DashboardResearcher() {
                       userProfile.researcher.specialties.length === 0) &&
                       (!userProfile?.researcher?.interests ||
                         userProfile.researcher.interests.length === 0) && (
-                        <span className="flex items-center gap-1.5 bg-white/10 px-2.5 py-1 rounded-full">
+                        <span
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+                          style={{
+                            backgroundColor: "rgba(47, 60, 150, 0.15)",
+                            border: "1px solid rgba(47, 60, 150, 0.3)",
+                            color: "#2F3C96",
+                          }}
+                        >
                           <Beaker className="w-3.5 h-3.5 shrink-0" />
                           <span className="truncate max-w-[150px] sm:max-w-none">
                             {userInterests}
                           </span>
                         </span>
                       )}
-                    <span className="flex items-center gap-1.5 bg-white/10 px-2.5 py-1 rounded-full">
+                    <span
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+                      style={{
+                        backgroundColor: "rgba(47, 60, 150, 0.15)",
+                        border: "1px solid rgba(47, 60, 150, 0.3)",
+                        color: "#2F3C96",
+                      }}
+                    >
                       <MapPin className="w-3.5 h-3.5 shrink-0" />
                       <span className="truncate max-w-[150px] sm:max-w-none">
                         {locationText}
@@ -1305,113 +1501,192 @@ export default function DashboardResearcher() {
 
             {/* Action Buttons */}
             <div className="relative z-10 flex items-center gap-3 shrink-0">
-              {/* Edit Profile Button */}
-              <button
-                onClick={() => navigate("/profile")}
-                className="relative flex items-center gap-2 px-4 py-2.5 bg-white/20 hover:bg-white/30 rounded-xl transition-all border border-white/30 text-sm font-semibold text-white shadow-lg hover:shadow-xl hover:scale-105"
-              >
-                <Edit3 className="w-4 h-4" />
-                <span className="hidden sm:inline">Edit Profile</span>
-              </button>
-
               {/* View All Saved Items Button */}
               <button
                 onClick={() => navigate("/favorites")}
-                className="relative flex items-center gap-2 px-4 py-2.5 bg-white/20 hover:bg-white/30 rounded-xl transition-all border border-white/30 text-sm font-semibold text-white shadow-lg hover:shadow-xl hover:scale-105"
+                className="relative flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all text-sm font-semibold text-white shadow-lg hover:shadow-xl hover:scale-105"
+                style={{
+                  backgroundColor: "#2F3C96",
+                  border: "1px solid rgba(47, 60, 150, 0.5)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = "#253075";
+                  e.currentTarget.style.borderColor = "rgba(47, 60, 150, 0.7)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = "#2F3C96";
+                  e.currentTarget.style.borderColor = "rgba(47, 60, 150, 0.5)";
+                }}
               >
-                <Star className="w-4 h-4" />
-                <span className="hidden sm:inline">View All Saved Items</span>
-              </button>
-
-              {/* Insights Button */}
-              <button
-                onClick={() => navigate("/insights")}
-                className="relative flex items-center gap-2 px-4 py-2.5 bg-white/20 hover:bg-white/30 rounded-xl transition-all border border-white/30 text-sm font-semibold text-white shadow-lg hover:shadow-xl hover:scale-105"
-              >
-                <Bell className="w-4 h-4" />
-                <span className="hidden sm:inline">Insights</span>
-                {insights.unreadCount > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 w-6 h-6 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center font-bold shadow-md animate-pulse">
-                    {insights.unreadCount > 9 ? "9+" : insights.unreadCount}
-                  </span>
-                )}
+                <Star className="w-4 h-4 shrink-0" />
+                <span className="hidden sm:inline whitespace-nowrap">
+                  View All Saved Items
+                </span>
               </button>
             </div>
           </div>
-
         </div>
 
         {/* Main Content Section - Full Width */}
         <div className="mb-8">
+          {/* Activity Bar - Upcoming Meetings & Mentions */}
+          <div
+            className="rounded-xl shadow-md border p-2 mb-4"
+            style={{
+              background: "linear-gradient(135deg, #D0C4E2, #E8E0EF, #F5F2F8)",
+              borderColor: "rgba(208, 196, 226, 0.5)",
+            }}
+          >
+            <div className="flex items-center gap-2 overflow-x-auto">
+              {/* Upcoming Meeting 1 */}
+              <div
+                className="flex items-center gap-2 px-3 py-2 rounded-lg whitespace-nowrap transition-all cursor-pointer"
+                style={{
+                  backgroundColor: "rgba(255, 255, 255, 0.7)",
+                  border: "1px solid rgba(208, 196, 226, 0.3)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor =
+                    "rgba(255, 255, 255, 0.9)";
+                  e.currentTarget.style.borderColor = "rgba(47, 60, 150, 0.4)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor =
+                    "rgba(255, 255, 255, 0.7)";
+                  e.currentTarget.style.borderColor =
+                    "rgba(208, 196, 226, 0.3)";
+                }}
+              >
+                <Calendar className="w-4 h-4" style={{ color: "#2F3C96" }} />
+                <div className="flex flex-col">
+                  <span
+                    className="text-xs font-medium leading-tight"
+                    style={{ color: "#787878" }}
+                  >
+                    Next Meeting
+                  </span>
+                  <span
+                    className="text-sm font-semibold"
+                    style={{ color: "#2F3C96" }}
+                  >
+                    Dec 15, 2:00 PM
+                  </span>
+                </div>
+              </div>
+
+              {/* Recent Mentions */}
+              <div
+                className="flex items-center gap-2 px-3 py-2 rounded-lg whitespace-nowrap transition-all cursor-pointer"
+                style={{
+                  backgroundColor: "rgba(255, 255, 255, 0.7)",
+                  border: "1px solid rgba(208, 196, 226, 0.3)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor =
+                    "rgba(255, 255, 255, 0.9)";
+                  e.currentTarget.style.borderColor = "rgba(47, 60, 150, 0.4)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor =
+                    "rgba(255, 255, 255, 0.7)";
+                  e.currentTarget.style.borderColor =
+                    "rgba(208, 196, 226, 0.3)";
+                }}
+              >
+                <Bell className="w-4 h-4" style={{ color: "#2F3C96" }} />
+                <div className="flex flex-col">
+                  <span
+                    className="text-xs font-medium leading-tight"
+                    style={{ color: "#787878" }}
+                  >
+                    Recent Activity
+                  </span>
+                  <span
+                    className="text-sm font-semibold"
+                    style={{ color: "#2F3C96" }}
+                  >
+                    3 Mentions
+                  </span>
+                </div>
+              </div>
+
+              {/* Upcoming Meeting 2 */}
+              <div
+                className="flex items-center gap-2 px-3 py-2 rounded-lg whitespace-nowrap transition-all cursor-pointer"
+                style={{
+                  backgroundColor: "rgba(255, 255, 255, 0.7)",
+                  border: "1px solid rgba(208, 196, 226, 0.3)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor =
+                    "rgba(255, 255, 255, 0.9)";
+                  e.currentTarget.style.borderColor = "rgba(47, 60, 150, 0.4)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor =
+                    "rgba(255, 255, 255, 0.7)";
+                  e.currentTarget.style.borderColor =
+                    "rgba(208, 196, 226, 0.3)";
+                }}
+              >
+                <Calendar className="w-4 h-4" style={{ color: "#2F3C96" }} />
+                <div className="flex flex-col">
+                  <span
+                    className="text-xs font-medium leading-tight"
+                    style={{ color: "#787878" }}
+                  >
+                    Upcoming
+                  </span>
+                  <span
+                    className="text-sm font-semibold"
+                    style={{ color: "#2F3C96" }}
+                  >
+                    Dec 20, 10:00 AM
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Category Buttons Bar */}
-          <div className="bg-white rounded-xl shadow-md border border-slate-200 p-2 mb-6">
+          <div
+            className="rounded-xl shadow-md border p-2 mb-6"
+            style={{
+              background: "linear-gradient(135deg, #D0C4E2, #E8E0EF, #F5F2F8)",
+              borderColor: "rgba(208, 196, 226, 0.5)",
+            }}
+          >
             <div className="flex items-center gap-2 overflow-x-auto">
               {[
                 {
                   key: "profile",
                   label: "Your Profile",
                   icon: User,
-                  colorClasses: {
-                    selected: "bg-indigo-600 text-white border-indigo-600",
-                    unselected:
-                      "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100",
-                    count: "text-indigo-600",
-                  },
-                },
-                {
-                  key: "trials",
-                  label: "Clinical Trials",
-                  icon: Beaker,
-                  colorClasses: {
-                    selected: "bg-indigo-600 text-white border-indigo-600",
-                    unselected:
-                      "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100",
-                    count: "text-indigo-600",
-                  },
-                },
-                {
-                  key: "publications",
-                  label: "Publications",
-                  icon: FileText,
-                  colorClasses: {
-                    selected: "bg-blue-600 text-white border-blue-600",
-                    unselected:
-                      "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100",
-                    count: "text-blue-600",
-                  },
-                },
-                {
-                  key: "globalExperts",
-                  label: "Global Experts",
-                  icon: Users,
-                  colorClasses: {
-                    selected: "bg-purple-600 text-white border-purple-600",
-                    unselected:
-                      "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100",
-                    count: "text-purple-600",
-                  },
                 },
                 {
                   key: "collaborators",
                   label: "Collaborators",
                   icon: Users,
-                  colorClasses: {
-                    selected: "bg-emerald-600 text-white border-emerald-600",
-                    unselected:
-                      "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100",
-                    count: "text-emerald-600",
-                  },
+                },
+                {
+                  key: "forums",
+                  label: "Forums",
+                  icon: MessageCircle,
+                },
+                {
+                  key: "publications",
+                  label: "Publications",
+                  icon: FileText,
+                },
+                {
+                  key: "trials",
+                  label: "Clinical Trials",
+                  icon: Beaker,
                 },
                 {
                   key: "favorites",
-                  label: "Favourites",
+                  label: "Favorites",
                   icon: Star,
-                  colorClasses: {
-                    selected: "bg-amber-600 text-white border-amber-600",
-                    unselected:
-                      "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100",
-                    count: "text-amber-600",
-                  },
                 },
               ].map((category) => {
                 const Icon = category.icon;
@@ -1421,10 +1696,23 @@ export default function DashboardResearcher() {
                     key={category.key}
                     onClick={() => setSelectedCategory(category.key)}
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-all duration-200 whitespace-nowrap ${
-                      isSelected
-                        ? category.colorClasses.selected
-                        : category.colorClasses.unselected
+                      !isSelected ? "category-button-hover" : ""
                     }`}
+                    style={
+                      isSelected
+                        ? {
+                            backgroundColor: "#2F3C96",
+                            color: "#FFFFFF",
+                            borderColor: "#2F3C96",
+                            userSelect: "text",
+                          }
+                        : {
+                            backgroundColor: "rgba(255, 255, 255, 0.6)",
+                            color: "#787878",
+                            borderColor: "rgba(47, 60, 150, 0.2)",
+                            userSelect: "text",
+                          }
+                    }
                   >
                     <Icon className="w-4 h-4 shrink-0" />
                     <span className="text-sm font-semibold">
@@ -1432,11 +1720,12 @@ export default function DashboardResearcher() {
                     </span>
                     {category.key !== "profile" && (
                       <span
-                        className={`text-sm font-bold ${
+                        className="text-sm font-bold"
+                        style={
                           isSelected
-                            ? "text-white/90"
-                            : category.colorClasses.count
-                        }`}
+                            ? { color: "rgba(255, 255, 255, 0.9)" }
+                            : { color: "#2F3C96" }
+                        }
                       >
                         ({getCategoryCount(category.key)})
                       </span>
@@ -1450,14 +1739,28 @@ export default function DashboardResearcher() {
                 selectedCategory === "publications") && (
                 <button
                   onClick={() => setFilterModalOpen(true)}
-                  className="ml-auto flex items-center gap-2 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg border border-indigo-200 transition-all duration-200 whitespace-nowrap"
+                  className="ml-auto flex items-center gap-2 px-4 py-2 rounded-lg border transition-all duration-200 whitespace-nowrap"
+                  style={{
+                    backgroundColor: "rgba(208, 196, 226, 0.2)",
+                    color: "#2F3C96",
+                    borderColor: "rgba(208, 196, 226, 0.3)",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.target.style.backgroundColor = "rgba(208, 196, 226, 0.3)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.backgroundColor = "rgba(208, 196, 226, 0.2)";
+                  }}
                 >
                   <Filter className="w-4 h-4 shrink-0" />
                   <span className="text-sm font-semibold">
                     {selectedCategory === "trials" ? "Filter" : "Sort"}
                   </span>
                   {(trialFilter || publicationSort !== "relevance") && (
-                    <span className="w-2 h-2 bg-indigo-600 rounded-full"></span>
+                    <span
+                      className="w-2 h-2 rounded-full"
+                      style={{ backgroundColor: "#2F3C96" }}
+                    ></span>
                   )}
                 </button>
               )}
@@ -1465,37 +1768,53 @@ export default function DashboardResearcher() {
           </div>
 
           {/* Main Recommendations Section */}
-          <div className="bg-white rounded-2xl shadow-xl border border-slate-200/50 p-6 sm:p-8">
+          <div
+            className="bg-white rounded-2xl shadow-xl border p-6 sm:p-8"
+            style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+          >
             <div className="mb-8">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
                 <div>
-                  <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold bg-gradient-to-r from-indigo-700 via-indigo-600 to-blue-700 bg-clip-text text-transparent mb-2">
+                  <h2
+                    className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-2"
+                    style={{
+                      background: "linear-gradient(135deg, #2F3C96, #253075)",
+                      WebkitBackgroundClip: "text",
+                      WebkitTextFillColor: "transparent",
+                    }}
+                  >
                     Your Personalized Recommendations
                   </h2>
-                  <p className="text-slate-600 text-sm sm:text-base">
+                  <p
+                    className="text-sm sm:text-base"
+                    style={{ color: "#787878" }}
+                  >
                     Discover tailored content based on your research profile
                   </p>
                 </div>
-                <div className="flex items-center gap-3 bg-indigo-50 px-4 py-2 rounded-xl border border-indigo-100">
-                  <div className="h-2 w-2 bg-indigo-600 rounded-full animate-pulse"></div>
-                  <p className="text-sm font-semibold text-indigo-700">
-                    Viewing:{" "}
-                    <span className="text-indigo-900">
-                      {getCategoryLabel(selectedCategory)}
-                    </span>
-                    {selectedCategory === "favorites" && (
-                      <span className="text-indigo-600 ml-2">
-                        • To see all, go to{" "}
-                        <button
-                          onClick={() => navigate("/favorites")}
-                          className="underline hover:text-indigo-800 font-bold"
-                        >
-                          Saved Items/Favourites
-                        </button>
+                {selectedCategory !== "favorites" && (
+                  <div
+                    className="flex items-center gap-3 px-4 py-2 rounded-xl border"
+                    style={{
+                      backgroundColor: "rgba(208, 196, 226, 0.2)",
+                      borderColor: "rgba(208, 196, 226, 0.3)",
+                    }}
+                  >
+                    <div
+                      className="h-2 w-2 rounded-full animate-pulse"
+                      style={{ backgroundColor: "#2F3C96" }}
+                    ></div>
+                    <p
+                      className="text-sm font-semibold"
+                      style={{ color: "#2F3C96" }}
+                    >
+                      Viewing:{" "}
+                      <span style={{ color: "#2F3C96" }}>
+                        {getCategoryLabel(selectedCategory)}
                       </span>
-                    )}
-                  </p>
-                </div>
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1504,21 +1823,55 @@ export default function DashboardResearcher() {
               {selectedCategory === "profile" && (
                 <div className="col-span-full">
                   {!userProfile?.researcher?.orcid ? (
-                    <div className="bg-white/95 backdrop-blur-xl rounded-xl shadow-lg border border-slate-200 p-6 sm:p-8">
+                    <div
+                      className="backdrop-blur-xl rounded-xl shadow-lg border p-6 sm:p-8"
+                      style={{
+                        backgroundColor: "rgba(255, 255, 255, 0.95)",
+                        borderColor: "rgba(208, 196, 226, 0.3)",
+                      }}
+                    >
                       <div className="flex items-start gap-4">
-                        <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
-                          <LinkIcon className="w-6 h-6 text-indigo-600" />
+                        <div
+                          className="w-12 h-12 rounded-full flex items-center justify-center shrink-0"
+                          style={{
+                            backgroundColor: "rgba(208, 196, 226, 0.3)",
+                          }}
+                        >
+                          <LinkIcon
+                            className="w-6 h-6"
+                            style={{ color: "#2F3C96" }}
+                          />
                         </div>
                         <div className="flex-1">
-                          <h3 className="text-lg font-semibold text-slate-900 mb-2">
+                          <h3
+                            className="text-lg font-semibold mb-2"
+                            style={{ color: "#2F3C96" }}
+                          >
                             ORCID ID Not Added
                           </h3>
-                          <p className="text-sm text-slate-600 mb-4">
-                            Add your ORCID ID to link your research activities and display your publication stats, research interests, and professional information.
+                          <p
+                            className="text-sm mb-4"
+                            style={{ color: "#787878" }}
+                          >
+                            Add your ORCID ID to link your research activities
+                            and display your publication stats, research
+                            interests, and professional information.
                           </p>
                           <button
                             onClick={() => navigate("/profile")}
-                            className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg transition-colors"
+                            className="inline-flex items-center gap-2 px-5 py-2.5 text-white text-sm font-semibold rounded-lg transition-colors"
+                            style={{
+                              background:
+                                "linear-gradient(135deg, #2F3C96, #253075)",
+                            }}
+                            onMouseEnter={(e) => {
+                              e.target.style.background =
+                                "linear-gradient(135deg, #253075, #1C2454)";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.target.style.background =
+                                "linear-gradient(135deg, #2F3C96, #253075)";
+                            }}
                           >
                             <Edit3 className="w-4 h-4" />
                             Add ORCID ID
@@ -1527,35 +1880,84 @@ export default function DashboardResearcher() {
                       </div>
                     </div>
                   ) : (
-                    <div className="bg-white/95 backdrop-blur-xl rounded-xl shadow-lg border border-slate-200 p-6 sm:p-8">
-                      <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-200">
+                    <div
+                      className="backdrop-blur-xl rounded-xl shadow-lg border p-6 sm:p-8"
+                      style={{
+                        backgroundColor: "rgba(255, 255, 255, 0.95)",
+                        borderColor: "rgba(208, 196, 226, 0.3)",
+                      }}
+                    >
+                      <div
+                        className="flex items-center justify-between mb-6 pb-4"
+                        style={{
+                          borderBottom: "1px solid rgba(208, 196, 226, 0.3)",
+                        }}
+                      >
                         <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
-                            <CheckCircle className="w-6 h-6 text-green-600" />
+                          <div
+                            className="w-12 h-12 rounded-full flex items-center justify-center"
+                            style={{
+                              backgroundColor: "rgba(208, 196, 226, 0.3)",
+                            }}
+                          >
+                            <CheckCircle
+                              className="w-6 h-6"
+                              style={{ color: "#2F3C96" }}
+                            />
                           </div>
                           <div className="flex items-center gap-4">
                             <div>
-                              <h3 className="text-lg font-semibold text-slate-900">
+                              <h3
+                                className="text-lg font-semibold"
+                                style={{ color: "#2F3C96" }}
+                              >
                                 ORCID Profile Connected
                               </h3>
                               <a
-                                href={orcidStats?.orcidUrl || `https://orcid.org/${userProfile.researcher.orcid}`}
+                                href={
+                                  orcidStats?.orcidUrl ||
+                                  `https://orcid.org/${userProfile.researcher.orcid}`
+                                }
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-sm text-indigo-600 hover:text-indigo-700 flex items-center gap-1 mt-1"
+                                className="text-sm flex items-center gap-1 mt-1"
+                                style={{ color: "#2F3C96" }}
+                                onMouseEnter={(e) => {
+                                  e.target.style.color = "#253075";
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.target.style.color = "#2F3C96";
+                                }}
                               >
                                 {userProfile.researcher.orcid}
                                 <ExternalLink className="w-4 h-4" />
                               </a>
                             </div>
                             {orcidStats && (
-                              <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 rounded-lg border border-blue-200">
-                                <FileText className="w-5 h-5 text-blue-600" />
+                              <div
+                                className="flex items-center gap-2 px-4 py-2 rounded-lg border"
+                                style={{
+                                  backgroundColor: "rgba(208, 196, 226, 0.2)",
+                                  borderColor: "rgba(208, 196, 226, 0.3)",
+                                }}
+                              >
+                                <FileText
+                                  className="w-5 h-5"
+                                  style={{ color: "#2F3C96" }}
+                                />
                                 <div>
-                                  <p className="text-2xl font-bold text-blue-900">
+                                  <p
+                                    className="text-2xl font-bold"
+                                    style={{ color: "#2F3C96" }}
+                                  >
                                     {orcidStats.totalPublications || 0}
                                   </p>
-                                  <p className="text-xs text-blue-700">Total works</p>
+                                  <p
+                                    className="text-xs"
+                                    style={{ color: "#787878" }}
+                                  >
+                                    Total works
+                                  </p>
                                 </div>
                               </div>
                             )}
@@ -1565,18 +1967,38 @@ export default function DashboardResearcher() {
 
                       {loadingOrcidStats ? (
                         <div className="flex items-center justify-center py-12">
-                          <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+                          <Loader2
+                            className="w-8 h-8 animate-spin"
+                            style={{ color: "#2F3C96" }}
+                          />
                         </div>
                       ) : orcidStats ? (
                         <div className="space-y-6">
                           {/* Biography at the top */}
                           {orcidStats.biography && (
-                            <div className="bg-slate-50 rounded-lg p-5 border border-slate-200">
+                            <div
+                              className="rounded-lg p-5 border"
+                              style={{
+                                backgroundColor: "rgba(245, 242, 248, 0.5)",
+                                borderColor: "rgba(208, 196, 226, 0.3)",
+                              }}
+                            >
                               <div className="flex items-center gap-2 mb-3">
-                                <User className="w-5 h-5 text-slate-600" />
-                                <span className="text-sm font-semibold text-slate-900">Biography</span>
+                                <User
+                                  className="w-5 h-5"
+                                  style={{ color: "#2F3C96" }}
+                                />
+                                <span
+                                  className="text-sm font-semibold"
+                                  style={{ color: "#2F3C96" }}
+                                >
+                                  Biography
+                                </span>
                               </div>
-                              <p className="text-sm text-slate-700 leading-relaxed">
+                              <p
+                                className="text-sm leading-relaxed"
+                                style={{ color: "#787878" }}
+                              >
                                 {orcidStats.biography}
                               </p>
                             </div>
@@ -1586,228 +2008,391 @@ export default function DashboardResearcher() {
                           <div className="space-y-4">
                             {/* Current Position */}
                             {orcidStats.currentPosition && (
-                              <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                              <div
+                                className="rounded-lg p-4 border"
+                                style={{
+                                  backgroundColor: "rgba(245, 242, 248, 0.5)",
+                                  borderColor: "rgba(208, 196, 226, 0.3)",
+                                }}
+                              >
                                 <div className="flex items-center gap-2 mb-2">
-                                  <Briefcase className="w-5 h-5 text-slate-600" />
-                                  <span className="text-sm font-semibold text-slate-900">Current Position</span>
+                                  <Briefcase
+                                    className="w-5 h-5"
+                                    style={{ color: "#2F3C96" }}
+                                  />
+                                  <span
+                                    className="text-sm font-semibold"
+                                    style={{ color: "#2F3C96" }}
+                                  >
+                                    Current Position
+                                  </span>
                                 </div>
-                                <p className="text-sm text-slate-700">{orcidStats.currentPosition}</p>
+                                <p
+                                  className="text-sm"
+                                  style={{ color: "#787878" }}
+                                >
+                                  {orcidStats.currentPosition}
+                                </p>
                               </div>
                             )}
 
                             {/* Location */}
                             {orcidStats.location && (
-                              <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                              <div
+                                className="rounded-lg p-4 border"
+                                style={{
+                                  backgroundColor: "rgba(245, 242, 248, 0.5)",
+                                  borderColor: "rgba(208, 196, 226, 0.3)",
+                                }}
+                              >
                                 <div className="flex items-center gap-2 mb-2">
-                                  <MapPin className="w-5 h-5 text-slate-600" />
-                                  <span className="text-sm font-semibold text-slate-900">Location</span>
+                                  <MapPin
+                                    className="w-5 h-5"
+                                    style={{ color: "#2F3C96" }}
+                                  />
+                                  <span
+                                    className="text-sm font-semibold"
+                                    style={{ color: "#2F3C96" }}
+                                  >
+                                    Location
+                                  </span>
                                 </div>
-                                <p className="text-sm text-slate-700">{orcidStats.location}</p>
+                                <p
+                                  className="text-sm"
+                                  style={{ color: "#787878" }}
+                                >
+                                  {orcidStats.location}
+                                </p>
                               </div>
                             )}
 
                             {/* Research Interests */}
-                            {orcidStats.researchInterests && orcidStats.researchInterests.length > 0 && (
-                              <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                                <div className="flex items-center gap-2 mb-3">
-                                  <Sparkles className="w-5 h-5 text-slate-600" />
-                                  <span className="text-sm font-semibold text-slate-900">Research Interests</span>
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                  {orcidStats.researchInterests.slice(0, 10).map((interest, idx) => (
+                            {orcidStats.researchInterests &&
+                              orcidStats.researchInterests.length > 0 && (
+                                <div
+                                  className="rounded-lg p-4 border"
+                                  style={{
+                                    backgroundColor: "rgba(245, 242, 248, 0.5)",
+                                    borderColor: "rgba(208, 196, 226, 0.3)",
+                                  }}
+                                >
+                                  <div className="flex items-center gap-2 mb-3">
+                                    <Sparkles
+                                      className="w-5 h-5"
+                                      style={{ color: "#2F3C96" }}
+                                    />
                                     <span
-                                      key={idx}
-                                      className="inline-flex items-center px-3 py-1 rounded-md text-sm font-medium bg-indigo-100 text-indigo-800 hover:bg-indigo-200 transition-colors"
+                                      className="text-sm font-semibold"
+                                      style={{ color: "#2F3C96" }}
                                     >
-                                      {interest}
+                                      Research Interests
                                     </span>
-                                  ))}
+                                  </div>
+                                  <div className="flex flex-wrap gap-2">
+                                    {orcidStats.researchInterests
+                                      .slice(0, 10)
+                                      .map((interest, idx) => (
+                                        <span
+                                          key={idx}
+                                          className="inline-flex items-center px-3 py-1 rounded-md text-sm font-medium transition-colors"
+                                          style={{
+                                            backgroundColor:
+                                              "rgba(208, 196, 226, 0.3)",
+                                            color: "#2F3C96",
+                                          }}
+                                          onMouseEnter={(e) => {
+                                            e.target.style.backgroundColor =
+                                              "rgba(208, 196, 226, 0.4)";
+                                          }}
+                                          onMouseLeave={(e) => {
+                                            e.target.style.backgroundColor =
+                                              "rgba(208, 196, 226, 0.3)";
+                                          }}
+                                        >
+                                          {interest}
+                                        </span>
+                                      ))}
+                                  </div>
                                 </div>
-                              </div>
-                            )}
+                              )}
 
                             {/* External Links */}
-                            {orcidStats.externalLinks && Object.keys(orcidStats.externalLinks).length > 1 && (
-                              <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                                <div className="flex items-center gap-2 mb-3">
-                                  <LinkIcon className="w-5 h-5 text-slate-600" />
-                                  <span className="text-sm font-semibold text-slate-900">External Links</span>
-                                </div>
-                                <div className="flex flex-wrap gap-3">
-                                  {orcidStats.externalLinks.googleScholar && (
-                                    <a
-                                      href={orcidStats.externalLinks.googleScholar}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="inline-flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+                            {orcidStats.externalLinks &&
+                              Object.keys(orcidStats.externalLinks).length >
+                                1 && (
+                                <div
+                                  className="rounded-lg p-4 border"
+                                  style={{
+                                    backgroundColor: "rgba(245, 242, 248, 0.5)",
+                                    borderColor: "rgba(208, 196, 226, 0.3)",
+                                  }}
+                                >
+                                  <div className="flex items-center gap-2 mb-3">
+                                    <LinkIcon
+                                      className="w-5 h-5"
+                                      style={{ color: "#2F3C96" }}
+                                    />
+                                    <span
+                                      className="text-sm font-semibold"
+                                      style={{ color: "#2F3C96" }}
                                     >
-                                      Google Scholar
-                                      <ExternalLink className="w-4 h-4" />
-                                    </a>
-                                  )}
-                                  {orcidStats.externalLinks.researchGate && (
-                                    <a
-                                      href={orcidStats.externalLinks.researchGate}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="inline-flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700 font-medium"
-                                    >
-                                      ResearchGate
-                                      <ExternalLink className="w-4 h-4" />
-                                    </a>
-                                  )}
-                                  {orcidStats.externalLinks.pubmed && (
-                                    <a
-                                      href={orcidStats.externalLinks.pubmed}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="inline-flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700 font-medium"
-                                    >
-                                      PubMed
-                                      <ExternalLink className="w-4 h-4" />
-                                    </a>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Employment History */}
-                            {orcidStats.employments && orcidStats.employments.length > 0 && (
-                              <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                                <div className="flex items-center gap-2 mb-4">
-                                  <Briefcase className="w-5 h-5 text-slate-600" />
-                                  <span className="text-sm font-semibold text-slate-900">
-                                    Employment History
-                                  </span>
-                                </div>
-                                <div className="space-y-3 max-h-96 overflow-y-auto">
-                                  {orcidStats.employments.map((emp, idx) => (
-                                    <div key={idx} className="border-b border-slate-200 last:border-b-0 pb-3 last:pb-0">
-                                      <div className="flex items-start justify-between gap-3">
-                                        <div className="flex-1">
-                                          <p className="text-sm font-semibold text-slate-900 mb-1">
-                                            {emp.roleTitle || "Position"}
-                                          </p>
-                                          <p className="text-sm text-slate-700 mb-1">
-                                            {emp.organization || "Organization"}
-                                          </p>
-                                          {emp.department && (
-                                            <p className="text-xs text-slate-600 mb-1">
-                                              {emp.department}
-                                            </p>
-                                          )}
-                                          {(emp.startDate || emp.endDate) && (
-                                            <p className="text-xs text-slate-500">
-                                              {emp.startDate || "?"} - {emp.endDate || "Present"}
-                                            </p>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Recent Publications */}
-                            {orcidStats.recentPublications && orcidStats.recentPublications.length > 0 && (
-                              <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                                <div className="bg-gradient-to-r from-indigo-50 to-blue-50 px-6 py-4 border-b border-slate-200">
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                      <div className="p-2 bg-indigo-100 rounded-lg">
-                                        <BookOpen className="w-5 h-5 text-indigo-600" />
-                                      </div>
-                                      <div>
-                                        <h3 className="text-base font-bold text-slate-900">
-                                          Recent Publications
-                                        </h3>
-                                        {orcidStats.totalPublications > 5 && (
-                                          <p className="text-xs text-slate-600 mt-0.5">
-                                            Showing 5 of {orcidStats.totalPublications} publications
-                                          </p>
-                                        )}
-                                      </div>
-                                    </div>
+                                      External Links
+                                    </span>
                                   </div>
-                                </div>
-                                <div className="p-4 space-y-3 max-h-[500px] overflow-y-auto">
-                                  {orcidStats.recentPublications.map((pub, idx) => (
-                                    <div
-                                      key={idx}
-                                      className="group bg-slate-50 hover:bg-indigo-50 rounded-lg p-4 border border-slate-200 hover:border-indigo-300 transition-all duration-200 hover:shadow-md"
-                                    >
+                                  <div className="flex flex-wrap gap-3">
+                                    {orcidStats.externalLinks.googleScholar && (
                                       <a
-                                        href={pub.link || pub.url || "#"}
+                                        href={
+                                          orcidStats.externalLinks.googleScholar
+                                        }
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="block"
+                                        className="inline-flex items-center gap-2 text-sm font-medium"
+                                        style={{ color: "#2F3C96" }}
+                                        onMouseEnter={(e) => {
+                                          e.target.style.color = "#253075";
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          e.target.style.color = "#2F3C96";
+                                        }}
                                       >
-                                        <h4 className="text-sm font-semibold text-slate-900 group-hover:text-indigo-700 line-clamp-2 mb-2 transition-colors">
-                                          {pub.title}
-                                        </h4>
+                                        Google Scholar
+                                        <ExternalLink className="w-4 h-4" />
                                       </a>
-                                      <div className="space-y-2">
-                                        {pub.authors && pub.authors.length > 0 && (
-                                          <div className="flex items-start gap-2">
-                                            <Users className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
-                                            <p className="text-xs text-slate-600 line-clamp-2">
-                                              {pub.authors.slice(0, 4).join(", ")}
-                                              {pub.authors.length > 4 && ` +${pub.authors.length - 4} more`}
+                                    )}
+                                    {orcidStats.externalLinks.researchGate && (
+                                      <a
+                                        href={
+                                          orcidStats.externalLinks.researchGate
+                                        }
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-2 text-sm font-medium"
+                                        style={{ color: "#2F3C96" }}
+                                        onMouseEnter={(e) => {
+                                          e.target.style.color = "#253075";
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          e.target.style.color = "#2F3C96";
+                                        }}
+                                      >
+                                        ResearchGate
+                                        <ExternalLink className="w-4 h-4" />
+                                      </a>
+                                    )}
+                                    {orcidStats.externalLinks.pubmed && (
+                                      <a
+                                        href={orcidStats.externalLinks.pubmed}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-2 text-sm font-medium"
+                                        style={{ color: "#2F3C96" }}
+                                        onMouseEnter={(e) => {
+                                          e.target.style.color = "#253075";
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          e.target.style.color = "#2F3C96";
+                                        }}
+                                      >
+                                        PubMed
+                                        <ExternalLink className="w-4 h-4" />
+                                      </a>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+
+                            {/* Employment History */}
+                            {orcidStats.employments &&
+                              orcidStats.employments.length > 0 && (
+                                <div
+                                  className="rounded-lg p-4 border"
+                                  style={{
+                                    backgroundColor: "rgba(245, 242, 248, 0.5)",
+                                    borderColor: "rgba(208, 196, 226, 0.3)",
+                                  }}
+                                >
+                                  <div className="flex items-center gap-2 mb-4">
+                                    <Briefcase
+                                      className="w-5 h-5"
+                                      style={{ color: "#2F3C96" }}
+                                    />
+                                    <span
+                                      className="text-sm font-semibold"
+                                      style={{ color: "#2F3C96" }}
+                                    >
+                                      Employment History
+                                    </span>
+                                  </div>
+                                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                                    {orcidStats.employments.map((emp, idx) => (
+                                      <div
+                                        key={idx}
+                                        style={{
+                                          borderBottom:
+                                            idx <
+                                            orcidStats.employments.length - 1
+                                              ? "1px solid rgba(208, 196, 226, 0.3)"
+                                              : "none",
+                                        }}
+                                        className="pb-3 last:pb-0"
+                                      >
+                                        <div className="flex items-start justify-between gap-3">
+                                          <div className="flex-1">
+                                            <p
+                                              className="text-sm font-semibold mb-1"
+                                              style={{ color: "#2F3C96" }}
+                                            >
+                                              {emp.roleTitle || "Position"}
                                             </p>
+                                            <p
+                                              className="text-sm mb-1"
+                                              style={{ color: "#787878" }}
+                                            >
+                                              {emp.organization ||
+                                                "Organization"}
+                                            </p>
+                                            {emp.department && (
+                                              <p
+                                                className="text-xs mb-1"
+                                                style={{ color: "#787878" }}
+                                              >
+                                                {emp.department}
+                                              </p>
+                                            )}
+                                            {(emp.startDate || emp.endDate) && (
+                                              <p
+                                                className="text-xs"
+                                                style={{ color: "#787878" }}
+                                              >
+                                                {emp.startDate || "?"} -{" "}
+                                                {emp.endDate || "Present"}
+                                              </p>
+                                            )}
                                           </div>
-                                        )}
-                                        <div className="flex items-center gap-4 flex-wrap">
-                                          {pub.journal && (
-                                            <div className="flex items-center gap-1.5">
-                                              <FileText className="w-3.5 h-3.5 text-slate-400" />
-                                              <span className="text-xs text-slate-600 font-medium">
-                                                {pub.journal}
-                                              </span>
-                                            </div>
-                                          )}
-                                          {pub.year && (
-                                            <div className="flex items-center gap-1.5">
-                                              <CalendarIcon className="w-3.5 h-3.5 text-slate-400" />
-                                              <span className="text-xs text-slate-600">
-                                                {pub.year}
-                                              </span>
-                                            </div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                            {/* Recent Publications */}
+                            {orcidStats.recentPublications &&
+                              orcidStats.recentPublications.length > 0 && (
+                                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                                  <div className="bg-gradient-to-r from-indigo-50 to-blue-50 px-6 py-4 border-b border-slate-200">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-indigo-100 rounded-lg">
+                                          <BookOpen className="w-5 h-5 text-indigo-600" />
+                                        </div>
+                                        <div>
+                                          <h3 className="text-base font-bold text-slate-900">
+                                            Recent Publications
+                                          </h3>
+                                          {orcidStats.totalPublications > 5 && (
+                                            <p className="text-xs text-slate-600 mt-0.5">
+                                              Showing 5 of{" "}
+                                              {orcidStats.totalPublications}{" "}
+                                              publications
+                                            </p>
                                           )}
                                         </div>
-                                        {(pub.link || pub.url) && (
-                                          <div className="pt-2 border-t border-slate-200">
-                                            <a
-                                              href={pub.link || pub.url}
-                                              target="_blank"
-                                              rel="noopener noreferrer"
-                                              className="inline-flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-700 font-medium transition-colors"
-                                              onClick={(e) => e.stopPropagation()}
-                                            >
-                                              <ExternalLink className="w-3.5 h-3.5" />
-                                              View Publication
-                                            </a>
-                                          </div>
-                                        )}
                                       </div>
                                     </div>
-                                  ))}
-                                </div>
-                                {orcidStats.totalPublications > 5 && (
-                                  <div className="bg-slate-50 px-6 py-4 border-t border-slate-200">
-                                    <a
-                                      href={orcidStats.orcidUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="inline-flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700 font-semibold transition-colors group"
-                                    >
-                                      <span>View all {orcidStats.totalPublications} publications on ORCID</span>
-                                      <ExternalLink className="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-                                    </a>
                                   </div>
-                                )}
-                              </div>
-                            )}
+                                  <div className="p-4 space-y-3 max-h-[500px] overflow-y-auto">
+                                    {orcidStats.recentPublications.map(
+                                      (pub, idx) => (
+                                        <div
+                                          key={idx}
+                                          className="group bg-slate-50 hover:bg-indigo-50 rounded-lg p-4 border border-slate-200 hover:border-indigo-300 transition-all duration-200 hover:shadow-md"
+                                        >
+                                          <a
+                                            href={pub.link || pub.url || "#"}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="block"
+                                          >
+                                            <h4 className="text-sm font-semibold text-slate-900 group-hover:text-indigo-700 line-clamp-2 mb-2 transition-colors">
+                                              {pub.title}
+                                            </h4>
+                                          </a>
+                                          <div className="space-y-2">
+                                            {pub.authors &&
+                                              pub.authors.length > 0 && (
+                                                <div className="flex items-start gap-2">
+                                                  <Users className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
+                                                  <p className="text-xs text-slate-600 line-clamp-2">
+                                                    {pub.authors
+                                                      .slice(0, 4)
+                                                      .join(", ")}
+                                                    {pub.authors.length > 4 &&
+                                                      ` +${
+                                                        pub.authors.length - 4
+                                                      } more`}
+                                                  </p>
+                                                </div>
+                                              )}
+                                            <div className="flex items-center gap-4 flex-wrap">
+                                              {pub.journal && (
+                                                <div className="flex items-center gap-1.5">
+                                                  <FileText className="w-3.5 h-3.5 text-slate-400" />
+                                                  <span className="text-xs text-slate-600 font-medium">
+                                                    {pub.journal}
+                                                  </span>
+                                                </div>
+                                              )}
+                                              {pub.year && (
+                                                <div className="flex items-center gap-1.5">
+                                                  <CalendarIcon className="w-3.5 h-3.5 text-slate-400" />
+                                                  <span className="text-xs text-slate-600">
+                                                    {pub.year}
+                                                  </span>
+                                                </div>
+                                              )}
+                                            </div>
+                                            {(pub.link || pub.url) && (
+                                              <div className="pt-2 border-t border-slate-200">
+                                                <a
+                                                  href={pub.link || pub.url}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className="inline-flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-700 font-medium transition-colors"
+                                                  onClick={(e) =>
+                                                    e.stopPropagation()
+                                                  }
+                                                >
+                                                  <ExternalLink className="w-3.5 h-3.5" />
+                                                  View Publication
+                                                </a>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )
+                                    )}
+                                  </div>
+                                  {orcidStats.totalPublications > 5 && (
+                                    <div className="bg-slate-50 px-6 py-4 border-t border-slate-200">
+                                      <a
+                                        href={orcidStats.orcidUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700 font-semibold transition-colors group"
+                                      >
+                                        <span>
+                                          View all{" "}
+                                          {orcidStats.totalPublications}{" "}
+                                          publications on ORCID
+                                        </span>
+                                        <ExternalLink className="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                                      </a>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                           </div>
                         </div>
                       ) : orcidError === "not_found" ? (
@@ -1821,7 +2406,9 @@ export default function DashboardResearcher() {
                                 ORCID Profile Not Found
                               </h3>
                               <p className="text-sm text-amber-800 mb-4">
-                                We couldn't find your ORCID profile. Please check your ORCID ID or start your research to build your profile.
+                                We couldn't find your ORCID profile. Please
+                                check your ORCID ID or start your research to
+                                build your profile.
                               </p>
                               <div className="flex flex-wrap gap-3">
                                 <button
@@ -1857,168 +2444,328 @@ export default function DashboardResearcher() {
               {selectedCategory === "trials" &&
                 (loadingFiltered ? (
                   <div className="col-span-full text-center py-16">
-                    <div className="inline-flex items-center justify-center gap-2 text-indigo-600">
-                      <div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                    <div
+                      className="inline-flex items-center justify-center gap-2"
+                      style={{ color: "#2F3C96" }}
+                    >
+                      <div
+                        className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin"
+                        style={{ borderColor: "#2F3C96" }}
+                      ></div>
                       <span className="text-sm font-medium">
-                        Loading filtered trials...
+                        Loading recruiting trials...
                       </span>
                     </div>
                   </div>
-                ) : data.trials.length > 0 ? (
-                  sortByMatchPercentage(data.trials).map((t, idx) => (
-                    <div
-                      key={idx}
-                      className="bg-white rounded-xl shadow-sm border border-slate-200 hover:shadow-lg hover:border-indigo-300 transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden"
-                    >
-                      <div className="p-5">
-                        {/* Match Badge Banner */}
-                        {t.matchPercentage !== undefined && (
-                          <div className="mb-3 -mt-2 -mx-5 px-5 py-2 bg-gradient-to-r from-indigo-50 to-blue-50 border-b border-indigo-100">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <TrendingUp className="w-4 h-4 text-indigo-600" />
-                                <span className="text-sm font-bold text-indigo-700">
-                                  {t.matchPercentage}% Match
-                                </span>
+                ) : (
+                  (() => {
+                    // Filter trials by RECRUITING status when trialFilter is RECRUITING
+                    const filteredTrials =
+                      trialFilter === "RECRUITING"
+                        ? data.trials.filter((t) => t.status === "RECRUITING")
+                        : data.trials;
+                    return filteredTrials.length > 0 ? (
+                      sortByMatchPercentage(filteredTrials).map((t, idx) => (
+                        <div
+                          key={idx}
+                          className="bg-white rounded-xl shadow-sm border transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden flex flex-col h-full"
+                          style={{
+                            borderColor: "rgba(208, 196, 226, 0.3)",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.boxShadow =
+                              "0 10px 15px -3px rgba(47, 60, 150, 0.1), 0 4px 6px -2px rgba(47, 60, 150, 0.05)";
+                            e.currentTarget.style.borderColor =
+                              "rgba(47, 60, 150, 0.4)";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.boxShadow =
+                              "0 1px 2px 0 rgba(0, 0, 0, 0.05)";
+                            e.currentTarget.style.borderColor =
+                              "rgba(208, 196, 226, 0.3)";
+                          }}
+                        >
+                          <div className="p-5 flex flex-col flex-grow">
+                            {/* Match Progress Bar */}
+                            {t.matchPercentage !== undefined && (
+                              <div className="mb-4">
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="flex items-center gap-2">
+                                    <TrendingUp
+                                      className="w-4 h-4"
+                                      style={{ color: "#2F3C96" }}
+                                    />
+                                    <span
+                                      className="text-sm font-bold"
+                                      style={{ color: "#2F3C96" }}
+                                    >
+                                      {t.matchPercentage}% Match
+                                    </span>
+                                  </div>
+                                  {/* Status Badge */}
+                                  {t.status && (
+                                    <span
+                                      className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(
+                                        t.status
+                                      )}`}
+                                    >
+                                      {t.status.replace(/_/g, " ")}
+                                    </span>
+                                  )}
+                                </div>
+                                {/* Progress Bar */}
+                                <div
+                                  className="w-full h-2.5 rounded-full overflow-hidden"
+                                  style={{
+                                    backgroundColor: "rgba(208, 196, 226, 0.3)",
+                                  }}
+                                >
+                                  <div
+                                    className="h-full rounded-full transition-all duration-500"
+                                    style={{
+                                      width: `${t.matchPercentage}%`,
+                                      background:
+                                        "linear-gradient(90deg, #2F3C96, #253075)",
+                                    }}
+                                  ></div>
+                                </div>
                               </div>
-                              {t.matchExplanation && (
-                                <span className="text-xs text-indigo-600 truncate flex-1 ml-2 max-w-[200px] sm:max-w-none">
-                                  {t.matchExplanation}
-                                </span>
+                            )}
+
+                            {/* Title */}
+                            <div className="mb-4">
+                              <h3
+                                className="text-lg font-bold mb-0 line-clamp-3 leading-snug"
+                                style={{ color: "#2F3C96" }}
+                              >
+                                {t.title}
+                              </h3>
+                            </div>
+
+                            {/* Basic Info */}
+                            <div className="space-y-1.5 mb-4">
+                              {t.conditions && (
+                                <div
+                                  className="flex items-center text-sm"
+                                  style={{ color: "#787878" }}
+                                >
+                                  <Info className="w-3.5 h-3.5 mr-2 shrink-0" />
+                                  <span className="line-clamp-1">
+                                    {Array.isArray(t.conditions)
+                                      ? t.conditions.join(", ")
+                                      : t.conditions}
+                                  </span>
+                                </div>
+                              )}
+                              {t.phase && (
+                                <div
+                                  className="flex items-center text-sm"
+                                  style={{ color: "#787878" }}
+                                >
+                                  <Calendar className="w-3.5 h-3.5 mr-2 shrink-0" />{" "}
+                                  Phase {t.phase}
+                                </div>
                               )}
                             </div>
-                          </div>
-                        )}
 
-                        {/* Header */}
-                        <div className="flex items-start justify-between mb-3">
-                          <span className="inline-flex items-center px-2.5 py-1 bg-indigo-100 text-indigo-700 text-xs font-medium rounded-full">
-                            <Beaker className="w-3 h-3 mr-1" />
-                            {t._id || t.id || `TRIAL-${idx + 1}`}
-                          </span>
-                          {t.status && (
-                            <span
-                              className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(
-                                t.status
-                              )}`}
-                            >
-                              {t.status.replace(/_/g, " ")}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Title */}
-                        <h3 className="text-base font-bold text-slate-900 mb-3 line-clamp-2">
-                          {t.title}
-                        </h3>
-
-                        {/* Basic Info */}
-                        <div className="space-y-1.5 mb-3 text-sm text-slate-700">
-                          {t.conditions && (
-                            <div className="flex items-center gap-2">
-                              <Info className="w-3.5 h-3.5 text-indigo-600" />
-                              <span className="line-clamp-1">
-                                {Array.isArray(t.conditions)
-                                  ? t.conditions.join(", ")
-                                  : t.conditions}
-                              </span>
-                            </div>
-                          )}
-                          {t.phase && (
-                            <div className="flex items-center gap-2 text-slate-600">
-                              <Calendar className="w-3.5 h-3.5" /> Phase{" "}
-                              {t.phase}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Description with Info Button */}
-                        {(t.description || t.conditionDescription) && (
-                          <div className="mb-3">
-                            <button
-                              onClick={() => openTrialDetailsModal(t)}
-                              className="w-full flex items-center gap-2 text-sm text-slate-700 hover:text-indigo-700 font-medium py-2 px-3 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
-                            >
-                              <Info className="w-4 h-4" />
-                              <span className="flex-1 text-left line-clamp-2">
-                                {t.description ||
-                                  t.conditionDescription ||
-                                  "View details for more information"}
-                              </span>
-                            </button>
-                          </div>
-                        )}
-
-                        {/* Buttons */}
-                        <div className="flex gap-2 mt-4">
-                          <button
-                            onClick={() => generateSummary(t, "trial")}
-                            className="flex-1 flex items-center justify-center gap-2 py-2 bg-gradient-to-r from-slate-600 to-slate-700 text-white rounded-lg text-sm font-semibold hover:from-slate-700 hover:to-slate-800 transition-all shadow-sm"
-                          >
-                            <Sparkles className="w-4 h-4" /> Summarize
-                          </button>
-                          <button
-                            onClick={() =>
-                              toggleFavorite("trial", t._id || t.id, t)
-                            }
-                            disabled={favoritingItems.has(
-                              getFavoriteKey("trial", t._id || t.id, t)
+                            {/* Description/Details Preview */}
+                            {(t.description || t.conditionDescription) && (
+                              <div className="mb-4 flex-grow">
+                                <button
+                                  onClick={() => openTrialDetailsModal(t)}
+                                  className="w-full text-left text-sm py-2 px-3 rounded-lg transition-all duration-200 border group"
+                                  style={{
+                                    backgroundColor: "rgba(208, 196, 226, 0.2)",
+                                    borderColor: "rgba(47, 60, 150, 0.2)",
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.backgroundColor =
+                                      "rgba(208, 196, 226, 0.3)";
+                                    e.currentTarget.style.borderColor =
+                                      "rgba(47, 60, 150, 0.3)";
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.backgroundColor =
+                                      "rgba(208, 196, 226, 0.2)";
+                                    e.currentTarget.style.borderColor =
+                                      "rgba(47, 60, 150, 0.2)";
+                                  }}
+                                >
+                                  <div className="flex items-start gap-2">
+                                    <Info
+                                      className="w-4 h-4 mt-0.5 shrink-0 transition-colors duration-200"
+                                      style={{ color: "#2F3C96" }}
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                      <div
+                                        className="transition-colors duration-200"
+                                        style={{ color: "#787878" }}
+                                      >
+                                        <span className="line-clamp-2">
+                                          {t.description ||
+                                            t.conditionDescription ||
+                                            "View details for more information"}
+                                        </span>
+                                      </div>
+                                      <div
+                                        className="mt-1.5 flex items-center gap-1 font-medium transition-all duration-200"
+                                        style={{ color: "#2F3C96" }}
+                                      >
+                                        <span>Read more details</span>
+                                        <span className="inline-block group-hover:translate-x-0.5 transition-transform duration-200">
+                                          →
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </button>
+                              </div>
                             )}
-                            className={`p-2 rounded-lg border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
-                              favorites.some(
-                                (fav) =>
-                                  fav.type === "trial" &&
-                                  (fav.item?.id === (t._id || t.id) ||
-                                    fav.item?._id === (t._id || t.id))
-                              )
-                                ? "bg-red-50 border-red-200 text-red-500"
-                                : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-red-500"
-                            }`}
-                          >
-                            {favoritingItems.has(
-                              getFavoriteKey("trial", t._id || t.id, t)
-                            ) ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <Heart
-                                className={`w-4 h-4 ${
+
+                            {/* Spacer for trials without description */}
+                            {!t.description && !t.conditionDescription && (
+                              <div className="flex-grow"></div>
+                            )}
+
+                            {/* Action Buttons */}
+                            <div className="flex gap-2 mt-auto">
+                              <button
+                                onClick={() => generateSummary(t, "trial")}
+                                className="flex-1 flex items-center justify-center gap-2 py-2 text-white rounded-lg text-sm font-semibold transition-all shadow-sm"
+                                style={{
+                                  background:
+                                    "linear-gradient(135deg, #2F3C96, #253075)",
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (!e.target.disabled) {
+                                    e.target.style.background =
+                                      "linear-gradient(135deg, #253075, #1C2454)";
+                                  }
+                                }}
+                                onMouseLeave={(e) => {
+                                  if (!e.target.disabled) {
+                                    e.target.style.background =
+                                      "linear-gradient(135deg, #2F3C96, #253075)";
+                                  }
+                                }}
+                              >
+                                <Sparkles className="w-4 h-4" />
+                                Understand this trial
+                              </button>
+                              <button
+                                onClick={() =>
+                                  toggleFavorite("trial", t._id || t.id, t)
+                                }
+                                disabled={favoritingItems.has(
+                                  getFavoriteKey("trial", t._id || t.id, t)
+                                )}
+                                className={`p-2 rounded-lg border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
                                   favorites.some(
                                     (fav) =>
                                       fav.type === "trial" &&
                                       (fav.item?.id === (t._id || t.id) ||
                                         fav.item?._id === (t._id || t.id))
                                   )
-                                    ? "fill-current"
+                                    ? "bg-red-50 border-red-200 text-red-500"
                                     : ""
                                 }`}
-                              />
-                            )}
-                          </button>
+                                style={
+                                  !favorites.some(
+                                    (fav) =>
+                                      fav.type === "trial" &&
+                                      (fav.item?.id === (t._id || t.id) ||
+                                        fav.item?._id === (t._id || t.id))
+                                  )
+                                    ? {
+                                        backgroundColor:
+                                          "rgba(208, 196, 226, 0.2)",
+                                        borderColor: "rgba(208, 196, 226, 0.3)",
+                                        color: "#787878",
+                                      }
+                                    : {}
+                                }
+                                onMouseEnter={(e) => {
+                                  if (
+                                    !favorites.some(
+                                      (fav) =>
+                                        fav.type === "trial" &&
+                                        (fav.item?.id === (t._id || t.id) ||
+                                          fav.item?._id === (t._id || t.id))
+                                    ) &&
+                                    !e.currentTarget.disabled
+                                  ) {
+                                    e.currentTarget.style.backgroundColor =
+                                      "rgba(208, 196, 226, 0.3)";
+                                    e.currentTarget.style.color = "#dc2626";
+                                  }
+                                }}
+                                onMouseLeave={(e) => {
+                                  if (
+                                    !favorites.some(
+                                      (fav) =>
+                                        fav.type === "trial" &&
+                                        (fav.item?.id === (t._id || t.id) ||
+                                          fav.item?._id === (t._id || t.id))
+                                    )
+                                  ) {
+                                    e.currentTarget.style.backgroundColor =
+                                      "rgba(208, 196, 226, 0.2)";
+                                    e.currentTarget.style.color = "#787878";
+                                  }
+                                }}
+                              >
+                                {favoritingItems.has(
+                                  getFavoriteKey("trial", t._id || t.id, t)
+                                ) ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <Heart
+                                    className={`w-4 h-4 ${
+                                      favorites.some(
+                                        (fav) =>
+                                          fav.type === "trial" &&
+                                          (fav.item?.id === (t._id || t.id) ||
+                                            fav.item?._id === (t._id || t.id))
+                                      )
+                                        ? "fill-current"
+                                        : ""
+                                    }`}
+                                  />
+                                )}
+                              </button>
+                            </div>
+                          </div>
                         </div>
-
-                        {/* Contact Button */}
-                        <button
-                          onClick={() => openContactModal(t)}
-                          className="w-full mt-3 flex items-center justify-center gap-2 py-2 text-xs text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
+                      ))
+                    ) : (
+                      <div className="col-span-full text-center py-16">
+                        <div
+                          className="inline-flex items-center justify-center w-20 h-20 rounded-full mb-4"
+                          style={{
+                            backgroundColor: "rgba(208, 196, 226, 0.2)",
+                          }}
                         >
-                          <Send className="w-3.5 h-3.5" /> Contact Moderator
-                        </button>
+                          <Beaker
+                            className="w-10 h-10"
+                            style={{ color: "#2F3C96" }}
+                          />
+                        </div>
+                        <h3
+                          className="text-lg font-semibold mb-2"
+                          style={{ color: "#2F3C96" }}
+                        >
+                          No Recruiting Clinical Trials Found
+                        </h3>
+                        <p
+                          className="text-sm max-w-md mx-auto"
+                          style={{ color: "#787878" }}
+                        >
+                          We're working on finding relevant recruiting clinical
+                          trials for you. Check back soon!
+                        </p>
                       </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="col-span-full text-center py-16">
-                    <div className="inline-flex items-center justify-center w-20 h-20 bg-indigo-100 rounded-full mb-4">
-                      <Beaker className="w-10 h-10 text-indigo-400" />
-                    </div>
-                    <h3 className="text-lg font-semibold text-slate-800 mb-2">
-                      No Clinical Trials Found
-                    </h3>
-                    <p className="text-slate-600 text-sm max-w-md mx-auto">
-                      We're working on finding relevant clinical trials for you.
-                      Check back soon!
-                    </p>
-                  </div>
+                    );
+                  })()
                 ))}
 
               {selectedCategory === "publications" &&
@@ -2037,54 +2784,79 @@ export default function DashboardResearcher() {
                       return (
                         <div
                           key={idx}
-                          className="bg-white rounded-xl shadow-sm border border-slate-200 hover:shadow-lg hover:border-indigo-300 transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden"
+                          className="bg-white rounded-xl shadow-sm border transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden flex flex-col h-full"
+                          style={{
+                            borderColor: "rgba(208, 196, 226, 0.3)",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.boxShadow =
+                              "0 10px 15px -3px rgba(47, 60, 150, 0.1), 0 4px 6px -2px rgba(47, 60, 150, 0.05)";
+                            e.currentTarget.style.borderColor =
+                              "rgba(47, 60, 150, 0.4)";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.boxShadow =
+                              "0 1px 2px 0 rgba(0, 0, 0, 0.05)";
+                            e.currentTarget.style.borderColor =
+                              "rgba(208, 196, 226, 0.3)";
+                          }}
                         >
-                          <div className="p-5">
-                            {/* Match Badge Banner */}
+                          <div className="p-5 flex flex-col flex-grow">
+                            {/* Match Progress Bar */}
                             {p.matchPercentage !== undefined && (
-                              <div className="mb-3 -mt-2 -mx-5 px-5 py-2 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100">
-                                <div className="flex items-center justify-between">
+                              <div className="mb-4">
+                                <div className="flex items-center justify-between mb-2">
                                   <div className="flex items-center gap-2">
-                                    <TrendingUp className="w-4 h-4 text-blue-600" />
-                                    <span className="text-sm font-bold text-blue-700">
+                                    <TrendingUp
+                                      className="w-4 h-4"
+                                      style={{ color: "#2F3C96" }}
+                                    />
+                                    <span
+                                      className="text-sm font-bold"
+                                      style={{ color: "#2F3C96" }}
+                                    >
                                       {p.matchPercentage}% Match
                                     </span>
                                   </div>
-                                  {p.matchExplanation && (
-                                    <span className="text-xs text-blue-600 truncate flex-1 ml-2 max-w-[200px] sm:max-w-none">
-                                      {p.matchExplanation}
-                                    </span>
-                                  )}
+                                </div>
+                                {/* Progress Bar */}
+                                <div
+                                  className="w-full h-2.5 rounded-full overflow-hidden"
+                                  style={{
+                                    backgroundColor: "rgba(208, 196, 226, 0.3)",
+                                  }}
+                                >
+                                  <div
+                                    className="h-full rounded-full transition-all duration-500"
+                                    style={{
+                                      width: `${p.matchPercentage}%`,
+                                      background:
+                                        "linear-gradient(90deg, #2F3C96, #253075)",
+                                    }}
+                                  ></div>
                                 </div>
                               </div>
                             )}
 
-                            {/* Publication Header */}
-                            <div className="flex items-start justify-between mb-3">
-                              <span className="inline-flex items-center px-2.5 py-1 bg-indigo-100 text-indigo-700 text-xs font-medium rounded-full">
-                                <FileText className="w-3 h-3 mr-1" />
-                                {p.pmid ? `PMID: ${p.pmid}` : p.id || "PUB-001"}
-                              </span>
-                              {p.journal && (
-                                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border bg-slate-50 text-slate-700 border-slate-200">
-                                  {p.journal.length > 20
-                                    ? `${p.journal.substring(0, 20)}...`
-                                    : p.journal}
-                                </span>
-                              )}
+                            {/* Publication Title */}
+                            <div className="mb-4">
+                              <h3
+                                className="text-lg font-bold mb-0 line-clamp-3 leading-snug"
+                                style={{ color: "#2F3C96" }}
+                              >
+                                {p.title || "Untitled Publication"}
+                              </h3>
                             </div>
 
-                            {/* Publication Title */}
-                            <h3 className="text-base font-bold text-slate-900 mb-3 line-clamp-2 leading-tight">
-                              {p.title || "Untitled Publication"}
-                            </h3>
-
                             {/* Basic Info - Authors and Published Date */}
-                            <div className="space-y-1.5 mb-3">
+                            <div className="space-y-1.5 mb-4">
                               {p.authors &&
                                 Array.isArray(p.authors) &&
                                 p.authors.length > 0 && (
-                                  <div className="flex items-center text-sm text-slate-700">
+                                  <div
+                                    className="flex items-center text-sm"
+                                    style={{ color: "#787878" }}
+                                  >
                                     <User className="w-3.5 h-3.5 mr-2 shrink-0" />
                                     <span className="line-clamp-1">
                                       {p.authors.join(", ")}
@@ -2092,7 +2864,10 @@ export default function DashboardResearcher() {
                                   </div>
                                 )}
                               {(p.year || p.month) && (
-                                <div className="flex items-center text-sm text-slate-600">
+                                <div
+                                  className="flex items-center text-sm"
+                                  style={{ color: "#787878" }}
+                                >
                                   <Calendar className="w-3.5 h-3.5 mr-2 shrink-0" />
                                   <span>
                                     {p.month && p.month + " "}
@@ -2100,43 +2875,85 @@ export default function DashboardResearcher() {
                                   </span>
                                 </div>
                               )}
-                              {p.journal && (
-                                <div className="flex items-center text-sm text-slate-600">
-                                  <BookOpen className="w-3.5 h-3.5 mr-2 shrink-0" />
-                                  <span className="line-clamp-1">
-                                    {p.journal}
-                                  </span>
-                                </div>
-                              )}
                             </div>
 
                             {/* Abstract Preview */}
                             {p.abstract && (
-                              <div className="mb-3">
+                              <div className="mb-4 flex-grow">
                                 <button
                                   onClick={() => openPublicationDetailsModal(p)}
-                                  className="w-full text-left text-sm text-slate-700 hover:text-indigo-700 font-medium py-2 px-3 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
+                                  className="w-full text-left text-sm py-2 px-3 rounded-lg transition-all duration-200 border group"
+                                  style={{
+                                    backgroundColor: "rgba(208, 196, 226, 0.2)",
+                                    borderColor: "rgba(47, 60, 150, 0.2)",
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.backgroundColor =
+                                      "rgba(208, 196, 226, 0.3)";
+                                    e.currentTarget.style.borderColor =
+                                      "rgba(47, 60, 150, 0.3)";
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.backgroundColor =
+                                      "rgba(208, 196, 226, 0.2)";
+                                    e.currentTarget.style.borderColor =
+                                      "rgba(47, 60, 150, 0.2)";
+                                  }}
                                 >
                                   <div className="flex items-start gap-2">
-                                    <Info className="w-4 h-4 mt-0.5 shrink-0" />
-                                    <span className="line-clamp-2 flex-1">
-                                      {p.abstract}
-                                    </span>
+                                    <Info
+                                      className="w-4 h-4 mt-0.5 shrink-0 transition-colors duration-200"
+                                      style={{ color: "#2F3C96" }}
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                      <div
+                                        className="transition-colors duration-200"
+                                        style={{ color: "#787878" }}
+                                      >
+                                        <span className="line-clamp-2">
+                                          {p.abstract}
+                                        </span>
+                                      </div>
+                                      <div
+                                        className="mt-1.5 flex items-center gap-1 font-medium transition-all duration-200"
+                                        style={{ color: "#2F3C96" }}
+                                      >
+                                        <span>View full details</span>
+                                        <span className="inline-block group-hover:translate-x-0.5 transition-transform duration-200">
+                                          →
+                                        </span>
+                                      </div>
+                                    </div>
                                   </div>
                                 </button>
                               </div>
                             )}
 
+                            {/* Spacer for cards without abstract */}
+                            {!p.abstract && <div className="flex-grow"></div>}
+
                             {/* Action Buttons */}
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 mt-auto">
                               <button
                                 onClick={() =>
                                   generateSummary(p, "publication")
                                 }
-                                className="flex-1 flex items-center justify-center gap-2 py-2 bg-gradient-to-r from-slate-600 to-slate-700 text-white rounded-lg text-sm font-semibold hover:from-slate-700 hover:to-slate-800 transition-all shadow-sm"
+                                className="flex-1 flex items-center justify-center gap-2 py-2 text-white rounded-lg text-sm font-semibold transition-all shadow-sm"
+                                style={{
+                                  background:
+                                    "linear-gradient(135deg, #2F3C96, #253075)",
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.target.style.background =
+                                    "linear-gradient(135deg, #253075, #1C2454)";
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.target.style.background =
+                                    "linear-gradient(135deg, #2F3C96, #253075)";
+                                }}
                               >
                                 <Sparkles className="w-4 h-4" />
-                                Summarize
+                                Understand this Paper
                               </button>
 
                               <button
@@ -2149,8 +2966,35 @@ export default function DashboardResearcher() {
                                 className={`p-2 rounded-lg border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
                                   isFavorited
                                     ? "bg-red-50 border-red-200 text-red-500"
-                                    : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-red-500"
+                                    : ""
                                 }`}
+                                style={
+                                  !isFavorited
+                                    ? {
+                                        backgroundColor:
+                                          "rgba(208, 196, 226, 0.2)",
+                                        borderColor: "rgba(208, 196, 226, 0.3)",
+                                        color: "#787878",
+                                      }
+                                    : {}
+                                }
+                                onMouseEnter={(e) => {
+                                  if (
+                                    !isFavorited &&
+                                    !e.currentTarget.disabled
+                                  ) {
+                                    e.currentTarget.style.backgroundColor =
+                                      "rgba(208, 196, 226, 0.3)";
+                                    e.currentTarget.style.color = "#dc2626";
+                                  }
+                                }}
+                                onMouseLeave={(e) => {
+                                  if (!isFavorited) {
+                                    e.currentTarget.style.backgroundColor =
+                                      "rgba(208, 196, 226, 0.2)";
+                                    e.currentTarget.style.color = "#787878";
+                                  }
+                                }}
                               >
                                 {favoritingItems.has(
                                   getFavoriteKey("publication", itemId, p)
@@ -2165,19 +3009,6 @@ export default function DashboardResearcher() {
                                 )}
                               </button>
                             </div>
-
-                            {/* Open Paper Action */}
-                            {p.url && (
-                              <a
-                                href={p.url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="flex items-center justify-center gap-2 py-2 text-xs text-indigo-600 hover:text-indigo-700 font-medium bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors mt-3 w-full"
-                              >
-                                <ExternalLink className="w-3.5 h-3.5" />
-                                Open Paper
-                              </a>
-                            )}
                           </div>
                         </div>
                       );
@@ -2198,558 +3029,2155 @@ export default function DashboardResearcher() {
                   </div>
                 ))}
 
-              {selectedCategory === "globalExperts" &&
-                (globalExperts.length > 0 ? (
-                  sortByMatchPercentage(globalExperts).map((e, idx) => {
-                    const expertId = e.name || e.id || e._id || `expert-${idx}`;
-                    const itemId = e.orcid || e.id || e._id;
-                    const isFavorited = favorites.some(
-                      (fav) =>
-                        fav.type === "expert" &&
-                        (fav.item?.id === itemId ||
-                          fav.item?._id === itemId ||
-                          fav.item?.orcid === itemId)
-                    );
+              {selectedCategory === "collaborators" && (
+                <div className="col-span-full">
+                  {/* Collaborators List - Experts on Platform First, Then Global Experts */}
+                  {(() => {
+                    const collabioraExperts = sortByMatchPercentage(
+                      data.experts
+                    ).slice(0, 6);
+                    const globalExpertsList =
+                      sortByMatchPercentage(globalExperts);
+                    const hasRecommendedExperts = collabioraExperts.length > 0;
+                    const hasGlobalExperts = globalExpertsList.length > 0;
 
-                    return (
-                      <div
-                        key={expertId}
-                        className="bg-white rounded-xl shadow-sm border border-slate-200 hover:shadow-lg hover:border-indigo-300 transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden"
-                      >
-                        <div className="p-5">
-                          {/* Match Badge Banner */}
-                          {e.matchPercentage !== undefined && (
-                            <div className="mb-3 -mt-2 -mx-5 px-5 py-2 bg-gradient-to-r from-purple-50 to-indigo-50 border-b border-purple-100">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <TrendingUp className="w-4 h-4 text-purple-600" />
-                                  <span className="text-sm font-bold text-purple-700">
-                                    {e.matchPercentage}% Match
-                                  </span>
-                                </div>
-                                {e.matchExplanation && (
-                                  <span className="text-xs text-purple-600 truncate flex-1 ml-2 max-w-[200px] sm:max-w-none">
-                                    {e.matchExplanation}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          )}
-
-                          <div className="flex items-start gap-4 mb-4">
-                            {/* Avatar */}
-                            <div className="w-14 h-14 bg-gradient-to-br from-purple-600 via-purple-600 to-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-xl shadow-md shrink-0 ring-2 ring-purple-100">
-                              {e.name?.charAt(0)?.toUpperCase() || "E"}
-                            </div>
-
-                            {/* Main Content */}
-                            <div className="flex-1 min-w-0">
-                              {/* Header */}
-                              <div className="flex items-start justify-between mb-1.5">
-                                <div className="flex-1 min-w-0">
-                                  <h3 className="text-base font-bold text-slate-900 mb-1 leading-tight">
-                                    {e.name || "Unknown Expert"}
-                                  </h3>
-                                  {e.orcid && (
-                                    <span className="text-sm text-slate-500 font-mono">
-                                      {e.orcid}
-                                    </span>
-                                  )}
-                                </div>
-                                <button
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    toggleFavorite("expert", itemId, e);
-                                  }}
-                                  disabled={favoritingItems.has(
-                                    getFavoriteKey("expert", itemId, e)
-                                  )}
-                                  className={`p-1.5 rounded-md border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
-                                    isFavorited
-                                      ? "bg-red-50 border-red-200 text-red-500 shadow-sm"
-                                      : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-red-500"
-                                  }`}
-                                >
-                                  {favoritingItems.has(
-                                    getFavoriteKey("expert", itemId, e)
-                                  ) ? (
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                  ) : (
-                                    <Heart
-                                      className={`w-4 h-4 ${
-                                        isFavorited ? "fill-current" : ""
-                                      }`}
-                                    />
-                                  )}
-                                </button>
-                              </div>
-
-                              {/* Basic Info */}
-                              <div className="space-y-1 mb-3">
-                                {e.currentPosition && (
-                                  <div className="flex items-start text-sm text-slate-700">
-                                    <Briefcase className="w-3.5 h-3.5 mr-1.5 shrink-0 mt-0.5" />
-                                    <span className="flex-1 leading-relaxed">
-                                      {e.currentPosition}
-                                    </span>
+                    return hasRecommendedExperts || hasGlobalExperts ? (
+                      <div className="space-y-8">
+                        {/* Experts on Platform Section */}
+                        {hasRecommendedExperts && (
+                          <>
+                            <div className="col-span-full">
+                              <div
+                                className="mb-8 p-6 rounded-2xl border-2 shadow-lg"
+                                style={{
+                                  background:
+                                    "linear-gradient(135deg, rgba(47, 60, 150, 0.1), rgba(37, 48, 117, 0.05))",
+                                  borderColor: "rgba(208, 196, 226, 0.3)",
+                                }}
+                              >
+                                <div className="flex items-start gap-4">
+                                  <div
+                                    className="w-12 h-12 rounded-xl flex items-center justify-center shadow-md"
+                                    style={{
+                                      background:
+                                        "linear-gradient(135deg, #2F3C96, #253075)",
+                                    }}
+                                  >
+                                    <UserPlus className="w-6 h-6 text-white" />
                                   </div>
-                                )}
-                                {!e.currentPosition && e.affiliation && (
-                                  <div className="flex items-start text-sm text-slate-700">
-                                    <Building2 className="w-3.5 h-3.5 mr-1.5 shrink-0 mt-0.5" />
-                                    <span className="flex-1 leading-relaxed">
-                                      {e.affiliation}
-                                    </span>
+                                  <div className="flex-1">
+                                    <h3
+                                      className="text-2xl font-bold mb-2 flex items-center gap-2"
+                                      style={{ color: "#2F3C96" }}
+                                    >
+                                      Experts on Platform
+                                      <span
+                                        className="text-sm font-normal px-3 py-1 rounded-full"
+                                        style={{
+                                          backgroundColor:
+                                            "rgba(208, 196, 226, 0.3)",
+                                          color: "#253075",
+                                        }}
+                                      >
+                                        {collabioraExperts.length}{" "}
+                                        {collabioraExperts.length === 1
+                                          ? "Expert"
+                                          : "Experts"}
+                                      </span>
+                                    </h3>
+                                    <p
+                                      className="text-sm leading-relaxed"
+                                      style={{ color: "#787878" }}
+                                    >
+                                      Connect with leading researchers and
+                                      experts in your field. Explore their
+                                      profiles, publications, and research
+                                      interests.
+                                    </p>
                                   </div>
-                                )}
-                                {e.location && (
-                                  <div className="flex items-center text-sm text-slate-600">
-                                    <MapPin className="w-3.5 h-3.5 mr-1.5 shrink-0" />
-                                    <span>{e.location}</span>
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Biography */}
-                              {e.biography && (
-                                <div className="mb-3">
-                                  <p className="text-sm text-slate-700 leading-relaxed line-clamp-2">
-                                    {e.biography}
-                                  </p>
                                 </div>
-                              )}
+                              </div>
+                              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                                {collabioraExperts.map((e, idx) => {
+                                  const isCuralinkExpert = !!(
+                                    e._id || e.userId
+                                  );
+                                  const expertId =
+                                    e.name ||
+                                    e.id ||
+                                    e._id ||
+                                    e.userId ||
+                                    `expert-${idx}`;
+                                  const itemId =
+                                    e.name || e.orcid || e.id || e._id;
+                                  const medicalInterests = isCuralinkExpert
+                                    ? [
+                                        ...(e.specialties || []),
+                                        ...(e.interests || []),
+                                      ]
+                                    : e.researchInterests || [];
+                                  const locationText =
+                                    isCuralinkExpert && e.location
+                                      ? typeof e.location === "string"
+                                        ? e.location
+                                        : `${e.location.city || ""}${
+                                            e.location.city &&
+                                            e.location.country
+                                              ? ", "
+                                              : ""
+                                          }${e.location.country || ""}`.trim()
+                                      : e.location || null;
 
-                              {/* Research Interests */}
-                              {e.researchInterests &&
-                                Array.isArray(e.researchInterests) &&
-                                e.researchInterests.length > 0 && (
-                                  <div className="mb-3">
-                                    <div className="flex flex-wrap gap-1.5">
-                                      {e.researchInterests
-                                        .slice(0, 5)
-                                        .map((interest, idx) => (
-                                          <span
-                                            key={idx}
-                                            className="text-xs bg-gradient-to-r from-purple-50 to-slate-50 text-purple-700 px-2 py-0.5 rounded-md border border-purple-200"
+                                  // Check if expert is favorited
+                                  const isFavorited = favorites.some((fav) => {
+                                    if (
+                                      fav.type !== "collaborator" &&
+                                      fav.type !== "expert"
+                                    )
+                                      return false;
+                                    const collaboratorId =
+                                      e._id || e.userId || e.id;
+                                    if (
+                                      collaboratorId &&
+                                      (fav.item?.id === collaboratorId ||
+                                        fav.item?._id === collaboratorId)
+                                    ) {
+                                      return true;
+                                    }
+                                    if (e.name && fav.item?.name) {
+                                      return fav.item.name === e.name;
+                                    }
+                                    if (
+                                      fav.item?.id === itemId ||
+                                      fav.item?._id === itemId ||
+                                      fav.item?.orcid === itemId
+                                    ) {
+                                      return true;
+                                    }
+                                    return false;
+                                  });
+
+                                  return (
+                                    <div
+                                      key={expertId}
+                                      className="bg-white rounded-xl shadow-sm border transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden flex flex-col h-full"
+                                      style={{
+                                        borderColor: "rgba(208, 196, 226, 0.3)",
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        e.currentTarget.style.boxShadow =
+                                          "0 10px 15px -3px rgba(47, 60, 150, 0.1), 0 4px 6px -2px rgba(47, 60, 150, 0.05)";
+                                        e.currentTarget.style.borderColor =
+                                          "rgba(47, 60, 150, 0.4)";
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.currentTarget.style.boxShadow =
+                                          "0 1px 2px 0 rgba(0, 0, 0, 0.05)";
+                                        e.currentTarget.style.borderColor =
+                                          "rgba(208, 196, 226, 0.3)";
+                                      }}
+                                    >
+                                      <div className="p-5 flex flex-col flex-grow">
+                                        {/* Match Progress Bar */}
+                                        {e.matchPercentage !== undefined && (
+                                          <div className="mb-4">
+                                            <div className="flex items-center justify-between mb-2">
+                                              <div className="flex items-center gap-2">
+                                                <TrendingUp
+                                                  className="w-4 h-4"
+                                                  style={{ color: "#2F3C96" }}
+                                                />
+                                                <span
+                                                  className="text-sm font-bold"
+                                                  style={{ color: "#2F3C96" }}
+                                                >
+                                                  {e.matchPercentage}% Match
+                                                </span>
+                                              </div>
+                                              {isCuralinkExpert && (
+                                                <div
+                                                  className="flex items-center gap-1.5 px-2 py-1 rounded-md"
+                                                  style={{
+                                                    backgroundColor:
+                                                      "rgba(208, 196, 226, 0.2)",
+                                                    border:
+                                                      "1px solid rgba(208, 196, 226, 0.3)",
+                                                  }}
+                                                >
+                                                  <CheckCircle
+                                                    className="w-3.5 h-3.5"
+                                                    style={{ color: "#2F3C96" }}
+                                                  />
+                                                  <span
+                                                    className="text-xs font-semibold"
+                                                    style={{ color: "#2F3C96" }}
+                                                  >
+                                                    On Platform
+                                                  </span>
+                                                </div>
+                                              )}
+                                            </div>
+                                            {/* Progress Bar */}
+                                            <div
+                                              className="w-full h-2.5 rounded-full overflow-hidden"
+                                              style={{
+                                                backgroundColor:
+                                                  "rgba(208, 196, 226, 0.3)",
+                                              }}
+                                            >
+                                              <div
+                                                className="h-full rounded-full transition-all duration-500"
+                                                style={{
+                                                  width: `${e.matchPercentage}%`,
+                                                  background:
+                                                    "linear-gradient(90deg, #2F3C96, #253075)",
+                                                }}
+                                              ></div>
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {/* Available for Collaboration */}
+                                        {isCuralinkExpert &&
+                                          e.available === true && (
+                                            <div
+                                              className="mb-4 flex items-center gap-2 px-3 py-2 rounded-lg border"
+                                              style={{
+                                                backgroundColor:
+                                                  "rgba(208, 196, 226, 0.2)",
+                                                borderColor:
+                                                  "rgba(208, 196, 226, 0.3)",
+                                                color: "#2F3C96",
+                                              }}
+                                            >
+                                              <Calendar className="w-4 h-4" />
+                                              <span className="text-xs font-semibold">
+                                                Available for Collaboration
+                                              </span>
+                                            </div>
+                                          )}
+
+                                        <div className="flex items-start gap-4 mb-4">
+                                          {/* Avatar */}
+                                          <div
+                                            className="w-14 h-14 rounded-lg flex items-center justify-center text-white font-bold text-xl shadow-md shrink-0 ring-2"
+                                            style={{
+                                              background:
+                                                "linear-gradient(135deg, #2F3C96, #253075)",
+                                              ringColor:
+                                                "rgba(208, 196, 226, 0.3)",
+                                            }}
                                           >
-                                            {interest}
-                                          </span>
-                                        ))}
-                                      {e.researchInterests.length > 5 && (
-                                        <span className="text-xs text-slate-500 px-2 py-0.5">
-                                          +{e.researchInterests.length - 5}
-                                        </span>
+                                            {e.name?.charAt(0)?.toUpperCase() ||
+                                              "E"}
+                                          </div>
+
+                                          {/* Main Content */}
+                                          <div className="flex-1 min-w-0">
+                                            {/* Header */}
+                                            <div className="mb-1.5">
+                                              <div className="flex items-start justify-between">
+                                                <div className="flex-1 min-w-0">
+                                                  <h3
+                                                    className="text-lg font-bold mb-1 leading-tight"
+                                                    style={{ color: "#2F3C96" }}
+                                                  >
+                                                    {e.name || "Unknown Expert"}
+                                                  </h3>
+                                                  {e.orcid && (
+                                                    <span className="text-sm text-slate-500 font-mono">
+                                                      {e.orcid}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                                <button
+                                                  onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    const collaboratorId =
+                                                      e._id || e.userId || e.id;
+                                                    if (collaboratorId) {
+                                                      toggleFavorite(
+                                                        "collaborator",
+                                                        collaboratorId,
+                                                        e
+                                                      );
+                                                    } else {
+                                                      toggleFavorite(
+                                                        "expert",
+                                                        itemId,
+                                                        e
+                                                      );
+                                                    }
+                                                  }}
+                                                  disabled={favoritingItems.has(
+                                                    getFavoriteKey(
+                                                      isCuralinkExpert
+                                                        ? "collaborator"
+                                                        : "expert",
+                                                      isCuralinkExpert
+                                                        ? e._id ||
+                                                            e.userId ||
+                                                            e.id
+                                                        : itemId,
+                                                      e
+                                                    )
+                                                  )}
+                                                  className={`p-1.5 rounded-md border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                                                    isFavorited
+                                                      ? "bg-red-50 border-red-200 text-red-500 shadow-sm"
+                                                      : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-red-500"
+                                                  }`}
+                                                >
+                                                  {favoritingItems.has(
+                                                    getFavoriteKey(
+                                                      isCuralinkExpert
+                                                        ? "collaborator"
+                                                        : "expert",
+                                                      isCuralinkExpert
+                                                        ? e._id ||
+                                                            e.userId ||
+                                                            e.id
+                                                        : itemId,
+                                                      e
+                                                    )
+                                                  ) ? (
+                                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                                  ) : (
+                                                    <Heart
+                                                      className={`w-4 h-4 ${
+                                                        isFavorited
+                                                          ? "fill-current"
+                                                          : ""
+                                                      }`}
+                                                    />
+                                                  )}
+                                                </button>
+                                              </div>
+                                            </div>
+
+                                            {/* Basic Info */}
+                                            <div className="space-y-1 mb-3">
+                                              {locationText && (
+                                                <div className="flex items-center text-sm text-slate-600">
+                                                  <MapPin className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+                                                  <span>{locationText}</span>
+                                                </div>
+                                              )}
+                                            </div>
+
+                                            {/* Research Interests */}
+                                            {medicalInterests.length > 0 && (
+                                              <div className="mb-3">
+                                                <div className="flex flex-wrap gap-1.5">
+                                                  {medicalInterests
+                                                    .slice(0, 5)
+                                                    .map((interest, idx) => (
+                                                      <span
+                                                        key={idx}
+                                                        className="text-xs px-2 py-0.5 rounded-md border"
+                                                        style={{
+                                                          backgroundColor:
+                                                            "rgba(208, 196, 226, 0.2)",
+                                                          color: "#2F3C96",
+                                                          borderColor:
+                                                            "rgba(208, 196, 226, 0.3)",
+                                                        }}
+                                                      >
+                                                        {interest}
+                                                      </span>
+                                                    ))}
+                                                  {medicalInterests.length >
+                                                    5 && (
+                                                    <span className="text-xs text-slate-500 px-2 py-0.5">
+                                                      +
+                                                      {medicalInterests.length -
+                                                        5}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            )}
+
+                                            {/* Biography */}
+                                            {e.bio && (
+                                              <div className="mb-3">
+                                                <p className="text-sm text-slate-700 leading-relaxed line-clamp-2">
+                                                  {e.bio}
+                                                </p>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        {/* Action Buttons */}
+                                        <div className="pt-3 border-t border-slate-100 mt-auto">
+                                          {isCuralinkExpert ? (
+                                            <button
+                                              onClick={() => {
+                                                const collaboratorId =
+                                                  e._id || e.userId || e.id;
+                                                if (collaboratorId) {
+                                                  const params =
+                                                    new URLSearchParams();
+                                                  if (e.name)
+                                                    params.set("name", e.name);
+                                                  const locationText =
+                                                    e.location
+                                                      ? typeof e.location ===
+                                                        "string"
+                                                        ? e.location
+                                                        : `${
+                                                            e.location.city ||
+                                                            ""
+                                                          }${
+                                                            e.location.city &&
+                                                            e.location.country
+                                                              ? ", "
+                                                              : ""
+                                                          }${
+                                                            e.location
+                                                              .country || ""
+                                                          }`.trim()
+                                                      : null;
+                                                  if (locationText)
+                                                    params.set(
+                                                      "location",
+                                                      locationText
+                                                    );
+                                                  if (e.bio)
+                                                    params.set("bio", e.bio);
+                                                  navigate(
+                                                    `/curalink-expert/profile/${collaboratorId}?${params.toString()}`
+                                                  );
+                                                } else {
+                                                  setCollaboratorModal({
+                                                    open: true,
+                                                    collaborator: e,
+                                                  });
+                                                }
+                                              }}
+                                              className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-xs font-semibold transition-all shadow-sm hover:shadow-md text-white"
+                                              style={{
+                                                background:
+                                                  "linear-gradient(135deg, #2F3C96, #253075)",
+                                              }}
+                                              onMouseEnter={(e) => {
+                                                e.target.style.background =
+                                                  "linear-gradient(135deg, #253075, #1C2454)";
+                                              }}
+                                              onMouseLeave={(e) => {
+                                                e.target.style.background =
+                                                  "linear-gradient(135deg, #2F3C96, #253075)";
+                                              }}
+                                            >
+                                              <UserPlus className="w-3.5 h-3.5" />
+                                              View Profile
+                                            </button>
+                                          ) : (
+                                            <button
+                                              onClick={() => {
+                                                const params =
+                                                  new URLSearchParams();
+                                                params.set(
+                                                  "name",
+                                                  e.name || ""
+                                                );
+                                                if (e.affiliation)
+                                                  params.set(
+                                                    "affiliation",
+                                                    e.affiliation
+                                                  );
+                                                if (e.location)
+                                                  params.set(
+                                                    "location",
+                                                    e.location
+                                                  );
+                                                if (e.orcid)
+                                                  params.set("orcid", e.orcid);
+                                                if (e.biography)
+                                                  params.set(
+                                                    "biography",
+                                                    e.biography
+                                                  );
+                                                if (
+                                                  e.researchInterests &&
+                                                  Array.isArray(
+                                                    e.researchInterests
+                                                  )
+                                                ) {
+                                                  params.set(
+                                                    "researchInterests",
+                                                    JSON.stringify(
+                                                      e.researchInterests
+                                                    )
+                                                  );
+                                                }
+                                                params.set("from", "dashboard");
+                                                navigate(
+                                                  `/expert/profile?${params.toString()}`
+                                                );
+                                              }}
+                                              className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-xs font-semibold transition-all shadow-sm hover:shadow-md text-white"
+                                              style={{
+                                                background:
+                                                  "linear-gradient(135deg, #2F3C96, #253075)",
+                                              }}
+                                              onMouseEnter={(e) => {
+                                                e.target.style.background =
+                                                  "linear-gradient(135deg, #253075, #1C2454)";
+                                              }}
+                                              onMouseLeave={(e) => {
+                                                e.target.style.background =
+                                                  "linear-gradient(135deg, #2F3C96, #253075)";
+                                              }}
+                                            >
+                                              <Info className="w-3.5 h-3.5" />
+                                              View Profile
+                                            </button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </>
+                        )}
+
+                        {/* Global Experts Section */}
+                        {hasGlobalExperts && (
+                          <>
+                            {hasRecommendedExperts && (
+                              <div className="col-span-full my-8 flex items-center gap-4">
+                                <div
+                                  className="flex-1 h-px"
+                                  style={{
+                                    background:
+                                      "linear-gradient(90deg, transparent, rgba(47, 60, 150, 0.3), transparent)",
+                                  }}
+                                ></div>
+                                <div
+                                  className="px-4 py-2 rounded-full"
+                                  style={{
+                                    backgroundColor: "rgba(208, 196, 226, 0.2)",
+                                    border:
+                                      "2px solid rgba(208, 196, 226, 0.3)",
+                                  }}
+                                >
+                                  <span
+                                    className="text-xs font-semibold"
+                                    style={{ color: "#2F3C96" }}
+                                  >
+                                    Global Research Experts
+                                  </span>
+                                </div>
+                                <div
+                                  className="flex-1 h-px"
+                                  style={{
+                                    background:
+                                      "linear-gradient(90deg, transparent, rgba(47, 60, 150, 0.3), transparent)",
+                                  }}
+                                ></div>
+                              </div>
+                            )}
+                            <div className="col-span-full">
+                              <div
+                                className="mb-8 p-6 rounded-2xl border-2 shadow-lg"
+                                style={{
+                                  background:
+                                    "linear-gradient(135deg, rgba(47, 60, 150, 0.1), rgba(37, 48, 117, 0.05))",
+                                  borderColor: "rgba(208, 196, 226, 0.3)",
+                                }}
+                              >
+                                <div className="flex items-start gap-4">
+                                  <div
+                                    className="w-12 h-12 rounded-xl flex items-center justify-center shadow-md"
+                                    style={{
+                                      background:
+                                        "linear-gradient(135deg, #2F3C96, #253075)",
+                                    }}
+                                  >
+                                    <BookOpen className="w-6 h-6 text-white" />
+                                  </div>
+                                  <div className="flex-1">
+                                    <h3
+                                      className="text-2xl font-bold mb-2 flex items-center gap-2"
+                                      style={{ color: "#2F3C96" }}
+                                    >
+                                      Global Research Experts
+                                      <span
+                                        className="text-sm font-normal px-3 py-1 rounded-full"
+                                        style={{
+                                          backgroundColor:
+                                            "rgba(208, 196, 226, 0.3)",
+                                          color: "#253075",
+                                        }}
+                                      >
+                                        {globalExpertsList.length}{" "}
+                                        {globalExpertsList.length === 1
+                                          ? "Researcher"
+                                          : "Researchers"}
+                                      </span>
+                                    </h3>
+                                    <p
+                                      className="text-sm leading-relaxed"
+                                      style={{ color: "#787878" }}
+                                    >
+                                      Discover leading researchers and their
+                                      published work in your field. Explore
+                                      their publications, research interests,
+                                      and academic achievements.
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                                {globalExpertsList.map((e, idx) => {
+                                  const expertId =
+                                    e.name || e.id || e._id || `expert-${idx}`;
+                                  const itemId = e.orcid || e.id || e._id;
+                                  const isFavorited = favorites.some((fav) => {
+                                    if (fav.type !== "expert") return false;
+                                    if (e.name && fav.item?.name) {
+                                      return fav.item.name === e.name;
+                                    }
+                                    if (
+                                      fav.item?.id === itemId ||
+                                      fav.item?._id === itemId ||
+                                      fav.item?.orcid === itemId
+                                    ) {
+                                      return true;
+                                    }
+                                    return false;
+                                  });
+
+                                  return (
+                                    <div
+                                      key={expertId}
+                                      className="bg-white rounded-xl shadow-sm border transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden flex flex-col h-full"
+                                      style={{
+                                        borderColor: "rgba(208, 196, 226, 0.3)",
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        e.currentTarget.style.boxShadow =
+                                          "0 10px 15px -3px rgba(47, 60, 150, 0.1), 0 4px 6px -2px rgba(47, 60, 150, 0.05)";
+                                        e.currentTarget.style.borderColor =
+                                          "rgba(47, 60, 150, 0.4)";
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.currentTarget.style.boxShadow =
+                                          "0 1px 2px 0 rgba(0, 0, 0, 0.05)";
+                                        e.currentTarget.style.borderColor =
+                                          "rgba(208, 196, 226, 0.3)";
+                                      }}
+                                    >
+                                      <div className="p-5 flex flex-col flex-grow">
+                                        {/* Match Progress Bar */}
+                                        {e.matchPercentage !== undefined && (
+                                          <div className="mb-4">
+                                            <div className="flex items-center justify-between mb-2">
+                                              <div className="flex items-center gap-2">
+                                                <TrendingUp
+                                                  className="w-4 h-4"
+                                                  style={{ color: "#2F3C96" }}
+                                                />
+                                                <span
+                                                  className="text-sm font-bold"
+                                                  style={{ color: "#2F3C96" }}
+                                                >
+                                                  {e.matchPercentage}% Match
+                                                </span>
+                                              </div>
+                                            </div>
+                                            {/* Progress Bar */}
+                                            <div
+                                              className="w-full h-2.5 rounded-full overflow-hidden"
+                                              style={{
+                                                backgroundColor:
+                                                  "rgba(208, 196, 226, 0.3)",
+                                              }}
+                                            >
+                                              <div
+                                                className="h-full rounded-full transition-all duration-500"
+                                                style={{
+                                                  width: `${e.matchPercentage}%`,
+                                                  background:
+                                                    "linear-gradient(90deg, #2F3C96, #253075)",
+                                                }}
+                                              ></div>
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        <div className="flex items-start gap-4 mb-4">
+                                          {/* Avatar */}
+                                          <div
+                                            className="w-14 h-14 rounded-lg flex items-center justify-center text-white font-bold text-xl shadow-md shrink-0 ring-2"
+                                            style={{
+                                              background:
+                                                "linear-gradient(135deg, #2F3C96, #253075)",
+                                              ringColor:
+                                                "rgba(208, 196, 226, 0.3)",
+                                            }}
+                                          >
+                                            {e.name?.charAt(0)?.toUpperCase() ||
+                                              "E"}
+                                          </div>
+
+                                          {/* Main Content */}
+                                          <div className="flex-1 min-w-0">
+                                            {/* Header */}
+                                            <div className="mb-1.5">
+                                              <div className="flex items-start justify-between">
+                                                <div className="flex-1 min-w-0">
+                                                  <h3
+                                                    className="text-lg font-bold mb-1 leading-tight"
+                                                    style={{ color: "#2F3C96" }}
+                                                  >
+                                                    {e.name || "Unknown Expert"}
+                                                  </h3>
+                                                  {e.orcid && (
+                                                    <span className="text-sm text-slate-500 font-mono">
+                                                      {e.orcid}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                                <button
+                                                  onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    toggleFavorite(
+                                                      "expert",
+                                                      itemId,
+                                                      e
+                                                    );
+                                                  }}
+                                                  disabled={favoritingItems.has(
+                                                    getFavoriteKey(
+                                                      "expert",
+                                                      itemId,
+                                                      e
+                                                    )
+                                                  )}
+                                                  className={`p-1.5 rounded-md border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                                                    isFavorited
+                                                      ? "bg-red-50 border-red-200 text-red-500 shadow-sm"
+                                                      : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-red-500"
+                                                  }`}
+                                                >
+                                                  {favoritingItems.has(
+                                                    getFavoriteKey(
+                                                      "expert",
+                                                      itemId,
+                                                      e
+                                                    )
+                                                  ) ? (
+                                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                                  ) : (
+                                                    <Heart
+                                                      className={`w-4 h-4 ${
+                                                        isFavorited
+                                                          ? "fill-current"
+                                                          : ""
+                                                      }`}
+                                                    />
+                                                  )}
+                                                </button>
+                                              </div>
+                                            </div>
+
+                                            {/* Basic Info */}
+                                            <div className="space-y-1 mb-3">
+                                              {e.currentPosition && (
+                                                <div className="flex items-start text-sm text-slate-700">
+                                                  <Briefcase className="w-3.5 h-3.5 mr-1.5 shrink-0 mt-0.5" />
+                                                  <span className="flex-1 leading-relaxed">
+                                                    {e.currentPosition}
+                                                  </span>
+                                                </div>
+                                              )}
+                                              {!e.currentPosition &&
+                                                e.affiliation && (
+                                                  <div className="flex items-start text-sm text-slate-700">
+                                                    <Building2 className="w-3.5 h-3.5 mr-1.5 shrink-0 mt-0.5" />
+                                                    <span className="flex-1 leading-relaxed">
+                                                      {e.affiliation}
+                                                    </span>
+                                                  </div>
+                                                )}
+                                              {e.location && (
+                                                <div className="flex items-center text-sm text-slate-600">
+                                                  <MapPin className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+                                                  <span>{e.location}</span>
+                                                </div>
+                                              )}
+                                            </div>
+
+                                            {/* Biography */}
+                                            {e.biography && (
+                                              <div className="mb-3">
+                                                <p className="text-sm text-slate-700 leading-relaxed line-clamp-2">
+                                                  {e.biography}
+                                                </p>
+                                              </div>
+                                            )}
+
+                                            {/* Research Interests */}
+                                            {e.researchInterests &&
+                                              Array.isArray(
+                                                e.researchInterests
+                                              ) &&
+                                              e.researchInterests.length >
+                                                0 && (
+                                                <div className="mb-3">
+                                                  <div className="flex flex-wrap gap-1.5">
+                                                    {e.researchInterests
+                                                      .slice(0, 5)
+                                                      .map((interest, idx) => (
+                                                        <span
+                                                          key={idx}
+                                                          className="text-xs px-2 py-0.5 rounded-md border"
+                                                          style={{
+                                                            backgroundColor:
+                                                              "rgba(208, 196, 226, 0.2)",
+                                                            color: "#2F3C96",
+                                                            borderColor:
+                                                              "rgba(208, 196, 226, 0.3)",
+                                                          }}
+                                                        >
+                                                          {interest}
+                                                        </span>
+                                                      ))}
+                                                    {e.researchInterests
+                                                      .length > 5 && (
+                                                      <span className="text-xs text-slate-500 px-2 py-0.5">
+                                                        +
+                                                        {e.researchInterests
+                                                          .length - 5}
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                              )}
+                                          </div>
+                                        </div>
+
+                                        {/* Action Buttons */}
+                                        <div className="pt-3 border-t border-slate-100 mt-auto">
+                                          {e.email && (
+                                            <a
+                                              href={`mailto:${e.email}`}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                toast.success(
+                                                  "Message sent successfully!"
+                                                );
+                                              }}
+                                              className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-xs font-semibold transition-all shadow-sm hover:shadow-md text-white mb-2 w-full"
+                                              style={{
+                                                background:
+                                                  "linear-gradient(135deg, #2F3C96, #253075)",
+                                              }}
+                                              onMouseEnter={(e) => {
+                                                e.target.style.background =
+                                                  "linear-gradient(135deg, #253075, #1C2454)";
+                                              }}
+                                              onMouseLeave={(e) => {
+                                                e.target.style.background =
+                                                  "linear-gradient(135deg, #2F3C96, #253075)";
+                                              }}
+                                            >
+                                              <Mail className="w-3.5 h-3.5" />
+                                              Contact
+                                            </a>
+                                          )}
+                                          <button
+                                            onClick={() => {
+                                              const params =
+                                                new URLSearchParams();
+                                              params.set("name", e.name || "");
+                                              if (e.affiliation)
+                                                params.set(
+                                                  "affiliation",
+                                                  e.affiliation
+                                                );
+                                              if (e.location)
+                                                params.set(
+                                                  "location",
+                                                  e.location
+                                                );
+                                              if (e.orcid)
+                                                params.set("orcid", e.orcid);
+                                              if (e.biography)
+                                                params.set(
+                                                  "biography",
+                                                  e.biography
+                                                );
+                                              if (
+                                                e.researchInterests &&
+                                                Array.isArray(
+                                                  e.researchInterests
+                                                )
+                                              ) {
+                                                params.set(
+                                                  "researchInterests",
+                                                  JSON.stringify(
+                                                    e.researchInterests
+                                                  )
+                                                );
+                                              }
+                                              params.set("from", "dashboard");
+                                              navigate(
+                                                `/expert/profile?${params.toString()}`
+                                              );
+                                            }}
+                                            className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-xs font-semibold transition-all shadow-sm hover:shadow-md text-white"
+                                            style={{
+                                              background:
+                                                "linear-gradient(135deg, #2F3C96, #253075)",
+                                            }}
+                                            onMouseEnter={(e) => {
+                                              e.target.style.background =
+                                                "linear-gradient(135deg, #253075, #1C2454)";
+                                            }}
+                                            onMouseLeave={(e) => {
+                                              e.target.style.background =
+                                                "linear-gradient(135deg, #2F3C96, #253075)";
+                                            }}
+                                          >
+                                            <Info className="w-3.5 h-3.5" />
+                                            View Profile
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="col-span-full text-center py-16">
+                        <div
+                          className="inline-flex items-center justify-center w-20 h-20 rounded-full mb-4"
+                          style={{
+                            backgroundColor: "rgba(208, 196, 226, 0.2)",
+                          }}
+                        >
+                          <Users
+                            className="w-10 h-10"
+                            style={{ color: "#2F3C96" }}
+                          />
+                        </div>
+                        <h3
+                          className="text-lg font-semibold mb-2"
+                          style={{ color: "#2F3C96" }}
+                        >
+                          No Collaborators Found
+                        </h3>
+                        <p
+                          className="text-sm max-w-md mx-auto"
+                          style={{ color: "#787878" }}
+                        >
+                          We're connecting you with relevant researchers. Check
+                          back soon!
+                        </p>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {selectedCategory === "forums" && (
+                <div className="col-span-full">
+                  {/* Section Title */}
+                  <div className="mb-6">
+                    <h2
+                      className="text-2xl font-bold mb-1"
+                      style={{ color: "#2F3C96" }}
+                    >
+                      Forums
+                    </h2>
+                    <p className="text-sm" style={{ color: "#787878" }}>
+                      Connect with the research community and share insights
+                    </p>
+                  </div>
+
+                  {/* Header Section */}
+                  <div className="mb-6">
+                    <div
+                      className="bg-white rounded-xl shadow-sm border p-6"
+                      style={{
+                        borderColor: "rgba(208, 196, 226, 0.3)",
+                        background:
+                          "linear-gradient(135deg, rgba(245, 242, 248, 0.5), rgba(232, 224, 239, 0.3))",
+                      }}
+                    >
+                      <div className="flex items-start gap-4">
+                        <div
+                          className="w-14 h-14 rounded-xl flex items-center justify-center shrink-0"
+                          style={{
+                            backgroundColor: "rgba(47, 60, 150, 0.1)",
+                          }}
+                        >
+                          <MessageCircle
+                            className="w-7 h-7"
+                            style={{ color: "#2F3C96" }}
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <h2
+                            className="text-xl font-bold mb-2"
+                            style={{ color: "#2F3C96" }}
+                          >
+                            Community Forums
+                          </h2>
+                          <p
+                            className="text-sm leading-relaxed"
+                            style={{ color: "#787878" }}
+                          >
+                            Connect with researchers, share experiences, ask
+                            questions, and collaborate with peers in your field.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Forums Grid */}
+                  {(() => {
+                    const forumsWithThreads = forumsCategories.filter(
+                      (category) => (category.threadCount || 0) >= 2
+                    );
+                    return forumsWithThreads.length > 0 ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                        {forumsWithThreads.map((category, idx) => (
+                          <div
+                            key={category._id || idx}
+                            className="bg-white rounded-xl shadow-sm border transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden flex flex-col h-full cursor-pointer"
+                            style={{
+                              borderColor: "rgba(208, 196, 226, 0.3)",
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.boxShadow =
+                                "0 10px 15px -3px rgba(47, 60, 150, 0.1), 0 4px 6px -2px rgba(47, 60, 150, 0.05)";
+                              e.currentTarget.style.borderColor =
+                                "rgba(47, 60, 150, 0.4)";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.boxShadow =
+                                "0 1px 2px 0 rgba(0, 0, 0, 0.05)";
+                              e.currentTarget.style.borderColor =
+                                "rgba(208, 196, 226, 0.3)";
+                            }}
+                            onClick={() =>
+                              navigate(`/forums?category=${category._id}`)
+                            }
+                          >
+                            <div className="p-5 flex flex-col flex-grow">
+                              {/* Icon and Title */}
+                              <div className="flex items-start gap-3 mb-4">
+                                <div
+                                  className="w-12 h-12 rounded-lg flex items-center justify-center shrink-0"
+                                  style={{
+                                    backgroundColor: "rgba(208, 196, 226, 0.3)",
+                                  }}
+                                >
+                                  <MessageCircle
+                                    className="w-6 h-6"
+                                    style={{ color: "#2F3C96" }}
+                                  />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <h3
+                                    className="text-base font-bold mb-1"
+                                    style={{ color: "#2F3C96" }}
+                                  >
+                                    {category.name || "Unnamed Category"}
+                                  </h3>
+                                  {category.description && (
+                                    <p
+                                      className="text-sm line-clamp-2"
+                                      style={{ color: "#787878" }}
+                                    >
+                                      {category.description}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Stats Section */}
+                              <div
+                                className="flex items-center gap-4 py-3 px-4 rounded-lg mb-4"
+                                style={{
+                                  backgroundColor: "rgba(245, 242, 248, 0.5)",
+                                }}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <MessageCircle
+                                    className="w-4 h-4"
+                                    style={{ color: "#2F3C96" }}
+                                  />
+                                  <span
+                                    className="text-sm font-semibold"
+                                    style={{ color: "#2F3C96" }}
+                                  >
+                                    {category.threadCount || 0}
+                                  </span>
+                                  <span
+                                    className="text-xs"
+                                    style={{ color: "#787878" }}
+                                  >
+                                    {category.threadCount === 1
+                                      ? "thread"
+                                      : "threads"}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Recent Threads Preview */}
+                              {forumThreads[category._id] &&
+                                forumThreads[category._id].length > 0 && (
+                                  <div className="mt-auto">
+                                    <h4
+                                      className="text-xs font-semibold mb-2"
+                                      style={{ color: "#2F3C96" }}
+                                    >
+                                      Recent Discussions
+                                    </h4>
+                                    <div className="space-y-2">
+                                      {forumThreads[category._id].map(
+                                        (thread, threadIdx) => (
+                                          <div
+                                            key={thread._id || threadIdx}
+                                            className="p-2 rounded-lg border cursor-pointer hover:shadow-sm transition-all"
+                                            style={{
+                                              borderColor:
+                                                "rgba(208, 196, 226, 0.3)",
+                                              backgroundColor:
+                                                "rgba(245, 242, 248, 0.3)",
+                                            }}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              navigate(
+                                                `/forums?category=${category._id}&thread=${thread._id}`
+                                              );
+                                            }}
+                                            onMouseEnter={(e) => {
+                                              e.currentTarget.style.borderColor =
+                                                "rgba(47, 60, 150, 0.4)";
+                                              e.currentTarget.style.backgroundColor =
+                                                "rgba(245, 242, 248, 0.5)";
+                                            }}
+                                            onMouseLeave={(e) => {
+                                              e.currentTarget.style.borderColor =
+                                                "rgba(208, 196, 226, 0.3)";
+                                              e.currentTarget.style.backgroundColor =
+                                                "rgba(245, 242, 248, 0.3)";
+                                            }}
+                                          >
+                                            <div className="flex items-start justify-between gap-2 mb-1">
+                                              <div
+                                                className="text-sm font-medium line-clamp-1 flex-1"
+                                                style={{ color: "#2F3C96" }}
+                                              >
+                                                {thread.title}
+                                              </div>
+                                              {/* Favorite Button */}
+                                              <button
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  toggleFavorite(
+                                                    "thread",
+                                                    thread._id,
+                                                    thread
+                                                  );
+                                                }}
+                                                disabled={favoritingItems.has(
+                                                  getFavoriteKey(
+                                                    "thread",
+                                                    thread._id,
+                                                    thread
+                                                  )
+                                                )}
+                                                className="shrink-0 p-1.5 rounded-lg border transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                                style={{
+                                                  backgroundColor:
+                                                    favorites.some(
+                                                      (fav) =>
+                                                        (fav.type ===
+                                                          "thread" ||
+                                                          fav.type ===
+                                                            "forum") &&
+                                                        (fav.item?.id ===
+                                                          thread._id ||
+                                                          fav.item?._id ===
+                                                            thread._id ||
+                                                          fav.item?.threadId ===
+                                                            thread._id)
+                                                    )
+                                                      ? "rgba(245, 158, 11, 0.1)"
+                                                      : "rgba(245, 242, 248, 0.5)",
+                                                  borderColor: favorites.some(
+                                                    (fav) =>
+                                                      (fav.type === "thread" ||
+                                                        fav.type === "forum") &&
+                                                      (fav.item?.id ===
+                                                        thread._id ||
+                                                        fav.item?._id ===
+                                                          thread._id ||
+                                                        fav.item?.threadId ===
+                                                          thread._id)
+                                                  )
+                                                    ? "rgba(245, 158, 11, 0.3)"
+                                                    : "rgba(208, 196, 226, 0.3)",
+                                                  color: favorites.some(
+                                                    (fav) =>
+                                                      (fav.type === "thread" ||
+                                                        fav.type === "forum") &&
+                                                      (fav.item?.id ===
+                                                        thread._id ||
+                                                        fav.item?._id ===
+                                                          thread._id ||
+                                                        fav.item?.threadId ===
+                                                          thread._id)
+                                                  )
+                                                    ? "#F59E0B"
+                                                    : "#787878",
+                                                }}
+                                                onMouseEnter={(e) => {
+                                                  if (
+                                                    !favorites.some(
+                                                      (fav) =>
+                                                        (fav.type ===
+                                                          "thread" ||
+                                                          fav.type ===
+                                                            "forum") &&
+                                                        (fav.item?.id ===
+                                                          thread._id ||
+                                                          fav.item?._id ===
+                                                            thread._id ||
+                                                          fav.item?.threadId ===
+                                                            thread._id)
+                                                    )
+                                                  ) {
+                                                    e.currentTarget.style.backgroundColor =
+                                                      "rgba(245, 158, 11, 0.1)";
+                                                    e.currentTarget.style.borderColor =
+                                                      "rgba(245, 158, 11, 0.3)";
+                                                    e.currentTarget.style.color =
+                                                      "#F59E0B";
+                                                  }
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                  if (
+                                                    !favorites.some(
+                                                      (fav) =>
+                                                        (fav.type ===
+                                                          "thread" ||
+                                                          fav.type ===
+                                                            "forum") &&
+                                                        (fav.item?.id ===
+                                                          thread._id ||
+                                                          fav.item?._id ===
+                                                            thread._id ||
+                                                          fav.item?.threadId ===
+                                                            thread._id)
+                                                    )
+                                                  ) {
+                                                    e.currentTarget.style.backgroundColor =
+                                                      "rgba(245, 242, 248, 0.5)";
+                                                    e.currentTarget.style.borderColor =
+                                                      "rgba(208, 196, 226, 0.3)";
+                                                    e.currentTarget.style.color =
+                                                      "#787878";
+                                                  }
+                                                }}
+                                              >
+                                                {favoritingItems.has(
+                                                  getFavoriteKey(
+                                                    "thread",
+                                                    thread._id,
+                                                    thread
+                                                  )
+                                                ) ? (
+                                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                ) : (
+                                                  <Star
+                                                    className={`w-3.5 h-3.5 ${
+                                                      favorites.some(
+                                                        (fav) =>
+                                                          (fav.type ===
+                                                            "thread" ||
+                                                            fav.type ===
+                                                              "forum") &&
+                                                          (fav.item?.id ===
+                                                            thread._id ||
+                                                            fav.item?._id ===
+                                                              thread._id ||
+                                                            fav.item
+                                                              ?.threadId ===
+                                                              thread._id)
+                                                      )
+                                                        ? "fill-current"
+                                                        : ""
+                                                    }`}
+                                                  />
+                                                )}
+                                              </button>
+                                            </div>
+                                            <div className="flex items-center gap-3 text-xs">
+                                              <div
+                                                className="flex items-center gap-1"
+                                                style={{ color: "#787878" }}
+                                              >
+                                                <User className="w-3 h-3" />
+                                                <span className="truncate max-w-[80px]">
+                                                  {thread.authorUserId
+                                                    ?.username || "Anonymous"}
+                                                </span>
+                                              </div>
+                                              <div
+                                                className="flex items-center gap-1"
+                                                style={{ color: "#787878" }}
+                                              >
+                                                <MessageSquare className="w-3 h-3" />
+                                                <span>
+                                                  {thread.replyCount || 0}
+                                                </span>
+                                              </div>
+                                              <div
+                                                className="flex items-center gap-1"
+                                                style={{ color: "#787878" }}
+                                              >
+                                                <Clock className="w-3 h-3" />
+                                                <span>
+                                                  {new Date(
+                                                    thread.createdAt
+                                                  ).toLocaleDateString(
+                                                    "en-US",
+                                                    {
+                                                      month: "short",
+                                                      day: "numeric",
+                                                    }
+                                                  )}
+                                                </span>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        )
                                       )}
                                     </div>
                                   </div>
                                 )}
-                            </div>
-                          </div>
 
-                          {/* Action Buttons */}
-                          <div className="flex items-center gap-2 pt-3 border-t border-slate-100">
-                            {e.email && (
-                              <a
-                                href={`mailto:${e.email}`}
+                              {/* View Forum Button */}
+                              <button
+                                className="mt-4 w-full py-2 rounded-lg text-sm font-semibold transition-all text-white"
+                                style={{
+                                  background:
+                                    "linear-gradient(135deg, #2F3C96, #253075)",
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.target.style.background =
+                                    "linear-gradient(135deg, #253075, #1C2454)";
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.target.style.background =
+                                    "linear-gradient(135deg, #2F3C96, #253075)";
+                                }}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  toast.success("Message sent successfully!");
+                                  navigate(`/forums?category=${category._id}`);
                                 }}
-                                className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-purple-600 to-indigo-700 text-white rounded-md text-xs font-semibold hover:from-purple-700 hover:to-indigo-800 transition-all shadow-sm hover:shadow-md"
                               >
-                                <Mail className="w-3.5 h-3.5" />
-                                Contact
-                              </a>
-                            )}
-                            <button
-                              onClick={() => {
-                                const params = new URLSearchParams();
-                                params.set("name", e.name || "");
-                                if (e.affiliation)
-                                  params.set("affiliation", e.affiliation);
-                                if (e.location)
-                                  params.set("location", e.location);
-                                if (e.orcid) params.set("orcid", e.orcid);
-                                if (e.biography)
-                                  params.set("biography", e.biography);
-                                if (
-                                  e.researchInterests &&
-                                  Array.isArray(e.researchInterests)
-                                ) {
-                                  params.set(
-                                    "researchInterests",
-                                    JSON.stringify(e.researchInterests)
-                                  );
-                                }
-                                params.set("from", "dashboard");
-                                navigate(
-                                  `/expert/profile?${params.toString()}`
-                                );
-                              }}
-                              className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 text-white rounded-md text-xs font-semibold hover:bg-indigo-700 transition-all"
-                            >
-                              <Info className="w-3.5 h-3.5" />
-                              View Profile
-                            </button>
-                            <button
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                openGlobalExpertDetailsModal(e);
-                              }}
-                              className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-700 rounded-md text-xs font-semibold hover:bg-slate-200 hover:text-blue-700 transition-all"
-                            >
-                              <Info className="w-3.5 h-3.5" />
-                              Details
-                            </button>
+                                View Forum
+                              </button>
+                            </div>
                           </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="col-span-full text-center py-16">
+                        <div
+                          className="inline-flex items-center justify-center w-20 h-20 rounded-full mb-4"
+                          style={{
+                            backgroundColor: "rgba(208, 196, 226, 0.2)",
+                          }}
+                        >
+                          <MessageCircle
+                            className="w-10 h-10"
+                            style={{ color: "#2F3C96" }}
+                          />
                         </div>
+                        <h3
+                          className="text-lg font-semibold mb-2"
+                          style={{ color: "#2F3C96" }}
+                        >
+                          No Forums Available
+                        </h3>
+                        <p
+                          className="text-sm max-w-md mx-auto"
+                          style={{ color: "#787878" }}
+                        >
+                          Forums will appear here once they become available.
+                          Check back soon!
+                        </p>
                       </div>
                     );
-                  })
-                ) : (
-                  <div className="col-span-full text-center py-16">
-                    <div className="inline-flex items-center justify-center w-20 h-20 bg-purple-100 rounded-full mb-4">
-                      <Users className="w-10 h-10 text-purple-400" />
-                    </div>
-                    <h3 className="text-lg font-semibold text-slate-800 mb-2">
-                      No Global Experts Found
-                    </h3>
-                    <p className="text-slate-600 text-sm max-w-md mx-auto">
-                      We're searching for relevant global health experts. Check
-                      back soon!
-                    </p>
-                  </div>
-                ))}
+                  })()}
+                </div>
+              )}
 
-              {selectedCategory === "collaborators" &&
-                (data.experts.length > 0 ? (
-                  sortByMatchPercentage(data.experts).map((e, idx) => {
-                    const collaboratorId =
-                      e._id || e.userId || e.id || `collaborator-${idx}`;
-                    const itemId = e.orcid || e.id || e._id;
-                    const isFavorited = favorites.some(
-                      (fav) =>
-                        fav.type === "collaborator" &&
-                        (fav.item?.id === collaboratorId ||
-                          fav.item?._id === collaboratorId)
-                    );
-                    const medicalInterests = [
-                      ...(e.specialties || []),
-                      ...(e.interests || []),
-                    ];
-                    const locationText = e.location
-                      ? typeof e.location === "string"
-                        ? e.location
-                        : `${e.location.city || ""}${
-                            e.location.city && e.location.country ? ", " : ""
-                          }${e.location.country || ""}`.trim()
-                      : null;
+              {selectedCategory === "favorites" && (
+                <div className="col-span-full">
+                  {favorites.length > 0 ? (
+                    (() => {
+                      // Group favorites by type
+                      const groupedFavorites = {
+                        publication: favorites.filter(
+                          (f) => f.type === "publication"
+                        ),
+                        trial: favorites.filter((f) => f.type === "trial"),
+                        expert: favorites.filter(
+                          (f) =>
+                            f.type === "expert" || f.type === "collaborator"
+                        ),
+                        forum: favorites.filter(
+                          (f) => f.type === "forum" || f.type === "thread"
+                        ),
+                      };
 
-                    return (
-                      <div
-                        key={collaboratorId}
-                        className="bg-white rounded-xl shadow-sm border border-slate-200 hover:shadow-lg hover:border-emerald-300 transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden"
-                      >
-                        <div className="p-5">
-                          {/* Match Badge Banner */}
-                          {e.matchPercentage !== undefined && (
-                            <div className="mb-3 -mt-2 -mx-5 px-5 py-2 bg-gradient-to-r from-emerald-50 to-indigo-50 border-b border-emerald-100">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <TrendingUp className="w-4 h-4 text-emerald-600" />
-                                  <span className="text-sm font-bold text-emerald-700">
-                                    {e.matchPercentage}% Match
-                                  </span>
-                                </div>
-                                {e.matchExplanation && (
-                                  <span className="text-xs text-emerald-600 truncate flex-1 ml-2 max-w-[200px] sm:max-w-none">
-                                    {e.matchExplanation}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          )}
+                      const hasAnyFavorites =
+                        groupedFavorites.publication.length > 0 ||
+                        groupedFavorites.trial.length > 0 ||
+                        groupedFavorites.expert.length > 0 ||
+                        groupedFavorites.forum.length > 0;
 
-                          <div className="flex items-start gap-4 mb-4">
-                            {/* Avatar */}
-                            <div className="w-14 h-14 bg-gradient-to-br from-emerald-600 via-emerald-600 to-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-xl shadow-md shrink-0 ring-2 ring-emerald-100">
-                              {e.name?.charAt(0)?.toUpperCase() || "C"}
-                            </div>
-
-                            {/* Main Content */}
-                            <div className="flex-1 min-w-0">
-                              {/* Header */}
-                              <div className="flex items-start justify-between mb-1.5">
-                                <div className="flex-1 min-w-0">
-                                  <h3 className="text-base font-bold text-slate-900 mb-1 leading-tight">
-                                    {e.name || "Unknown Researcher"}
-                                  </h3>
-                                  {e.orcid && (
-                                    <span className="text-sm text-slate-500 font-mono">
-                                      {e.orcid}
-                                    </span>
-                                  )}
-                                </div>
-                                <button
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    toggleFavorite(
-                                      "collaborator",
-                                      collaboratorId,
-                                      e
-                                    );
-                                  }}
-                                  disabled={favoritingItems.has(
-                                    getFavoriteKey(
-                                      "collaborator",
-                                      collaboratorId,
-                                      e
-                                    )
-                                  )}
-                                  className={`p-1.5 rounded-md border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
-                                    isFavorited
-                                      ? "bg-red-50 border-red-200 text-red-500 shadow-sm"
-                                      : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-red-500"
-                                  }`}
-                                >
-                                  {favoritingItems.has(
-                                    getFavoriteKey(
-                                      "collaborator",
-                                      collaboratorId,
-                                      e
-                                    )
-                                  ) ? (
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                  ) : (
-                                    <Heart
-                                      className={`w-4 h-4 ${
-                                        isFavorited ? "fill-current" : ""
-                                      }`}
-                                    />
-                                  )}
-                                </button>
-                              </div>
-
-                              {/* Basic Info */}
-                              <div className="space-y-1 mb-3">
-                                {locationText && (
-                                  <div className="flex items-center text-sm text-slate-600">
-                                    <MapPin className="w-3.5 h-3.5 mr-1.5 shrink-0" />
-                                    <span>{locationText}</span>
+                      return hasAnyFavorites ? (
+                        <div className="space-y-8">
+                          {/* Publications Section */}
+                          {groupedFavorites.publication.length > 0 && (
+                            <div>
+                              <div
+                                className="mb-6 p-6 rounded-2xl border-2 shadow-lg"
+                                style={{
+                                  background:
+                                    "linear-gradient(135deg, rgba(47, 60, 150, 0.1), rgba(37, 48, 117, 0.05))",
+                                  borderColor: "rgba(208, 196, 226, 0.3)",
+                                }}
+                              >
+                                <div className="flex items-start gap-4">
+                                  <div
+                                    className="w-12 h-12 rounded-xl flex items-center justify-center shadow-md"
+                                    style={{
+                                      background:
+                                        "linear-gradient(135deg, #2F3C96, #253075)",
+                                    }}
+                                  >
+                                    <FileText className="w-6 h-6 text-white" />
                                   </div>
-                                )}
-                              </div>
-
-                              {/* Medical Interests */}
-                              {medicalInterests.length > 0 && (
-                                <div className="mb-3">
-                                  <div className="flex flex-wrap gap-1.5">
-                                    {medicalInterests
-                                      .slice(0, 5)
-                                      .map((interest, idx) => (
-                                        <span
-                                          key={idx}
-                                          className="text-xs bg-gradient-to-r from-emerald-50 to-slate-50 text-emerald-700 px-2 py-0.5 rounded-md border border-emerald-200"
-                                        >
-                                          {interest}
-                                        </span>
-                                      ))}
-                                    {medicalInterests.length > 5 && (
-                                      <span className="text-xs text-slate-500 px-2 py-0.5">
-                                        +{medicalInterests.length - 5}
+                                  <div className="flex-1">
+                                    <h3
+                                      className="text-2xl font-bold mb-2 flex items-center gap-2"
+                                      style={{ color: "#2F3C96" }}
+                                    >
+                                      Favorite Publications
+                                      <span
+                                        className="text-sm font-normal px-3 py-1 rounded-full"
+                                        style={{
+                                          backgroundColor:
+                                            "rgba(208, 196, 226, 0.3)",
+                                          color: "#253075",
+                                        }}
+                                      >
+                                        {groupedFavorites.publication.length}{" "}
+                                        {groupedFavorites.publication.length ===
+                                        1
+                                          ? "Publication"
+                                          : "Publications"}
                                       </span>
-                                    )}
+                                    </h3>
+                                    <p
+                                      className="text-sm leading-relaxed"
+                                      style={{ color: "#787878" }}
+                                    >
+                                      Your saved research publications and
+                                      papers
+                                    </p>
                                   </div>
                                 </div>
-                              )}
-
-                              {/* Biography */}
-                              {e.bio && (
-                                <div className="mb-3">
-                                  <p className="text-sm text-slate-700 leading-relaxed line-clamp-2">
-                                    {e.bio}
-                                  </p>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Action Buttons */}
-                          <div className="pt-3 border-t border-slate-100 space-y-2">
-                            {/* Available/Not Available CTA */}
-                            {e.available === true ? (
-                              <div className="flex items-center justify-center gap-1.5 px-3 py-2 bg-gradient-to-r from-indigo-500/10 to-emerald-600/10 border border-emerald-300 rounded-lg">
-                                <Calendar className="w-3.5 h-3.5 text-emerald-600" />
-                                <span className="text-xs font-semibold text-emerald-700">
-                                  Available for Collaboration
-                                </span>
                               </div>
-                            ) : (
-                              <div className="flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg">
-                                <Calendar className="w-3.5 h-3.5 text-slate-500" />
-                                <span className="text-xs font-semibold text-slate-600">
-                                  Not Available for Collaboration
-                                </span>
-                              </div>
-                            )}
-                            <button
-                              onClick={() => {
-                                const collaboratorId =
-                                  e._id || e.userId || e.id;
-                                if (collaboratorId) {
-                                  // Pass name, location, and bio as URL params
-                                  const params = new URLSearchParams();
-                                  if (e.name) params.set("name", e.name);
-                                  // Extract location text
-                                  const locationText = e.location
-                                    ? typeof e.location === "string"
-                                      ? e.location
-                                      : `${e.location.city || ""}${
-                                          e.location.city && e.location.country
-                                            ? ", "
-                                            : ""
-                                        }${e.location.country || ""}`.trim()
-                                    : null;
-                                  if (locationText)
-                                    params.set("location", locationText);
-                                  if (e.bio) params.set("bio", e.bio);
-                                  navigate(
-                                    `/curalink-expert/profile/${collaboratorId}?${params.toString()}`
+                              <div className="space-y-4">
+                                {groupedFavorites.publication.map((fav) => {
+                                  const item = fav.item;
+                                  return (
+                                    <div
+                                      key={fav._id}
+                                      className="bg-white rounded-xl shadow-sm border transition-all duration-300 overflow-hidden"
+                                      style={{
+                                        borderColor: "rgba(208, 196, 226, 0.3)",
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        e.currentTarget.style.boxShadow =
+                                          "0 10px 15px -3px rgba(47, 60, 150, 0.1), 0 4px 6px -2px rgba(47, 60, 150, 0.05)";
+                                        e.currentTarget.style.borderColor =
+                                          "rgba(47, 60, 150, 0.4)";
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.currentTarget.style.boxShadow =
+                                          "0 1px 2px 0 rgba(0, 0, 0, 0.05)";
+                                        e.currentTarget.style.borderColor =
+                                          "rgba(208, 196, 226, 0.3)";
+                                      }}
+                                    >
+                                      <div className="p-5">
+                                        <div className="flex items-start justify-between mb-3">
+                                          <div className="flex items-center gap-2">
+                                            <FileText
+                                              className="w-5 h-5"
+                                              style={{ color: "#2F3C96" }}
+                                            />
+                                            <Star
+                                              className="w-4 h-4"
+                                              style={{ color: "#F59E0B" }}
+                                            />
+                                          </div>
+                                        </div>
+                                        <h4
+                                          className="font-bold text-base mb-2"
+                                          style={{ color: "#2F3C96" }}
+                                        >
+                                          {item.title || "Untitled"}
+                                        </h4>
+                                        <div className="space-y-2 mb-4">
+                                          {item.journal && (
+                                            <div
+                                              className="flex items-center gap-2 text-sm"
+                                              style={{ color: "#787878" }}
+                                            >
+                                              <BookOpen className="w-3.5 h-3.5" />
+                                              <span>{item.journal}</span>
+                                            </div>
+                                          )}
+                                          {item.authors &&
+                                            Array.isArray(item.authors) &&
+                                            item.authors.length > 0 && (
+                                              <div
+                                                className="flex items-center gap-2 text-sm"
+                                                style={{ color: "#787878" }}
+                                              >
+                                                <User className="w-3.5 h-3.5" />
+                                                <span>
+                                                  {item.authors
+                                                    .slice(0, 3)
+                                                    .join(", ")}
+                                                  {item.authors.length > 3 &&
+                                                    " et al."}
+                                                </span>
+                                              </div>
+                                            )}
+                                          {item.year && (
+                                            <div
+                                              className="flex items-center gap-2 text-sm"
+                                              style={{ color: "#787878" }}
+                                            >
+                                              <Calendar className="w-3.5 h-3.5" />
+                                              <span>{item.year}</span>
+                                            </div>
+                                          )}
+                                        </div>
+                                        <button
+                                          onClick={() =>
+                                            openPublicationDetailsModal(item)
+                                          }
+                                          className="flex items-center justify-center gap-2 py-2 px-4 rounded-lg text-sm font-semibold transition-all w-full"
+                                          style={{
+                                            background:
+                                              "linear-gradient(135deg, #2F3C96, #253075)",
+                                            color: "#FFFFFF",
+                                          }}
+                                          onMouseEnter={(e) => {
+                                            e.target.style.background =
+                                              "linear-gradient(135deg, #253075, #1C2454)";
+                                          }}
+                                          onMouseLeave={(e) => {
+                                            e.target.style.background =
+                                              "linear-gradient(135deg, #2F3C96, #253075)";
+                                          }}
+                                        >
+                                          View Publication
+                                          <ExternalLink className="w-4 h-4" />
+                                        </button>
+                                      </div>
+                                    </div>
                                   );
-                                } else {
-                                  setCollaboratorModal({
-                                    open: true,
-                                    collaborator: e,
-                                  });
-                                }
-                              }}
-                              className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-gradient-to-r from-emerald-600 to-indigo-700 text-white rounded-md text-xs font-semibold hover:from-emerald-700 hover:to-indigo-800 transition-all shadow-sm hover:shadow-md"
-                            >
-                              <UserPlus className="w-3.5 h-3.5" />
-                              View Profile
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })
-                ) : (
-                  <div className="col-span-full text-center py-16">
-                    <div className="inline-flex items-center justify-center w-20 h-20 bg-emerald-100 rounded-full mb-4">
-                      <Users className="w-10 h-10 text-emerald-400" />
-                    </div>
-                    <h3 className="text-lg font-semibold text-slate-800 mb-2">
-                      No Collaborators Found
-                    </h3>
-                    <p className="text-slate-600 text-sm max-w-md mx-auto">
-                      We're connecting you with relevant researchers. Check back
-                      soon!
-                    </p>
-                  </div>
-                ))}
-
-              {selectedCategory === "favorites" &&
-                (favorites.length > 0 ? (
-                  favorites.map((fav) => {
-                    const item = fav.item;
-                    return (
-                      <div
-                        key={fav._id}
-                        className="bg-white rounded-xl shadow-sm border border-slate-200 hover:shadow-lg hover:border-indigo-300 transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden"
-                      >
-                        <div className="p-5">
-                          <div className="flex items-start justify-between mb-3">
-                            <div className="flex items-center gap-2">
-                              {fav.type === "trial" && (
-                                <Beaker className="w-5 h-5 text-indigo-600" />
-                              )}
-                              {fav.type === "publication" && (
-                                <FileText className="w-5 h-5 text-indigo-600" />
-                              )}
-                              {(fav.type === "expert" ||
-                                fav.type === "collaborator") && (
-                                <User className="w-5 h-5 text-indigo-600" />
-                              )}
-                              <span className="inline-flex items-center px-2.5 py-1 bg-indigo-100 text-indigo-700 text-xs font-medium rounded-full capitalize">
-                                {fav.type}
-                              </span>
-                            </div>
-                            <Star className="w-5 h-5 text-amber-500 fill-amber-500" />
-                          </div>
-                          <h4 className="font-bold text-slate-900 text-base line-clamp-2 mb-3">
-                            {item.title || item.name || "Untitled"}
-                          </h4>
-                          {item.journal && (
-                            <div className="flex items-center gap-2 text-sm text-slate-600 mb-2">
-                              <BookOpen className="w-3.5 h-3.5" />
-                              <span className="line-clamp-1">
-                                {item.journal}
-                              </span>
-                            </div>
-                          )}
-                          {item.conditions && (
-                            <div className="flex items-center gap-2 text-sm text-slate-700 mb-3">
-                              <Info className="w-3.5 h-3.5 text-indigo-600" />
-                              <span className="line-clamp-1">
-                                {Array.isArray(item.conditions)
-                                  ? item.conditions.join(", ")
-                                  : item.conditions}
-                              </span>
-                            </div>
-                          )}
-                          {item.authors &&
-                            Array.isArray(item.authors) &&
-                            item.authors.length > 0 && (
-                              <div className="flex items-center gap-2 text-sm text-slate-600 mb-3">
-                                <User className="w-3.5 h-3.5" />
-                                <span className="line-clamp-1">
-                                  {item.authors.slice(0, 2).join(", ")}
-                                  {item.authors.length > 2 && " et al."}
-                                </span>
+                                })}
                               </div>
-                            )}
-                          <div className="pt-3 border-t border-slate-100">
-                            <button
-                              onClick={() => {
-                                if (fav.type === "trial") {
-                                  openTrialDetailsModal(item);
-                                } else if (fav.type === "publication") {
-                                  openPublicationDetailsModal(item);
-                                } else if (fav.type === "expert") {
-                                  setExpertModal({
-                                    open: true,
-                                    expert: item,
-                                  });
-                                } else if (fav.type === "collaborator") {
-                                  setCollaboratorModal({
-                                    open: true,
-                                    collaborator: item,
-                                  });
-                                }
-                              }}
-                              className="w-full py-2 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-lg text-sm font-semibold hover:from-indigo-700 hover:to-indigo-800 transition-all"
-                            >
-                              View Details
-                            </button>
-                          </div>
+                            </div>
+                          )}
+
+                          {/* Trials Section */}
+                          {groupedFavorites.trial.length > 0 && (
+                            <div>
+                              <div
+                                className="mb-6 p-6 rounded-2xl border-2 shadow-lg"
+                                style={{
+                                  background:
+                                    "linear-gradient(135deg, rgba(47, 60, 150, 0.1), rgba(37, 48, 117, 0.05))",
+                                  borderColor: "rgba(208, 196, 226, 0.3)",
+                                }}
+                              >
+                                <div className="flex items-start gap-4">
+                                  <div
+                                    className="w-12 h-12 rounded-xl flex items-center justify-center shadow-md"
+                                    style={{
+                                      background:
+                                        "linear-gradient(135deg, #2F3C96, #253075)",
+                                    }}
+                                  >
+                                    <Beaker className="w-6 h-6 text-white" />
+                                  </div>
+                                  <div className="flex-1">
+                                    <h3
+                                      className="text-2xl font-bold mb-2 flex items-center gap-2"
+                                      style={{ color: "#2F3C96" }}
+                                    >
+                                      Favorite Trials
+                                      <span
+                                        className="text-sm font-normal px-3 py-1 rounded-full"
+                                        style={{
+                                          backgroundColor:
+                                            "rgba(208, 196, 226, 0.3)",
+                                          color: "#253075",
+                                        }}
+                                      >
+                                        {groupedFavorites.trial.length}{" "}
+                                        {groupedFavorites.trial.length === 1
+                                          ? "Trial"
+                                          : "Trials"}
+                                      </span>
+                                    </h3>
+                                    <p
+                                      className="text-sm leading-relaxed"
+                                      style={{ color: "#787878" }}
+                                    >
+                                      Your saved clinical trials and research
+                                      studies
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="space-y-4">
+                                {groupedFavorites.trial.map((fav) => {
+                                  const item = fav.item;
+                                  return (
+                                    <div
+                                      key={fav._id}
+                                      className="bg-white rounded-xl shadow-sm border transition-all duration-300 overflow-hidden"
+                                      style={{
+                                        borderColor: "rgba(208, 196, 226, 0.3)",
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        e.currentTarget.style.boxShadow =
+                                          "0 10px 15px -3px rgba(47, 60, 150, 0.1), 0 4px 6px -2px rgba(47, 60, 150, 0.05)";
+                                        e.currentTarget.style.borderColor =
+                                          "rgba(47, 60, 150, 0.4)";
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.currentTarget.style.boxShadow =
+                                          "0 1px 2px 0 rgba(0, 0, 0, 0.05)";
+                                        e.currentTarget.style.borderColor =
+                                          "rgba(208, 196, 226, 0.3)";
+                                      }}
+                                    >
+                                      <div className="p-5">
+                                        <div className="flex items-start justify-between mb-3">
+                                          <div className="flex items-center gap-2">
+                                            <Beaker
+                                              className="w-5 h-5"
+                                              style={{ color: "#2F3C96" }}
+                                            />
+                                            <Star
+                                              className="w-4 h-4"
+                                              style={{ color: "#F59E0B" }}
+                                            />
+                                          </div>
+                                          {item.status && (
+                                            <span
+                                              className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(
+                                                item.status
+                                              )}`}
+                                            >
+                                              {item.status.replace(/_/g, " ")}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <h4
+                                          className="font-bold text-base mb-2"
+                                          style={{ color: "#2F3C96" }}
+                                        >
+                                          {item.title || "Untitled Trial"}
+                                        </h4>
+                                        <div className="space-y-2 mb-4">
+                                          {item.conditions &&
+                                            (Array.isArray(item.conditions)
+                                              ? item.conditions.length > 0
+                                              : item.conditions) && (
+                                              <div
+                                                className="flex items-center gap-2 text-sm"
+                                                style={{ color: "#787878" }}
+                                              >
+                                                <Info className="w-3.5 h-3.5" />
+                                                <span>
+                                                  {Array.isArray(
+                                                    item.conditions
+                                                  )
+                                                    ? item.conditions
+                                                        .slice(0, 2)
+                                                        .join(", ")
+                                                    : item.conditions}
+                                                  {Array.isArray(
+                                                    item.conditions
+                                                  ) &&
+                                                    item.conditions.length >
+                                                      2 &&
+                                                    "..."}
+                                                </span>
+                                              </div>
+                                            )}
+                                          {item.phase && (
+                                            <div
+                                              className="flex items-center gap-2 text-sm"
+                                              style={{ color: "#787878" }}
+                                            >
+                                              <Calendar className="w-3.5 h-3.5" />
+                                              <span>Phase {item.phase}</span>
+                                            </div>
+                                          )}
+                                        </div>
+                                        <button
+                                          onClick={() =>
+                                            openTrialDetailsModal(item)
+                                          }
+                                          className="flex items-center justify-center gap-2 py-2 px-4 rounded-lg text-sm font-semibold transition-all w-full"
+                                          style={{
+                                            background:
+                                              "linear-gradient(135deg, #2F3C96, #253075)",
+                                            color: "#FFFFFF",
+                                          }}
+                                          onMouseEnter={(e) => {
+                                            e.target.style.background =
+                                              "linear-gradient(135deg, #253075, #1C2454)";
+                                          }}
+                                          onMouseLeave={(e) => {
+                                            e.target.style.background =
+                                              "linear-gradient(135deg, #2F3C96, #253075)";
+                                          }}
+                                        >
+                                          View Trial Details
+                                          <ExternalLink className="w-4 h-4" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Experts Section */}
+                          {groupedFavorites.expert.length > 0 && (
+                            <div>
+                              <div
+                                className="mb-6 p-6 rounded-2xl border-2 shadow-lg"
+                                style={{
+                                  background:
+                                    "linear-gradient(135deg, rgba(47, 60, 150, 0.1), rgba(37, 48, 117, 0.05))",
+                                  borderColor: "rgba(208, 196, 226, 0.3)",
+                                }}
+                              >
+                                <div className="flex items-start gap-4">
+                                  <div
+                                    className="w-12 h-12 rounded-xl flex items-center justify-center shadow-md"
+                                    style={{
+                                      background:
+                                        "linear-gradient(135deg, #2F3C96, #253075)",
+                                    }}
+                                  >
+                                    <Users className="w-6 h-6 text-white" />
+                                  </div>
+                                  <div className="flex-1">
+                                    <h3
+                                      className="text-2xl font-bold mb-2 flex items-center gap-2"
+                                      style={{ color: "#2F3C96" }}
+                                    >
+                                      Favorite Collaborators
+                                      <span
+                                        className="text-sm font-normal px-3 py-1 rounded-full"
+                                        style={{
+                                          backgroundColor:
+                                            "rgba(208, 196, 226, 0.3)",
+                                          color: "#253075",
+                                        }}
+                                      >
+                                        {groupedFavorites.expert.length}{" "}
+                                        {groupedFavorites.expert.length === 1
+                                          ? "Collaborator"
+                                          : "Collaborators"}
+                                      </span>
+                                    </h3>
+                                    <p
+                                      className="text-sm leading-relaxed"
+                                      style={{ color: "#787878" }}
+                                    >
+                                      Your saved researchers and experts
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="space-y-4">
+                                {groupedFavorites.expert.map((fav) => {
+                                  const item = fav.item;
+                                  return (
+                                    <div
+                                      key={fav._id}
+                                      className="bg-white rounded-xl shadow-sm border transition-all duration-300 overflow-hidden"
+                                      style={{
+                                        borderColor: "rgba(208, 196, 226, 0.3)",
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        e.currentTarget.style.boxShadow =
+                                          "0 10px 15px -3px rgba(47, 60, 150, 0.1), 0 4px 6px -2px rgba(47, 60, 150, 0.05)";
+                                        e.currentTarget.style.borderColor =
+                                          "rgba(47, 60, 150, 0.4)";
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.currentTarget.style.boxShadow =
+                                          "0 1px 2px 0 rgba(0, 0, 0, 0.05)";
+                                        e.currentTarget.style.borderColor =
+                                          "rgba(208, 196, 226, 0.3)";
+                                      }}
+                                    >
+                                      <div className="p-5">
+                                        <div className="flex items-start justify-between mb-3">
+                                          <div className="flex items-center gap-2">
+                                            <User
+                                              className="w-5 h-5"
+                                              style={{ color: "#2F3C96" }}
+                                            />
+                                            <Star
+                                              className="w-4 h-4"
+                                              style={{ color: "#F59E0B" }}
+                                            />
+                                          </div>
+                                        </div>
+                                        <h4
+                                          className="font-bold text-base mb-2"
+                                          style={{ color: "#2F3C96" }}
+                                        >
+                                          {item.name || "Unknown Expert"}
+                                        </h4>
+                                        <div className="space-y-2 mb-4">
+                                          {(item.specialties ||
+                                            item.interests ||
+                                            item.researchInterests) && (
+                                            <div
+                                              className="flex items-center gap-2 text-sm"
+                                              style={{ color: "#787878" }}
+                                            >
+                                              <Briefcase className="w-3.5 h-3.5" />
+                                              <span>
+                                                {item.specialties?.join(", ") ||
+                                                  item.interests?.join(", ") ||
+                                                  item.researchInterests
+                                                    ?.slice(0, 2)
+                                                    .join(", ")}
+                                              </span>
+                                            </div>
+                                          )}
+                                          {item.location &&
+                                            (typeof item.location === "string"
+                                              ? item.location
+                                              : item.location.city ||
+                                                item.location.country) && (
+                                              <div
+                                                className="flex items-center gap-2 text-sm"
+                                                style={{ color: "#787878" }}
+                                              >
+                                                <MapPin className="w-3.5 h-3.5" />
+                                                <span>
+                                                  {typeof item.location ===
+                                                  "string"
+                                                    ? item.location
+                                                    : `${
+                                                        item.location.city || ""
+                                                      }${
+                                                        item.location.city &&
+                                                        item.location.country
+                                                          ? ", "
+                                                          : ""
+                                                      }${
+                                                        item.location.country ||
+                                                        ""
+                                                      }`.trim()}
+                                                </span>
+                                              </div>
+                                            )}
+                                        </div>
+                                        <button
+                                          onClick={() => {
+                                            if (fav.type === "expert") {
+                                              setExpertModal({
+                                                open: true,
+                                                expert: item,
+                                              });
+                                            } else if (
+                                              fav.type === "collaborator"
+                                            ) {
+                                              setCollaboratorModal({
+                                                open: true,
+                                                collaborator: item,
+                                              });
+                                            }
+                                          }}
+                                          className="flex items-center justify-center gap-2 py-2 px-4 rounded-lg text-sm font-semibold transition-all w-full"
+                                          style={{
+                                            background:
+                                              "linear-gradient(135deg, #2F3C96, #253075)",
+                                            color: "#FFFFFF",
+                                          }}
+                                          onMouseEnter={(e) => {
+                                            e.target.style.background =
+                                              "linear-gradient(135deg, #253075, #1C2454)";
+                                          }}
+                                          onMouseLeave={(e) => {
+                                            e.target.style.background =
+                                              "linear-gradient(135deg, #2F3C96, #253075)";
+                                          }}
+                                        >
+                                          View Profile
+                                          <ExternalLink className="w-4 h-4" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Forums Section */}
+                          {groupedFavorites.forum.length > 0 && (
+                            <div>
+                              <div
+                                className="mb-6 p-6 rounded-2xl border-2 shadow-lg"
+                                style={{
+                                  background:
+                                    "linear-gradient(135deg, rgba(47, 60, 150, 0.1), rgba(37, 48, 117, 0.05))",
+                                  borderColor: "rgba(208, 196, 226, 0.3)",
+                                }}
+                              >
+                                <div className="flex items-start gap-4">
+                                  <div
+                                    className="w-12 h-12 rounded-xl flex items-center justify-center shadow-md"
+                                    style={{
+                                      background:
+                                        "linear-gradient(135deg, #2F3C96, #253075)",
+                                    }}
+                                  >
+                                    <MessageCircle className="w-6 h-6 text-white" />
+                                  </div>
+                                  <div className="flex-1">
+                                    <h3
+                                      className="text-2xl font-bold mb-2 flex items-center gap-2"
+                                      style={{ color: "#2F3C96" }}
+                                    >
+                                      Favorite Forums
+                                      <span
+                                        className="text-sm font-normal px-3 py-1 rounded-full"
+                                        style={{
+                                          backgroundColor:
+                                            "rgba(208, 196, 226, 0.3)",
+                                          color: "#253075",
+                                        }}
+                                      >
+                                        {groupedFavorites.forum.length}{" "}
+                                        {groupedFavorites.forum.length === 1
+                                          ? "Forum"
+                                          : "Forums"}
+                                      </span>
+                                    </h3>
+                                    <p
+                                      className="text-sm leading-relaxed"
+                                      style={{ color: "#787878" }}
+                                    >
+                                      Your saved forum discussions and threads
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="space-y-4">
+                                {groupedFavorites.forum.map((fav) => {
+                                  const item = fav.item;
+                                  return (
+                                    <div
+                                      key={fav._id}
+                                      className="bg-white rounded-xl shadow-sm border transition-all duration-300 overflow-hidden"
+                                      style={{
+                                        borderColor: "rgba(208, 196, 226, 0.3)",
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        e.currentTarget.style.boxShadow =
+                                          "0 10px 15px -3px rgba(47, 60, 150, 0.1), 0 4px 6px -2px rgba(47, 60, 150, 0.05)";
+                                        e.currentTarget.style.borderColor =
+                                          "rgba(47, 60, 150, 0.4)";
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.currentTarget.style.boxShadow =
+                                          "0 1px 2px 0 rgba(0, 0, 0, 0.05)";
+                                        e.currentTarget.style.borderColor =
+                                          "rgba(208, 196, 226, 0.3)";
+                                      }}
+                                    >
+                                      <div className="p-5">
+                                        <div className="flex items-start justify-between mb-3">
+                                          <div className="flex items-center gap-2">
+                                            <MessageCircle
+                                              className="w-5 h-5"
+                                              style={{ color: "#2F3C96" }}
+                                            />
+                                            <Star
+                                              className="w-4 h-4"
+                                              style={{ color: "#F59E0B" }}
+                                            />
+                                          </div>
+                                        </div>
+                                        <h4
+                                          className="font-bold text-base mb-2"
+                                          style={{ color: "#2F3C96" }}
+                                        >
+                                          {item.name ||
+                                            item.title ||
+                                            "Unnamed Forum"}
+                                        </h4>
+                                        {item.description && (
+                                          <p
+                                            className="text-sm mb-4 line-clamp-2"
+                                            style={{ color: "#787878" }}
+                                          >
+                                            {item.description}
+                                          </p>
+                                        )}
+                                        {item.threadCount !== undefined && (
+                                          <div
+                                            className="flex items-center gap-2 text-sm mb-4"
+                                            style={{ color: "#787878" }}
+                                          >
+                                            <MessageCircle className="w-3.5 h-3.5" />
+                                            <span>
+                                              {item.threadCount || 0}{" "}
+                                              {item.threadCount === 1
+                                                ? "thread"
+                                                : "threads"}
+                                            </span>
+                                          </div>
+                                        )}
+                                        <button
+                                          onClick={() =>
+                                            navigate(
+                                              `/forums?category=${
+                                                item._id || item.id
+                                              }`
+                                            )
+                                          }
+                                          className="flex items-center justify-center gap-2 py-2 px-4 rounded-lg text-sm font-semibold transition-all w-full"
+                                          style={{
+                                            background:
+                                              "linear-gradient(135deg, #2F3C96, #253075)",
+                                            color: "#FFFFFF",
+                                          }}
+                                          onMouseEnter={(e) => {
+                                            e.target.style.background =
+                                              "linear-gradient(135deg, #253075, #1C2454)";
+                                          }}
+                                          onMouseLeave={(e) => {
+                                            e.target.style.background =
+                                              "linear-gradient(135deg, #2F3C96, #253075)";
+                                          }}
+                                        >
+                                          View Forum
+                                          <ExternalLink className="w-4 h-4" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
                         </div>
+                      ) : (
+                        <div className="col-span-full text-center py-16">
+                          <div
+                            className="inline-flex items-center justify-center w-20 h-20 rounded-full mb-4"
+                            style={{
+                              backgroundColor: "rgba(208, 196, 226, 0.2)",
+                            }}
+                          >
+                            <Star
+                              className="w-10 h-10"
+                              style={{ color: "#2F3C96" }}
+                            />
+                          </div>
+                          <h3
+                            className="text-lg font-semibold mb-2"
+                            style={{ color: "#2F3C96" }}
+                          >
+                            No Favorites Yet
+                          </h3>
+                          <p
+                            className="text-sm max-w-md mx-auto"
+                            style={{ color: "#787878" }}
+                          >
+                            Start saving your favorite trials, publications,
+                            collaborators, and forums for easy access later.
+                          </p>
+                        </div>
+                      );
+                    })()
+                  ) : (
+                    <div className="col-span-full text-center py-16">
+                      <div
+                        className="inline-flex items-center justify-center w-20 h-20 rounded-full mb-4"
+                        style={{
+                          backgroundColor: "rgba(208, 196, 226, 0.2)",
+                        }}
+                      >
+                        <Star
+                          className="w-10 h-10"
+                          style={{ color: "#2F3C96" }}
+                        />
                       </div>
-                    );
-                  })
-                ) : (
-                  <div className="col-span-full text-center py-16">
-                    <div className="inline-flex items-center justify-center w-20 h-20 bg-amber-100 rounded-full mb-4">
-                      <Star className="w-10 h-10 text-amber-400" />
+                      <h3
+                        className="text-lg font-semibold mb-2"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        No Favorites Yet
+                      </h3>
+                      <p
+                        className="text-sm max-w-md mx-auto"
+                        style={{ color: "#787878" }}
+                      >
+                        Start saving your favorite trials, publications,
+                        collaborators, and forums for easy access later.
+                      </p>
                     </div>
-                    <h3 className="text-lg font-semibold text-slate-800 mb-2">
-                      No Favorites Yet
-                    </h3>
-                    <p className="text-slate-600 text-sm max-w-md mx-auto">
-                      Start saving your favorite trials, publications, and
-                      collaborators for easy access later.
-                    </p>
-                  </div>
-                ))}
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -3346,25 +5774,40 @@ export default function DashboardResearcher() {
       </Modal>
 
       {/* Summary Modal */}
-      <Modal isOpen={summaryModal.open} onClose={closeModal} title="AI Summary">
+      {/* Summary Modal */}
+      <Modal
+        isOpen={summaryModal.open}
+        onClose={closeModal}
+        title="Key Insights"
+      >
         <div className="space-y-4">
-          <div className="pb-4 border-b border-indigo-200">
+          <div
+            className="pb-4 border-b"
+            style={{ borderColor: "rgba(208, 196, 226, 0.5)" }}
+          >
             <div className="flex items-center gap-3 mb-2">
               {summaryModal.type === "trial" ? (
-                <Beaker className="w-5 h-5 text-indigo-600" />
+                <Beaker className="w-5 h-5" style={{ color: "#2F3C96" }} />
               ) : (
-                <FileText className="w-5 h-5 text-blue-600" />
+                <FileText className="w-5 h-5" style={{ color: "#2F3C96" }} />
               )}
-              <h4 className="font-bold text-indigo-900 text-lg">
+              <h4 className="font-bold text-lg" style={{ color: "#2F3C96" }}>
                 {summaryModal.title}
               </h4>
             </div>
             <span
-              className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
+              className="inline-block px-3 py-1 rounded-full text-xs font-semibold"
+              style={
                 summaryModal.type === "trial"
-                  ? "bg-indigo-100 text-indigo-700"
-                  : "bg-blue-100 text-blue-700"
-              }`}
+                  ? {
+                      backgroundColor: "rgba(232, 224, 239, 0.8)",
+                      color: "#2F3C96",
+                    }
+                  : {
+                      backgroundColor: "rgba(232, 224, 239, 0.8)",
+                      color: "#2F3C96",
+                    }
+              }
             >
               {summaryModal.type === "trial"
                 ? "Clinical Trial"
@@ -3373,25 +5816,409 @@ export default function DashboardResearcher() {
           </div>
           {summaryModal.loading ? (
             <div className="space-y-4 py-4">
-              <div className="flex items-center gap-2 text-indigo-600 mb-4">
+              <div
+                className="flex items-center gap-2 mb-4"
+                style={{ color: "#2F3C96" }}
+              >
                 <Sparkles className="w-4 h-4 animate-pulse" />
                 <span className="text-sm font-medium">
-                  Generating AI summary...
+                  Preparing structured insights…
                 </span>
               </div>
               <div className="animate-pulse space-y-3">
-                <div className="h-4 bg-indigo-100 rounded"></div>
-                <div className="h-4 bg-indigo-100 rounded w-5/6"></div>
-                <div className="h-4 bg-indigo-100 rounded w-4/6"></div>
-                <div className="h-4 bg-indigo-100 rounded w-full mt-2"></div>
-                <div className="h-4 bg-indigo-100 rounded w-5/6"></div>
-                <div className="h-4 bg-indigo-100 rounded w-3/4"></div>
+                <div
+                  className="h-4 rounded"
+                  style={{ backgroundColor: "rgba(232, 224, 239, 0.5)" }}
+                ></div>
+                <div
+                  className="h-4 rounded w-5/6"
+                  style={{ backgroundColor: "rgba(232, 224, 239, 0.5)" }}
+                ></div>
+                <div
+                  className="h-4 rounded w-4/6"
+                  style={{ backgroundColor: "rgba(232, 224, 239, 0.5)" }}
+                ></div>
+                <div
+                  className="h-4 rounded w-full mt-2"
+                  style={{ backgroundColor: "rgba(232, 224, 239, 0.5)" }}
+                ></div>
+                <div
+                  className="h-4 rounded w-5/6"
+                  style={{ backgroundColor: "rgba(232, 224, 239, 0.5)" }}
+                ></div>
+                <div
+                  className="h-4 rounded w-3/4"
+                  style={{ backgroundColor: "rgba(232, 224, 239, 0.5)" }}
+                ></div>
               </div>
             </div>
+          ) : summaryModal.type === "publication" &&
+            summaryModal.summary &&
+            typeof summaryModal.summary === "object" &&
+            summaryModal.summary.structured ? (
+            // Structured Publication Summary with Visual Aids
+            <div className="space-y-5 py-2">
+              {/* Core Message - Most Important First */}
+              {summaryModal.summary.coreMessage && (
+                <div
+                  className="rounded-xl p-5 border-2 shadow-sm"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, rgba(232, 224, 239, 0.6), rgba(245, 242, 248, 0.8))",
+                    borderColor: "rgba(208, 196, 226, 0.6)",
+                  }}
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 mt-0.5"
+                      style={{ backgroundColor: "#2F3C96" }}
+                    >
+                      <Sparkles className="w-5 h-5 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <h5
+                        className="font-bold text-base mb-2"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        Key Finding
+                      </h5>
+                      <p
+                        className="text-sm leading-relaxed"
+                        style={{ color: "#253075" }}
+                      >
+                        {summaryModal.summary.coreMessage}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* What Section */}
+              {summaryModal.summary.what && (
+                <div
+                  className="bg-white rounded-lg p-4 border-l-4 shadow-sm hover:shadow-md transition-shadow"
+                  style={{ borderLeftColor: "#2F3C96" }}
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: "rgba(232, 224, 239, 0.6)" }}
+                    >
+                      <FileText
+                        className="w-4 h-4"
+                        style={{ color: "#2F3C96" }}
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <h5
+                        className="font-semibold text-sm mb-2 flex items-center gap-2"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        <span
+                          className="w-6 h-6 text-white rounded-full flex items-center justify-center text-xs font-bold"
+                          style={{ backgroundColor: "#2F3C96" }}
+                        >
+                          1
+                        </span>
+                        What This Study Was About
+                      </h5>
+                      <p
+                        className="text-sm leading-relaxed"
+                        style={{ color: "#787878" }}
+                      >
+                        {summaryModal.summary.what}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Why Section */}
+              {summaryModal.summary.why && (
+                <div
+                  className="bg-white rounded-lg p-4 border-l-4 shadow-sm hover:shadow-md transition-shadow"
+                  style={{ borderLeftColor: "#D0C4E2" }}
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: "rgba(232, 224, 239, 0.6)" }}
+                    >
+                      <Heart className="w-4 h-4" style={{ color: "#2F3C96" }} />
+                    </div>
+                    <div className="flex-1">
+                      <h5
+                        className="font-semibold text-sm mb-2 flex items-center gap-2"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        <span
+                          className="w-6 h-6 text-white rounded-full flex items-center justify-center text-xs font-bold"
+                          style={{ backgroundColor: "#D0C4E2" }}
+                        >
+                          2
+                        </span>
+                        Why This Research Matters
+                      </h5>
+                      <p
+                        className="text-sm leading-relaxed"
+                        style={{ color: "#787878" }}
+                      >
+                        {summaryModal.summary.why}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* How Section */}
+              {summaryModal.summary.how && (
+                <div
+                  className="bg-white rounded-lg p-4 border-l-4 shadow-sm hover:shadow-md transition-shadow"
+                  style={{ borderLeftColor: "#253075" }}
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: "rgba(232, 224, 239, 0.6)" }}
+                    >
+                      <ListChecks
+                        className="w-4 h-4"
+                        style={{ color: "#2F3C96" }}
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <h5
+                        className="font-semibold text-sm mb-2 flex items-center gap-2"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        <span
+                          className="w-6 h-6 text-white rounded-full flex items-center justify-center text-xs font-bold"
+                          style={{ backgroundColor: "#253075" }}
+                        >
+                          3
+                        </span>
+                        How They Did The Study
+                      </h5>
+                      <p
+                        className="text-sm leading-relaxed"
+                        style={{ color: "#787878" }}
+                      >
+                        {summaryModal.summary.how}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* So What Section */}
+              {summaryModal.summary.soWhat && (
+                <div
+                  className="rounded-lg p-4 border-l-4 shadow-sm hover:shadow-md transition-shadow"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, rgba(232, 224, 239, 0.4), rgba(245, 242, 248, 0.6))",
+                    borderLeftColor: "#D0C4E2",
+                  }}
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: "rgba(232, 224, 239, 0.6)" }}
+                    >
+                      <TrendingUp
+                        className="w-4 h-4"
+                        style={{ color: "#2F3C96" }}
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <h5
+                        className="font-semibold text-sm mb-2 flex items-center gap-2"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        <span
+                          className="w-6 h-6 text-white rounded-full flex items-center justify-center text-xs font-bold"
+                          style={{ backgroundColor: "#D0C4E2" }}
+                        >
+                          4
+                        </span>
+                        What This Means For You
+                      </h5>
+                      <p
+                        className="text-sm leading-relaxed"
+                        style={{ color: "#787878" }}
+                      >
+                        {summaryModal.summary.soWhat}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Key Takeaway */}
+              {summaryModal.summary.keyTakeaway && (
+                <div
+                  className="rounded-xl p-4 border-2 shadow-sm"
+                  style={{
+                    backgroundColor: "rgba(232, 224, 239, 0.3)",
+                    borderColor: "rgba(208, 196, 226, 0.6)",
+                  }}
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: "#2F3C96" }}
+                    >
+                      <AlertCircle className="w-5 h-5 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <h5
+                        className="font-bold text-sm mb-2"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        Remember This
+                      </h5>
+                      <p
+                        className="text-sm leading-relaxed font-medium"
+                        style={{ color: "#253075" }}
+                      >
+                        {summaryModal.summary.keyTakeaway}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : summaryModal.type === "trial" &&
+            summaryModal.summary &&
+            typeof summaryModal.summary === "object" &&
+            summaryModal.summary.structured ? (
+            // Structured Trial Summary
+            <div className="space-y-4">
+              {/* General Summary */}
+              {summaryModal.summary.generalSummary && (
+                <div
+                  className="bg-white rounded-lg p-4 border-l-4 shadow-sm hover:shadow-md transition-shadow"
+                  style={{ borderLeftColor: "#2F3C96" }}
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: "rgba(232, 224, 239, 0.6)" }}
+                    >
+                      <Info className="w-4 h-4" style={{ color: "#2F3C96" }} />
+                    </div>
+                    <div className="flex-1">
+                      <h5
+                        className="font-semibold text-sm mb-2"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        Overview
+                      </h5>
+                      <p
+                        className="text-sm leading-relaxed"
+                        style={{ color: "#787878" }}
+                      >
+                        {summaryModal.summary.generalSummary}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* What Happens (Procedures, Schedule, Treatments) */}
+              {summaryModal.summary.procedures && (
+                <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-green-100">
+                      <Activity className="w-4 h-4 text-green-600" />
+                    </div>
+                    <div className="flex-1">
+                      <h5
+                        className="font-semibold text-sm mb-2 flex items-center gap-2"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        <span className="w-6 h-6 text-white rounded-full flex items-center justify-center text-xs font-bold bg-green-500">
+                          1
+                        </span>
+                        What Happens (Procedures, Schedule, Treatments)
+                      </h5>
+                      <p
+                        className="text-sm leading-relaxed"
+                        style={{ color: "#787878" }}
+                      >
+                        {summaryModal.summary.procedures}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Potential Risks and Benefits */}
+              {summaryModal.summary.risksBenefits && (
+                <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-lg p-4 border border-amber-200 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-amber-100">
+                      <AlertCircle className="w-4 h-4 text-amber-600" />
+                    </div>
+                    <div className="flex-1">
+                      <h5
+                        className="font-semibold text-sm mb-2 flex items-center gap-2"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        <span className="w-6 h-6 text-white rounded-full flex items-center justify-center text-xs font-bold bg-amber-500">
+                          2
+                        </span>
+                        Potential Risks and Benefits
+                      </h5>
+                      <p
+                        className="text-sm leading-relaxed"
+                        style={{ color: "#787878" }}
+                      >
+                        {summaryModal.summary.risksBenefits}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* What Participants Need to Do */}
+              {summaryModal.summary.participantRequirements && (
+                <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg p-4 border border-purple-200 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-purple-100">
+                      <CheckCircle className="w-4 h-4 text-purple-600" />
+                    </div>
+                    <div className="flex-1">
+                      <h5
+                        className="font-semibold text-sm mb-2 flex items-center gap-2"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        <span className="w-6 h-6 text-white rounded-full flex items-center justify-center text-xs font-bold bg-purple-500">
+                          3
+                        </span>
+                        What Participants Need to Do
+                      </h5>
+                      <p
+                        className="text-sm leading-relaxed"
+                        style={{ color: "#787878" }}
+                      >
+                        {summaryModal.summary.participantRequirements}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           ) : (
+            // Fallback for non-structured summaries (old format)
             <div className="py-2">
-              <p className="text-indigo-800 text-sm leading-relaxed whitespace-pre-wrap">
-                {summaryModal.summary}
+              <p
+                className="text-sm leading-relaxed whitespace-pre-wrap"
+                style={{ color: "#2F3C96" }}
+              >
+                {typeof summaryModal.summary === "object"
+                  ? summaryModal.summary.summary || "Summary unavailable"
+                  : summaryModal.summary || "Summary unavailable"}
               </p>
             </div>
           )}

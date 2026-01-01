@@ -99,6 +99,7 @@ export default function DashboardPatient() {
   const [selectedCategory, setSelectedCategory] = useState("publications"); // "publications", "trials", "experts", "forums", "favorites"
   const [userProfile, setUserProfile] = useState(null);
   const [forumsCategories, setForumsCategories] = useState([]);
+  const [forumThreads, setForumThreads] = useState({}); // Map of categoryId to threads array
   const [trialFilter, setTrialFilter] = useState("RECRUITING"); // Status filter for trials - default to RECRUITING
   const [publicationSort, setPublicationSort] = useState("relevance"); // Sort option for publications
   const [showCollabioraExperts, setShowCollabioraExperts] = useState(true); // Toggle for Collabiora Experts
@@ -609,6 +610,8 @@ export default function DashboardPatient() {
       }`;
     } else if (type === "publication") {
       return `${type}-${item.pmid || item.id || item._id || itemId}`;
+    } else if (type === "thread" || type === "forum") {
+      return `${type}-${item.id || item._id || itemId}`;
     } else {
       return `${type}-${item.id || item._id || itemId}`;
     }
@@ -636,10 +639,20 @@ export default function DashboardPatient() {
       checkId = item.pmid || item.id || item._id || itemId;
     } else if (type === "trial") {
       checkId = item.id || item._id || itemId;
+    } else if (type === "thread" || type === "forum") {
+      checkId = item._id || item.id || itemId;
     }
 
     // Check if favorited - for experts, prioritize name matching
     const isFavorited = favorites.some((fav) => {
+      // For thread/forum types, allow matching between both types
+      if ((type === "thread" || type === "forum") && (fav.type === "thread" || fav.type === "forum")) {
+        return (
+          fav.item?.id === checkId ||
+          fav.item?._id === checkId ||
+          fav.item?.threadId === checkId
+        );
+      }
       if (fav.type !== type) return false;
 
       // For experts, check by exact name match first (primary identifier)
@@ -677,6 +690,15 @@ export default function DashboardPatient() {
         );
       }
 
+      // For threads/forums, check by id
+      if (type === "thread" || type === "forum") {
+        return (
+          fav.item?.id === checkId ||
+          fav.item?._id === checkId ||
+          fav.item?.threadId === checkId
+        );
+      }
+
       return false;
     });
 
@@ -687,6 +709,14 @@ export default function DashboardPatient() {
     if (isFavorited) {
       // Optimistically remove from favorites
       optimisticFavorites = favorites.filter((fav) => {
+        // For thread/forum types, allow matching between both types
+        if ((type === "thread" || type === "forum") && (fav.type === "thread" || fav.type === "forum")) {
+          return !(
+            fav.item?.id === checkId ||
+            fav.item?._id === checkId ||
+            fav.item?.threadId === checkId
+          );
+        }
         if (fav.type !== type) return true;
 
         if (type === "expert") {
@@ -732,10 +762,13 @@ export default function DashboardPatient() {
         itemToStore.pmid = item.pmid;
       }
 
+      // Use "thread" as the type for forum favorites (consistent with backend)
+      const favoriteType = (type === "forum" || type === "thread") ? "thread" : type;
+
       optimisticFavorites = [
         ...favorites,
         {
-          type,
+          type: favoriteType,
           item: itemToStore,
           _id: `temp-${Date.now()}`,
         },
@@ -781,10 +814,13 @@ export default function DashboardPatient() {
             item._id;
         }
 
+        // Use "thread" as the type for forum favorites (consistent with backend)
+        const deleteType = (type === "forum" || type === "thread") ? "thread" : type;
+        
         await fetch(
           `${base}/api/favorites/${
             user._id || user.id
-          }?type=${type}&id=${encodeURIComponent(deleteId)}`,
+          }?type=${deleteType}&id=${encodeURIComponent(deleteId)}`,
           { method: "DELETE" }
         );
         toast.success("Removed from favorites");
@@ -812,11 +848,14 @@ export default function DashboardPatient() {
           itemToStore.pmid = item.pmid;
         }
 
+        // Use "thread" as the type for forum favorites (consistent with backend)
+        const favoriteType = (type === "forum" || type === "thread") ? "thread" : type;
+        
         await fetch(`${base}/api/favorites/${user._id || user.id}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            type,
+            type: favoriteType,
             item: itemToStore,
           }),
         });
@@ -1092,6 +1131,39 @@ export default function DashboardPatient() {
       setPublicationSort("relevance");
     }
   }, [selectedCategory]);
+
+  // Fetch forum threads when forums category is selected
+  useEffect(() => {
+    if (selectedCategory === "forums" && forumsCategories.length > 0) {
+      const fetchForumThreads = async () => {
+        const threadsMap = {};
+        const forumsWithThreads = forumsCategories.filter(
+          (category) => (category.threadCount || 0) >= 2
+        );
+
+        // Fetch threads for each category (limit to 3 most recent per category)
+        for (const category of forumsWithThreads) {
+          try {
+            const response = await fetch(
+              `${base}/api/forums/threads?categoryId=${category._id}`
+            );
+            if (response.ok) {
+              const data = await response.json();
+              threadsMap[category._id] = (data.threads || []).slice(0, 3); // Get top 3 threads
+            }
+          } catch (error) {
+            console.error(
+              `Error fetching threads for category ${category._id}:`,
+              error
+            );
+          }
+        }
+        setForumThreads(threadsMap);
+      };
+
+      fetchForumThreads();
+    }
+  }, [selectedCategory, forumsCategories, base]);
 
   // Update filter modal title based on selected category
   const getFilterModalTitle = () => {
@@ -1408,6 +1480,12 @@ export default function DashboardPatient() {
 
   return (
     <div className="min-h-scren relative ">
+      <style>{`
+        .category-button-hover:hover:not(:active) {
+          background-color: rgba(255, 255, 255, 0.8) !important;
+          border-color: rgba(47, 60, 150, 0.3) !important;
+        }
+      `}</style>
       <AnimatedBackground />
       <div className="px-4 sm:px-6 md:px-8 lg:px-12 mx-auto max-w-7xl pt-6 pb-12 relative ">
         {/* Top Bar with Profile and Insights */}
@@ -1517,16 +1595,16 @@ export default function DashboardPatient() {
                   border: "1px solid rgba(47, 60, 150, 0.5)",
                 }}
                 onMouseEnter={(e) => {
-                  e.target.style.backgroundColor = "#253075";
-                  e.target.style.borderColor = "rgba(47, 60, 150, 0.7)";
+                  e.currentTarget.style.backgroundColor = "#253075";
+                  e.currentTarget.style.borderColor = "rgba(47, 60, 150, 0.7)";
                 }}
                 onMouseLeave={(e) => {
-                  e.target.style.backgroundColor = "#2F3C96";
-                  e.target.style.borderColor = "rgba(47, 60, 150, 0.5)";
+                  e.currentTarget.style.backgroundColor = "#2F3C96";
+                  e.currentTarget.style.borderColor = "rgba(47, 60, 150, 0.5)";
                 }}
               >
-                <Star className="w-4 h-4" />
-                <span className="hidden sm:inline">View All Saved Items</span>
+                <Star className="w-4 h-4 shrink-0" />
+                <span className="hidden sm:inline whitespace-nowrap">View All Saved Items</span>
               </button>
             </div>
           </div>
@@ -1576,34 +1654,24 @@ export default function DashboardPatient() {
                   <button
                     key={category.key}
                     onClick={() => setSelectedCategory(category.key)}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg border transition-all duration-200 whitespace-nowrap"
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-all duration-200 whitespace-nowrap ${
+                      !isSelected ? "category-button-hover" : ""
+                    }`}
                     style={
                       isSelected
                         ? {
                             backgroundColor: "#2F3C96",
                             color: "#FFFFFF",
                             borderColor: "#2F3C96",
+                            userSelect: "text",
                           }
                         : {
                             backgroundColor: "rgba(255, 255, 255, 0.6)",
                             color: "#787878",
                             borderColor: "rgba(47, 60, 150, 0.2)",
+                            userSelect: "text",
                           }
                     }
-                    onMouseEnter={(e) => {
-                      if (!isSelected) {
-                        e.target.style.backgroundColor =
-                          "rgba(255, 255, 255, 0.8)";
-                        e.target.style.borderColor = "rgba(47, 60, 150, 0.3)";
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isSelected) {
-                        e.target.style.backgroundColor =
-                          "rgba(255, 255, 255, 0.6)";
-                        e.target.style.borderColor = "rgba(47, 60, 150, 0.2)";
-                      }
-                    }}
                   >
                     <Icon className="w-4 h-4 shrink-0" />
                     <span className="text-sm font-semibold">
@@ -3639,7 +3707,64 @@ export default function DashboardPatient() {
               )}
 
               {selectedCategory === "forums" && (
-                <div className="col-span-full min-h-screen">
+                <div className="col-span-full">
+                  {/* Section Title */}
+                  <div className="mb-6">
+                    <h2
+                      className="text-2xl font-bold mb-1"
+                      style={{ color: "#2F3C96" }}
+                    >
+                      Forums
+                    </h2>
+                    <p
+                      className="text-sm"
+                      style={{ color: "#787878" }}
+                    >
+                      Connect with the community and find support
+                    </p>
+                  </div>
+
+                  {/* Header Section */}
+                  <div className="mb-6">
+                    <div
+                      className="bg-white rounded-xl shadow-sm border p-6"
+                      style={{
+                        borderColor: "rgba(208, 196, 226, 0.3)",
+                        background: "linear-gradient(135deg, rgba(245, 242, 248, 0.5), rgba(232, 224, 239, 0.3))",
+                      }}
+                    >
+                      <div className="flex items-start gap-4">
+                        <div
+                          className="w-14 h-14 rounded-xl flex items-center justify-center shrink-0"
+                          style={{
+                            backgroundColor: "rgba(47, 60, 150, 0.1)",
+                          }}
+                        >
+                          <MessageCircle
+                            className="w-7 h-7"
+                            style={{ color: "#2F3C96" }}
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <h2
+                            className="text-xl font-bold mb-2"
+                            style={{ color: "#2F3C96" }}
+                          >
+                            Community Forums
+                          </h2>
+                          <p
+                            className="text-sm leading-relaxed"
+                            style={{ color: "#787878" }}
+                          >
+                            Connect with patients, caregivers, and healthcare professionals. 
+                            Share experiences, ask questions, and find support from people who understand your journey.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Forums Grid */}
                   {(() => {
                     const forumsWithThreads = forumsCategories.filter(
                       (category) => (category.threadCount || 0) >= 2
@@ -3649,56 +3774,330 @@ export default function DashboardPatient() {
                         {forumsWithThreads.map((category, idx) => (
                           <div
                             key={category._id || idx}
-                            className="bg-white rounded-xl shadow-sm border border-slate-200 hover:shadow-lg hover:border-emerald-300 transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden"
+                            className="bg-white rounded-xl shadow-sm border transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden flex flex-col h-full"
+                            style={{
+                              borderColor: "rgba(208, 196, 226, 0.3)",
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.boxShadow =
+                                "0 10px 15px -3px rgba(47, 60, 150, 0.1), 0 4px 6px -2px rgba(47, 60, 150, 0.05)";
+                              e.currentTarget.style.borderColor =
+                                "rgba(47, 60, 150, 0.4)";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.boxShadow =
+                                "0 1px 2px 0 rgba(0, 0, 0, 0.05)";
+                              e.currentTarget.style.borderColor =
+                                "rgba(208, 196, 226, 0.3)";
+                            }}
                           >
-                            <div className="p-5">
-                              <div className="flex items-start justify-between mb-3">
-                                <div className="flex items-center gap-3">
-                                  <div className="w-12 h-12 bg-emerald-100 rounded-lg flex items-center justify-center">
-                                    <MessageCircle className="w-6 h-6 text-emerald-600" />
-                                  </div>
-                                  <div className="flex-1">
-                                    <h3 className="text-base font-bold text-slate-900 mb-1">
-                                      {category.name || "Unnamed Category"}
-                                    </h3>
-                                    {category.description && (
-                                      <p className="text-sm text-slate-600 line-clamp-2">
-                                        {category.description}
-                                      </p>
-                                    )}
-                                  </div>
+                            <div className="p-5 flex flex-col flex-grow">
+                              {/* Icon and Title */}
+                              <div className="flex items-start gap-3 mb-4">
+                                <div
+                                  className="w-12 h-12 rounded-lg flex items-center justify-center shrink-0"
+                                  style={{
+                                    backgroundColor: "rgba(208, 196, 226, 0.3)",
+                                  }}
+                                >
+                                  <MessageCircle
+                                    className="w-6 h-6"
+                                    style={{ color: "#2F3C96" }}
+                                  />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <h3
+                                    className="text-base font-bold mb-1"
+                                    style={{ color: "#2F3C96" }}
+                                  >
+                                    {category.name || "Unnamed Category"}
+                                  </h3>
+                                  {category.description && (
+                                    <p
+                                      className="text-sm line-clamp-2"
+                                      style={{ color: "#787878" }}
+                                    >
+                                      {category.description}
+                                    </p>
+                                  )}
                                 </div>
                               </div>
-                              <div className="flex items-center justify-between pt-3 border-t border-slate-100">
-                                <div className="flex items-center gap-4 text-sm text-slate-600">
-                                  <span className="flex items-center gap-1">
-                                    <MessageSquare className="w-4 h-4" />
-                                    {category.threadCount || 0} threads
+
+                              {/* Stats Section */}
+                              <div
+                                className="flex items-center gap-4 py-3 px-4 rounded-lg mb-4"
+                                style={{
+                                  backgroundColor: "rgba(245, 242, 248, 0.5)",
+                                }}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <MessageSquare
+                                    className="w-4 h-4"
+                                    style={{ color: "#2F3C96" }}
+                                  />
+                                  <span
+                                    className="text-sm font-semibold"
+                                    style={{ color: "#2F3C96" }}
+                                  >
+                                    {category.threadCount || 0}
+                                  </span>
+                                  <span
+                                    className="text-xs"
+                                    style={{ color: "#787878" }}
+                                  >
+                                    {category.threadCount === 1
+                                      ? "thread"
+                                      : "threads"}
                                   </span>
                                 </div>
-                                <button
-                                  onClick={() =>
-                                    navigate(`/forums?category=${category._id}`)
-                                  }
-                                  className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition-all"
-                                >
-                                  View Forum
-                                  <ExternalLink className="w-4 h-4" />
-                                </button>
+                                <div
+                                  className="w-1 h-1 rounded-full"
+                                  style={{
+                                    backgroundColor: "rgba(47, 60, 150, 0.3)",
+                                  }}
+                                ></div>
+                                <div className="flex items-center gap-2">
+                                  <Users
+                                    className="w-4 h-4"
+                                    style={{ color: "#2F3C96" }}
+                                  />
+                                  <span
+                                    className="text-xs"
+                                    style={{ color: "#787878" }}
+                                  >
+                                    Active community
+                                  </span>
+                                </div>
                               </div>
+
+                              {/* Recent Threads */}
+                              {forumThreads[category._id] &&
+                                forumThreads[category._id].length > 0 && (
+                                  <div className="mb-4">
+                                    <h4
+                                      className="text-xs font-semibold mb-2"
+                                      style={{ color: "#2F3C96" }}
+                                    >
+                                      Recent Discussions
+                                    </h4>
+                                    <div className="space-y-2">
+                                      {forumThreads[category._id].map(
+                                        (thread, threadIdx) => (
+                                          <div
+                                            key={thread._id || threadIdx}
+                                            className="p-2 rounded-lg border cursor-pointer hover:shadow-sm transition-all"
+                                            style={{
+                                              borderColor:
+                                                "rgba(208, 196, 226, 0.3)",
+                                              backgroundColor:
+                                                "rgba(245, 242, 248, 0.3)",
+                                            }}
+                                            onClick={() =>
+                                              navigate(
+                                                `/forums?category=${category._id}&thread=${thread._id}`
+                                              )
+                                            }
+                                            onMouseEnter={(e) => {
+                                              e.currentTarget.style.borderColor =
+                                                "rgba(47, 60, 150, 0.4)";
+                                              e.currentTarget.style.backgroundColor =
+                                                "rgba(245, 242, 248, 0.5)";
+                                            }}
+                                            onMouseLeave={(e) => {
+                                              e.currentTarget.style.borderColor =
+                                                "rgba(208, 196, 226, 0.3)";
+                                              e.currentTarget.style.backgroundColor =
+                                                "rgba(245, 242, 248, 0.3)";
+                                            }}
+                                          >
+                                            <div className="flex items-start justify-between gap-2 mb-1">
+                                              <div
+                                                className="text-sm font-medium line-clamp-1 flex-1"
+                                                style={{ color: "#2F3C96" }}
+                                              >
+                                                {thread.title}
+                                              </div>
+                                              {/* Favorite Button */}
+                                              <button
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  toggleFavorite("thread", thread._id, thread);
+                                                }}
+                                                disabled={favoritingItems.has(
+                                                  getFavoriteKey("thread", thread._id, thread)
+                                                )}
+                                                className="shrink-0 p-1.5 rounded-lg border transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                                style={{
+                                                  backgroundColor: favorites.some(
+                                                    (fav) =>
+                                                      (fav.type === "thread" || fav.type === "forum") &&
+                                                      (fav.item?.id === thread._id ||
+                                                        fav.item?._id === thread._id ||
+                                                        fav.item?.threadId === thread._id)
+                                                  )
+                                                    ? "rgba(245, 158, 11, 0.1)"
+                                                    : "rgba(245, 242, 248, 0.5)",
+                                                  borderColor: favorites.some(
+                                                    (fav) =>
+                                                      (fav.type === "thread" || fav.type === "forum") &&
+                                                      (fav.item?.id === thread._id ||
+                                                        fav.item?._id === thread._id ||
+                                                        fav.item?.threadId === thread._id)
+                                                  )
+                                                    ? "rgba(245, 158, 11, 0.3)"
+                                                    : "rgba(208, 196, 226, 0.3)",
+                                                  color: favorites.some(
+                                                    (fav) =>
+                                                      (fav.type === "thread" || fav.type === "forum") &&
+                                                      (fav.item?.id === thread._id ||
+                                                        fav.item?._id === thread._id ||
+                                                        fav.item?.threadId === thread._id)
+                                                  )
+                                                    ? "#F59E0B"
+                                                    : "#787878",
+                                                }}
+                                                onMouseEnter={(e) => {
+                                                  if (!favorites.some(
+                                                    (fav) =>
+                                                      (fav.type === "thread" || fav.type === "forum") &&
+                                                      (fav.item?.id === thread._id ||
+                                                        fav.item?._id === thread._id ||
+                                                        fav.item?.threadId === thread._id)
+                                                  )) {
+                                                    e.currentTarget.style.backgroundColor =
+                                                      "rgba(245, 158, 11, 0.1)";
+                                                    e.currentTarget.style.borderColor =
+                                                      "rgba(245, 158, 11, 0.3)";
+                                                    e.currentTarget.style.color = "#F59E0B";
+                                                  }
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                  if (!favorites.some(
+                                                    (fav) =>
+                                                      (fav.type === "thread" || fav.type === "forum") &&
+                                                      (fav.item?.id === thread._id ||
+                                                        fav.item?._id === thread._id ||
+                                                        fav.item?.threadId === thread._id)
+                                                  )) {
+                                                    e.currentTarget.style.backgroundColor =
+                                                      "rgba(245, 242, 248, 0.5)";
+                                                    e.currentTarget.style.borderColor =
+                                                      "rgba(208, 196, 226, 0.3)";
+                                                    e.currentTarget.style.color = "#787878";
+                                                  }
+                                                }}
+                                              >
+                                                {favoritingItems.has(
+                                                  getFavoriteKey("thread", thread._id, thread)
+                                                ) ? (
+                                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                ) : (
+                                                  <Star
+                                                    className={`w-3.5 h-3.5 ${
+                                                      favorites.some(
+                                                        (fav) =>
+                                                          (fav.type === "thread" || fav.type === "forum") &&
+                                                          (fav.item?.id === thread._id ||
+                                                            fav.item?._id === thread._id ||
+                                                            fav.item?.threadId === thread._id)
+                                                      )
+                                                        ? "fill-current"
+                                                        : ""
+                                                    }`}
+                                                  />
+                                                )}
+                                              </button>
+                                            </div>
+                                            <div className="flex items-center gap-3 text-xs">
+                                              <div
+                                                className="flex items-center gap-1"
+                                                style={{ color: "#787878" }}
+                                              >
+                                                <User className="w-3 h-3" />
+                                                <span className="truncate max-w-[80px]">
+                                                  {thread.authorUserId?.username ||
+                                                    "Anonymous"}
+                                                </span>
+                                              </div>
+                                              <div
+                                                className="flex items-center gap-1"
+                                                style={{ color: "#787878" }}
+                                              >
+                                                <MessageSquare className="w-3 h-3" />
+                                                <span>{thread.replyCount || 0}</span>
+                                              </div>
+                                              <div
+                                                className="flex items-center gap-1"
+                                                style={{ color: "#787878" }}
+                                              >
+                                                <Clock className="w-3 h-3" />
+                                                <span>
+                                                  {new Date(
+                                                    thread.createdAt
+                                                  ).toLocaleDateString("en-US", {
+                                                    month: "short",
+                                                    day: "numeric",
+                                                  })}
+                                                </span>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        )
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+
+                              {/* Action Button */}
+                              <button
+                                onClick={() =>
+                                  navigate(`/forums?category=${category._id}`)
+                                }
+                                className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-sm font-semibold transition-all duration-200 w-full mt-auto"
+                                style={{
+                                  background:
+                                    "linear-gradient(135deg, #2F3C96, #253075)",
+                                  color: "#FFFFFF",
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.target.style.background =
+                                    "linear-gradient(135deg, #253075, #1C2454)";
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.target.style.background =
+                                    "linear-gradient(135deg, #2F3C96, #253075)";
+                                }}
+                              >
+                                <span>View Forum</span>
+                                <ExternalLink className="w-4 h-4" />
+                              </button>
                             </div>
                           </div>
                         ))}
                       </div>
                     ) : (
                       <div className="col-span-full text-center py-16">
-                        <div className="inline-flex items-center justify-center w-20 h-20 bg-emerald-100 rounded-full mb-4">
-                          <MessageCircle className="w-10 h-10 text-emerald-400" />
+                        <div
+                          className="inline-flex items-center justify-center w-20 h-20 rounded-full mb-4"
+                          style={{
+                            backgroundColor: "rgba(208, 196, 226, 0.3)",
+                          }}
+                        >
+                          <MessageCircle
+                            className="w-10 h-10"
+                            style={{ color: "#2F3C96" }}
+                          />
                         </div>
-                        <h3 className="text-lg font-semibold text-slate-800 mb-2">
+                        <h3
+                          className="text-lg font-semibold mb-2"
+                          style={{ color: "#2F3C96" }}
+                        >
                           No Forums Available
                         </h3>
-                        <p className="text-slate-600 text-sm max-w-md mx-auto">
+                        <p
+                          className="text-sm max-w-md mx-auto"
+                          style={{ color: "#787878" }}
+                        >
                           Forums are being set up. Check back soon!
                         </p>
                       </div>
@@ -3707,111 +4106,704 @@ export default function DashboardPatient() {
                 </div>
               )}
 
-              {selectedCategory === "favorites" &&
-                (favorites.length > 0 ? (
-                  [...favorites]
-                    .sort((a, b) => {
-                      const matchA = a.item?.matchPercentage ?? 0;
-                      const matchB = b.item?.matchPercentage ?? 0;
-                      return matchB - matchA;
-                    })
-                    .map((fav) => {
-                      const item = fav.item;
-                      return (
-                        <div
-                          key={fav._id}
-                          className="bg-white rounded-xl shadow-sm border border-slate-200 hover:shadow-lg hover:border-indigo-300 transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden"
-                        >
-                          <div className="p-5">
-                            <div className="flex items-start justify-between mb-3">
-                              <div className="flex items-center gap-2">
-                                {fav.type === "trial" && (
-                                  <Beaker className="w-5 h-5 text-indigo-600" />
-                                )}
-                                {fav.type === "publication" && (
-                                  <FileText className="w-5 h-5 text-indigo-600" />
-                                )}
-                                {(fav.type === "expert" ||
-                                  fav.type === "collaborator") && (
-                                  <User className="w-5 h-5 text-indigo-600" />
-                                )}
-                                <span className="inline-flex items-center px-2.5 py-1 bg-indigo-100 text-indigo-700 text-xs font-medium rounded-full capitalize">
-                                  {fav.type}
-                                </span>
-                              </div>
-                              <Star className="w-5 h-5 text-amber-500 fill-amber-500" />
-                            </div>
-                            <h4 className="font-bold text-slate-900 text-base line-clamp-2 mb-3">
-                              {fav.type === "publication" && item.title
-                                ? simplifiedTitles.get(item.title) || item.title
-                                : item.title || item.name || "Untitled"}
-                            </h4>
-                            {item.journal && (
-                              <div className="flex items-center gap-2 text-sm text-slate-600 mb-2">
-                                <BookOpen className="w-3.5 h-3.5" />
-                                <span className="line-clamp-1">
-                                  {item.journal}
-                                </span>
-                              </div>
-                            )}
-                            {item.conditions && (
-                              <div className="flex items-center gap-2 text-sm text-slate-700 mb-3">
-                                <Info className="w-3.5 h-3.5 text-indigo-600" />
-                                <span className="line-clamp-1">
-                                  {Array.isArray(item.conditions)
-                                    ? item.conditions.join(", ")
-                                    : item.conditions}
-                                </span>
-                              </div>
-                            )}
-                            {item.authors &&
-                              Array.isArray(item.authors) &&
-                              item.authors.length > 0 && (
-                                <div className="flex items-center gap-2 text-sm text-slate-600 mb-3">
-                                  <User className="w-3.5 h-3.5" />
-                                  <span className="line-clamp-1">
-                                    {item.authors.slice(0, 2).join(", ")}
-                                    {item.authors.length > 2 && " et al."}
-                                  </span>
-                                </div>
-                              )}
-                            <div className="pt-3 border-t border-slate-100">
-                              <button
-                                onClick={() => {
-                                  if (fav.type === "trial") {
-                                    openTrialDetailsModal(item);
-                                  } else if (fav.type === "publication") {
-                                    openPublicationDetailsModal(item);
-                                  } else if (fav.type === "expert") {
-                                    setExpertModal({
-                                      open: true,
-                                      expert: item,
-                                    });
-                                  }
+              {selectedCategory === "favorites" && (
+                <div className="col-span-full">
+                  {favorites.length > 0 ? (
+                    (() => {
+                      // Group favorites by type
+                      const groupedFavorites = {
+                        publication: favorites.filter((f) => f.type === "publication"),
+                        trial: favorites.filter((f) => f.type === "trial"),
+                        expert: favorites.filter(
+                          (f) => f.type === "expert" || f.type === "collaborator"
+                        ),
+                        forum: favorites.filter((f) => f.type === "forum" || f.type === "thread"),
+                      };
+
+                      const hasAnyFavorites =
+                        groupedFavorites.publication.length > 0 ||
+                        groupedFavorites.trial.length > 0 ||
+                        groupedFavorites.expert.length > 0 ||
+                        groupedFavorites.forum.length > 0;
+
+                      return hasAnyFavorites ? (
+                        <div className="space-y-8">
+                          {/* Publications Section */}
+                          {groupedFavorites.publication.length > 0 && (
+                            <div>
+                              <div
+                                className="mb-6 p-6 rounded-2xl border-2 shadow-lg"
+                                style={{
+                                  background:
+                                    "linear-gradient(135deg, rgba(47, 60, 150, 0.1), rgba(37, 48, 117, 0.05))",
+                                  borderColor: "rgba(208, 196, 226, 0.3)",
                                 }}
-                                className="w-full py-2 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-lg text-sm font-semibold hover:from-indigo-700 hover:to-indigo-800 transition-all"
                               >
-                                View Details
-                              </button>
+                                <div className="flex items-start gap-4">
+                                  <div
+                                    className="w-12 h-12 rounded-xl flex items-center justify-center shadow-md"
+                                    style={{
+                                      background:
+                                        "linear-gradient(135deg, #2F3C96, #253075)",
+                                    }}
+                                  >
+                                    <FileText className="w-6 h-6 text-white" />
+                                  </div>
+                                  <div className="flex-1">
+                                    <h3
+                                      className="text-2xl font-bold mb-2 flex items-center gap-2"
+                                      style={{ color: "#2F3C96" }}
+                                    >
+                                      Favorite Publications
+                                      <span
+                                        className="text-sm font-normal px-3 py-1 rounded-full"
+                                        style={{
+                                          backgroundColor: "rgba(208, 196, 226, 0.3)",
+                                          color: "#253075",
+                                        }}
+                                      >
+                                        {groupedFavorites.publication.length}{" "}
+                                        {groupedFavorites.publication.length === 1
+                                          ? "Publication"
+                                          : "Publications"}
+                                      </span>
+                                    </h3>
+                                    <p
+                                      className="text-sm leading-relaxed"
+                                      style={{ color: "#787878" }}
+                                    >
+                                      Your saved research publications and papers
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="space-y-4">
+                                {groupedFavorites.publication.map((fav) => {
+                                  const item = fav.item;
+                                  return (
+                                    <div
+                                      key={fav._id}
+                                      className="bg-white rounded-xl shadow-sm border transition-all duration-300 overflow-hidden"
+                                      style={{
+                                        borderColor: "rgba(208, 196, 226, 0.3)",
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        e.currentTarget.style.boxShadow =
+                                          "0 10px 15px -3px rgba(47, 60, 150, 0.1), 0 4px 6px -2px rgba(47, 60, 150, 0.05)";
+                                        e.currentTarget.style.borderColor =
+                                          "rgba(47, 60, 150, 0.4)";
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.currentTarget.style.boxShadow =
+                                          "0 1px 2px 0 rgba(0, 0, 0, 0.05)";
+                                        e.currentTarget.style.borderColor =
+                                          "rgba(208, 196, 226, 0.3)";
+                                      }}
+                                    >
+                                      <div className="p-5">
+                                        <div className="flex items-start justify-between mb-3">
+                                          <div className="flex items-center gap-2">
+                                            <FileText
+                                              className="w-5 h-5"
+                                              style={{ color: "#2F3C96" }}
+                                            />
+                                            <Star
+                                              className="w-4 h-4"
+                                              style={{ color: "#F59E0B" }}
+                                            />
+                                          </div>
+                                        </div>
+                                        <h4
+                                          className="font-bold text-base mb-2"
+                                          style={{ color: "#2F3C96" }}
+                                        >
+                                          {item.title
+                                            ? simplifiedTitles.get(item.title) ||
+                                              item.title
+                                            : "Untitled"}
+                                        </h4>
+                                        <div className="space-y-2 mb-4">
+                                          {item.journal && (
+                                            <div
+                                              className="flex items-center gap-2 text-sm"
+                                              style={{ color: "#787878" }}
+                                            >
+                                              <BookOpen className="w-3.5 h-3.5" />
+                                              <span>{item.journal}</span>
+                                            </div>
+                                          )}
+                                          {item.authors &&
+                                            Array.isArray(item.authors) &&
+                                            item.authors.length > 0 && (
+                                              <div
+                                                className="flex items-center gap-2 text-sm"
+                                                style={{ color: "#787878" }}
+                                              >
+                                                <User className="w-3.5 h-3.5" />
+                                                <span>
+                                                  {item.authors
+                                                    .slice(0, 3)
+                                                    .join(", ")}
+                                                  {item.authors.length > 3 &&
+                                                    " et al."}
+                                                </span>
+                                              </div>
+                                            )}
+                                          {item.year && (
+                                            <div
+                                              className="flex items-center gap-2 text-sm"
+                                              style={{ color: "#787878" }}
+                                            >
+                                              <Calendar className="w-3.5 h-3.5" />
+                                              <span>{item.year}</span>
+                                            </div>
+                                          )}
+                                        </div>
+                                        <button
+                                          onClick={() =>
+                                            openPublicationDetailsModal(item)
+                                          }
+                                          className="flex items-center justify-center gap-2 py-2 px-4 rounded-lg text-sm font-semibold transition-all w-full"
+                                          style={{
+                                            background:
+                                              "linear-gradient(135deg, #2F3C96, #253075)",
+                                            color: "#FFFFFF",
+                                          }}
+                                          onMouseEnter={(e) => {
+                                            e.target.style.background =
+                                              "linear-gradient(135deg, #253075, #1C2454)";
+                                          }}
+                                          onMouseLeave={(e) => {
+                                            e.target.style.background =
+                                              "linear-gradient(135deg, #2F3C96, #253075)";
+                                          }}
+                                        >
+                                          View Publication
+                                          <ExternalLink className="w-4 h-4" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             </div>
+                          )}
+
+                          {/* Trials Section */}
+                          {groupedFavorites.trial.length > 0 && (
+                            <div>
+                              <div
+                                className="mb-6 p-6 rounded-2xl border-2 shadow-lg"
+                                style={{
+                                  background:
+                                    "linear-gradient(135deg, rgba(47, 60, 150, 0.1), rgba(37, 48, 117, 0.05))",
+                                  borderColor: "rgba(208, 196, 226, 0.3)",
+                                }}
+                              >
+                                <div className="flex items-start gap-4">
+                                  <div
+                                    className="w-12 h-12 rounded-xl flex items-center justify-center shadow-md"
+                                    style={{
+                                      background:
+                                        "linear-gradient(135deg, #2F3C96, #253075)",
+                                    }}
+                                  >
+                                    <Beaker className="w-6 h-6 text-white" />
+                                  </div>
+                                  <div className="flex-1">
+                                    <h3
+                                      className="text-2xl font-bold mb-2 flex items-center gap-2"
+                                      style={{ color: "#2F3C96" }}
+                                    >
+                                      Favorite Trials
+                                      <span
+                                        className="text-sm font-normal px-3 py-1 rounded-full"
+                                        style={{
+                                          backgroundColor: "rgba(208, 196, 226, 0.3)",
+                                          color: "#253075",
+                                        }}
+                                      >
+                                        {groupedFavorites.trial.length}{" "}
+                                        {groupedFavorites.trial.length === 1
+                                          ? "Trial"
+                                          : "Trials"}
+                                      </span>
+                                    </h3>
+                                    <p
+                                      className="text-sm leading-relaxed"
+                                      style={{ color: "#787878" }}
+                                    >
+                                      Your saved clinical trials and research studies
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="space-y-4">
+                                {groupedFavorites.trial.map((fav) => {
+                                  const item = fav.item;
+                                  return (
+                                    <div
+                                      key={fav._id}
+                                      className="bg-white rounded-xl shadow-sm border transition-all duration-300 overflow-hidden"
+                                      style={{
+                                        borderColor: "rgba(208, 196, 226, 0.3)",
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        e.currentTarget.style.boxShadow =
+                                          "0 10px 15px -3px rgba(47, 60, 150, 0.1), 0 4px 6px -2px rgba(47, 60, 150, 0.05)";
+                                        e.currentTarget.style.borderColor =
+                                          "rgba(47, 60, 150, 0.4)";
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.currentTarget.style.boxShadow =
+                                          "0 1px 2px 0 rgba(0, 0, 0, 0.05)";
+                                        e.currentTarget.style.borderColor =
+                                          "rgba(208, 196, 226, 0.3)";
+                                      }}
+                                    >
+                                      <div className="p-5">
+                                        <div className="flex items-start justify-between mb-3">
+                                          <div className="flex items-center gap-2">
+                                            <Beaker
+                                              className="w-5 h-5"
+                                              style={{ color: "#2F3C96" }}
+                                            />
+                                            <Star
+                                              className="w-4 h-4"
+                                              style={{ color: "#F59E0B" }}
+                                            />
+                                          </div>
+                                          {item.status && (
+                                            <span
+                                              className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(
+                                                item.status
+                                              )}`}
+                                            >
+                                              {item.status.replace(/_/g, " ")}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <h4
+                                          className="font-bold text-base mb-2"
+                                          style={{ color: "#2F3C96" }}
+                                        >
+                                          {item.title || "Untitled Trial"}
+                                        </h4>
+                                        <div className="space-y-2 mb-4">
+                                          {item.conditions &&
+                                            (Array.isArray(item.conditions)
+                                              ? item.conditions.length > 0
+                                              : item.conditions) && (
+                                              <div
+                                                className="flex items-center gap-2 text-sm"
+                                                style={{ color: "#787878" }}
+                                              >
+                                                <Info className="w-3.5 h-3.5" />
+                                                <span>
+                                                  {Array.isArray(item.conditions)
+                                                    ? item.conditions
+                                                        .slice(0, 2)
+                                                        .join(", ")
+                                                    : item.conditions}
+                                                  {Array.isArray(item.conditions) &&
+                                                    item.conditions.length > 2 &&
+                                                    ` +${item.conditions.length - 2} more`}
+                                                </span>
+                                              </div>
+                                            )}
+                                          {item.phase && (
+                                            <div
+                                              className="flex items-center gap-2 text-sm"
+                                              style={{ color: "#787878" }}
+                                            >
+                                              <Activity className="w-3.5 h-3.5" />
+                                              <span>Phase {item.phase}</span>
+                                            </div>
+                                          )}
+                                        </div>
+                                        <button
+                                          onClick={() =>
+                                            openTrialDetailsModal(item)
+                                          }
+                                          className="flex items-center justify-center gap-2 py-2 px-4 rounded-lg text-sm font-semibold transition-all w-full"
+                                          style={{
+                                            background:
+                                              "linear-gradient(135deg, #2F3C96, #253075)",
+                                            color: "#FFFFFF",
+                                          }}
+                                          onMouseEnter={(e) => {
+                                            e.target.style.background =
+                                              "linear-gradient(135deg, #253075, #1C2454)";
+                                          }}
+                                          onMouseLeave={(e) => {
+                                            e.target.style.background =
+                                              "linear-gradient(135deg, #2F3C96, #253075)";
+                                          }}
+                                        >
+                                          View Trial Details
+                                          <ExternalLink className="w-4 h-4" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Experts Section */}
+                          {groupedFavorites.expert.length > 0 && (
+                            <div>
+                              <div
+                                className="mb-6 p-6 rounded-2xl border-2 shadow-lg"
+                                style={{
+                                  background:
+                                    "linear-gradient(135deg, rgba(47, 60, 150, 0.1), rgba(37, 48, 117, 0.05))",
+                                  borderColor: "rgba(208, 196, 226, 0.3)",
+                                }}
+                              >
+                                <div className="flex items-start gap-4">
+                                  <div
+                                    className="w-12 h-12 rounded-xl flex items-center justify-center shadow-md"
+                                    style={{
+                                      background:
+                                        "linear-gradient(135deg, #2F3C96, #253075)",
+                                    }}
+                                  >
+                                    <User className="w-6 h-6 text-white" />
+                                  </div>
+                                  <div className="flex-1">
+                                    <h3
+                                      className="text-2xl font-bold mb-2 flex items-center gap-2"
+                                      style={{ color: "#2F3C96" }}
+                                    >
+                                      Favorite Experts
+                                      <span
+                                        className="text-sm font-normal px-3 py-1 rounded-full"
+                                        style={{
+                                          backgroundColor: "rgba(208, 196, 226, 0.3)",
+                                          color: "#253075",
+                                        }}
+                                      >
+                                        {groupedFavorites.expert.length}{" "}
+                                        {groupedFavorites.expert.length === 1
+                                          ? "Expert"
+                                          : "Experts"}
+                                      </span>
+                                    </h3>
+                                    <p
+                                      className="text-sm leading-relaxed"
+                                      style={{ color: "#787878" }}
+                                    >
+                                      Your saved researchers and healthcare experts
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="space-y-4">
+                                {groupedFavorites.expert.map((fav) => {
+                                  const item = fav.item;
+                                  return (
+                                    <div
+                                      key={fav._id}
+                                      className="bg-white rounded-xl shadow-sm border transition-all duration-300 overflow-hidden"
+                                      style={{
+                                        borderColor: "rgba(208, 196, 226, 0.3)",
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        e.currentTarget.style.boxShadow =
+                                          "0 10px 15px -3px rgba(47, 60, 150, 0.1), 0 4px 6px -2px rgba(47, 60, 150, 0.05)";
+                                        e.currentTarget.style.borderColor =
+                                          "rgba(47, 60, 150, 0.4)";
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.currentTarget.style.boxShadow =
+                                          "0 1px 2px 0 rgba(0, 0, 0, 0.05)";
+                                        e.currentTarget.style.borderColor =
+                                          "rgba(208, 196, 226, 0.3)";
+                                      }}
+                                    >
+                                      <div className="p-5">
+                                        <div className="flex items-start justify-between mb-3">
+                                          <div className="flex items-center gap-2">
+                                            <User
+                                              className="w-5 h-5"
+                                              style={{ color: "#2F3C96" }}
+                                            />
+                                            <Star
+                                              className="w-4 h-4"
+                                              style={{ color: "#F59E0B" }}
+                                            />
+                                          </div>
+                                        </div>
+                                        <h4
+                                          className="font-bold text-base mb-2"
+                                          style={{ color: "#2F3C96" }}
+                                        >
+                                          {item.name || "Unknown Expert"}
+                                        </h4>
+                                        <div className="space-y-2 mb-4">
+                                          {(item.specialties ||
+                                            item.interests ||
+                                            item.researchInterests) && (
+                                            <div
+                                              className="flex items-center gap-2 text-sm"
+                                              style={{ color: "#787878" }}
+                                            >
+                                              <Briefcase className="w-3.5 h-3.5" />
+                                              <span>
+                                                {item.specialties?.join(", ") ||
+                                                  item.interests?.join(", ") ||
+                                                  item.researchInterests
+                                                    ?.slice(0, 2)
+                                                    .join(", ")}
+                                              </span>
+                                            </div>
+                                          )}
+                                          {item.location &&
+                                            (typeof item.location === "string"
+                                              ? item.location
+                                              : item.location.city ||
+                                                item.location.country) && (
+                                              <div
+                                                className="flex items-center gap-2 text-sm"
+                                                style={{ color: "#787878" }}
+                                              >
+                                                <MapPin className="w-3.5 h-3.5" />
+                                                <span>
+                                                  {typeof item.location === "string"
+                                                    ? item.location
+                                                    : `${item.location.city || ""}${
+                                                        item.location.city &&
+                                                        item.location.country
+                                                          ? ", "
+                                                          : ""
+                                                      }${item.location.country || ""}`.trim()}
+                                                </span>
+                                              </div>
+                                            )}
+                                        </div>
+                                        <button
+                                          onClick={() =>
+                                            setExpertModal({
+                                              open: true,
+                                              expert: item,
+                                            })
+                                          }
+                                          className="flex items-center justify-center gap-2 py-2 px-4 rounded-lg text-sm font-semibold transition-all w-full"
+                                          style={{
+                                            background:
+                                              "linear-gradient(135deg, #2F3C96, #253075)",
+                                            color: "#FFFFFF",
+                                          }}
+                                          onMouseEnter={(e) => {
+                                            e.target.style.background =
+                                              "linear-gradient(135deg, #253075, #1C2454)";
+                                          }}
+                                          onMouseLeave={(e) => {
+                                            e.target.style.background =
+                                              "linear-gradient(135deg, #2F3C96, #253075)";
+                                          }}
+                                        >
+                                          View Expert Profile
+                                          <ExternalLink className="w-4 h-4" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Forums Section */}
+                          {groupedFavorites.forum.length > 0 && (
+                            <div>
+                              <div
+                                className="mb-6 p-6 rounded-2xl border-2 shadow-lg"
+                                style={{
+                                  background:
+                                    "linear-gradient(135deg, rgba(47, 60, 150, 0.1), rgba(37, 48, 117, 0.05))",
+                                  borderColor: "rgba(208, 196, 226, 0.3)",
+                                }}
+                              >
+                                <div className="flex items-start gap-4">
+                                  <div
+                                    className="w-12 h-12 rounded-xl flex items-center justify-center shadow-md"
+                                    style={{
+                                      background:
+                                        "linear-gradient(135deg, #2F3C96, #253075)",
+                                    }}
+                                  >
+                                    <MessageCircle className="w-6 h-6 text-white" />
+                                  </div>
+                                  <div className="flex-1">
+                                    <h3
+                                      className="text-2xl font-bold mb-2 flex items-center gap-2"
+                                      style={{ color: "#2F3C96" }}
+                                    >
+                                      Favorite Forums
+                                      <span
+                                        className="text-sm font-normal px-3 py-1 rounded-full"
+                                        style={{
+                                          backgroundColor: "rgba(208, 196, 226, 0.3)",
+                                          color: "#253075",
+                                        }}
+                                      >
+                                        {groupedFavorites.forum.length}{" "}
+                                        {groupedFavorites.forum.length === 1
+                                          ? "Forum"
+                                          : "Forums"}
+                                      </span>
+                                    </h3>
+                                    <p
+                                      className="text-sm leading-relaxed"
+                                      style={{ color: "#787878" }}
+                                    >
+                                      Your saved forum discussions and threads
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="space-y-4">
+                                {groupedFavorites.forum.map((fav) => {
+                                  const item = fav.item;
+                                  return (
+                                    <div
+                                      key={fav._id}
+                                      className="bg-white rounded-xl shadow-sm border transition-all duration-300 overflow-hidden"
+                                      style={{
+                                        borderColor: "rgba(208, 196, 226, 0.3)",
+                                      }}
+                                      onMouseEnter={(e) => {
+                                        e.currentTarget.style.boxShadow =
+                                          "0 10px 15px -3px rgba(47, 60, 150, 0.1), 0 4px 6px -2px rgba(47, 60, 150, 0.05)";
+                                        e.currentTarget.style.borderColor =
+                                          "rgba(47, 60, 150, 0.4)";
+                                      }}
+                                      onMouseLeave={(e) => {
+                                        e.currentTarget.style.boxShadow =
+                                          "0 1px 2px 0 rgba(0, 0, 0, 0.05)";
+                                        e.currentTarget.style.borderColor =
+                                          "rgba(208, 196, 226, 0.3)";
+                                      }}
+                                    >
+                                      <div className="p-5">
+                                        <div className="flex items-start justify-between mb-3">
+                                          <div className="flex items-center gap-2">
+                                            <MessageCircle
+                                              className="w-5 h-5"
+                                              style={{ color: "#2F3C96" }}
+                                            />
+                                            <Star
+                                              className="w-4 h-4"
+                                              style={{ color: "#F59E0B" }}
+                                            />
+                                          </div>
+                                        </div>
+                                        <h4
+                                          className="font-bold text-base mb-2"
+                                          style={{ color: "#2F3C96" }}
+                                        >
+                                          {item.title || item.name || "Forum Thread"}
+                                        </h4>
+                                        {item.body && (
+                                          <p
+                                            className="text-sm mb-4 line-clamp-2"
+                                            style={{ color: "#787878" }}
+                                          >
+                                            {item.body}
+                                          </p>
+                                        )}
+                                        <button
+                                          onClick={() =>
+                                            navigate(`/forums?thread=${item._id || item.id}`)
+                                          }
+                                          className="flex items-center justify-center gap-2 py-2 px-4 rounded-lg text-sm font-semibold transition-all w-full"
+                                          style={{
+                                            background:
+                                              "linear-gradient(135deg, #2F3C96, #253075)",
+                                            color: "#FFFFFF",
+                                          }}
+                                          onMouseEnter={(e) => {
+                                            e.target.style.background =
+                                              "linear-gradient(135deg, #253075, #1C2454)";
+                                          }}
+                                          onMouseLeave={(e) => {
+                                            e.target.style.background =
+                                              "linear-gradient(135deg, #2F3C96, #253075)";
+                                          }}
+                                        >
+                                          View Thread
+                                          <ExternalLink className="w-4 h-4" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="col-span-full text-center py-16">
+                          <div
+                            className="inline-flex items-center justify-center w-20 h-20 rounded-full mb-4"
+                            style={{
+                              backgroundColor: "rgba(208, 196, 226, 0.3)",
+                            }}
+                          >
+                            <Star
+                              className="w-10 h-10"
+                              style={{ color: "#2F3C96" }}
+                            />
                           </div>
+                          <h3
+                            className="text-lg font-semibold mb-2"
+                            style={{ color: "#2F3C96" }}
+                          >
+                            No Favorites Yet
+                          </h3>
+                          <p
+                            className="text-sm max-w-md mx-auto"
+                            style={{ color: "#787878" }}
+                          >
+                            Start saving your favorite trials, publications, and
+                            experts for easy access later.
+                          </p>
                         </div>
                       );
-                    })
-                ) : (
-                  <div className="col-span-full text-center py-16">
-                    <div className="inline-flex items-center justify-center w-20 h-20 bg-amber-100 rounded-full mb-4">
-                      <Star className="w-10 h-10 text-amber-400" />
+                    })()
+                  ) : (
+                    <div className="col-span-full text-center py-16">
+                      <div
+                        className="inline-flex items-center justify-center w-20 h-20 rounded-full mb-4"
+                        style={{
+                          backgroundColor: "rgba(208, 196, 226, 0.3)",
+                        }}
+                      >
+                        <Star
+                          className="w-10 h-10"
+                          style={{ color: "#2F3C96" }}
+                        />
+                      </div>
+                      <h3
+                        className="text-lg font-semibold mb-2"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        No Favorites Yet
+                      </h3>
+                      <p
+                        className="text-sm max-w-md mx-auto"
+                        style={{ color: "#787878" }}
+                      >
+                        Start saving your favorite trials, publications, and
+                        experts for easy access later.
+                      </p>
                     </div>
-                    <h3 className="text-lg font-semibold text-slate-800 mb-2">
-                      No Favorites Yet
-                    </h3>
-                    <p className="text-slate-600 text-sm max-w-md mx-auto">
-                      Start saving your favorite trials, publications, and
-                      experts for easy access later.
-                    </p>
-                  </div>
-                ))}
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -5999,3 +6991,4 @@ export default function DashboardPatient() {
     </div>
   );
 }
+

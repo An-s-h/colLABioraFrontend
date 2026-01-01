@@ -424,17 +424,15 @@ export default function Navbar() {
                       <span
                         className="relative z-10 transition-colors duration-200"
                         style={{
-                          color: "#2F3C96",
+                          color: isExploreDropdownOpen ? "#B8A5D5" : "#2F3C96",
                         }}
-                        onMouseEnter={(e) => (e.target.style.color = "#B8A5D5")}
-                        onMouseLeave={(e) => (e.target.style.color = "#2F3C96")}
                       >
                         {item}
                       </span>
                       <svg
                         className="w-4 h-4 transition-transform duration-200"
                         style={{
-                          color: "#2F3C96",
+                          color: isExploreDropdownOpen ? "#B8A5D5" : "#2F3C96",
                           transform: isExploreDropdownOpen
                             ? "rotate(180deg)"
                             : "rotate(0deg)",
@@ -451,8 +449,11 @@ export default function Navbar() {
                         />
                       </svg>
                       <span
-                        className="absolute bottom-0 left-0 w-0 h-[3px] rounded-full transition-all duration-300 group-hover:w-full"
-                        style={{ backgroundColor: "#2F3C96" }}
+                        className="absolute bottom-0 left-0 h-[3px] rounded-full transition-all duration-300"
+                        style={{
+                          width: isExploreDropdownOpen ? "100%" : "0%",
+                          backgroundColor: "#2F3C96",
+                        }}
                       ></span>
                     </button>
 
@@ -460,13 +461,13 @@ export default function Navbar() {
                     <AnimatePresence>
                       {isExploreDropdownOpen && (
                         <motion.div
-                          initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                          initial={{ opacity: 0, y: -5, scale: 0.98 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                          transition={{ duration: 0.2 }}
-                          className="absolute top-full left-0 mt-2 w-48 backdrop-blur-xl rounded-2xl shadow-2xl border py-2 z-50"
+                          exit={{ opacity: 0, y: -5, scale: 0.98 }}
+                          transition={{ duration: 0.15, ease: "easeOut" }}
+                          className="absolute top-full left-0 pt-2 w-48 backdrop-blur-xl rounded-2xl shadow-2xl border py-2 z-50"
                           style={{
-                            backgroundColor: "rgba(245, 242, 248, 0.95)",
+                            backgroundColor: "rgba(245, 242, 248, 0.98)",
                             borderColor: "#D0C4E2",
                           }}
                         >
@@ -532,15 +533,15 @@ export default function Navbar() {
                             <Link
                               key={subItem.label}
                               to={subItem.route}
-                              className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-all duration-200"
+                              className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-all duration-150 rounded-lg mx-1"
                               style={{ color: "#2F3C96" }}
                               onMouseEnter={(e) => {
-                                e.target.style.backgroundColor = "#E8E0EF";
-                                e.target.style.color = "#474F97";
+                                e.currentTarget.style.backgroundColor = "#E8E0EF";
+                                e.currentTarget.style.color = "#474F97";
                               }}
                               onMouseLeave={(e) => {
-                                e.target.style.backgroundColor = "transparent";
-                                e.target.style.color = "#2F3C96";
+                                e.currentTarget.style.backgroundColor = "transparent";
+                                e.currentTarget.style.color = "#2F3C96";
                               }}
                             >
                               {subItem.icon}
@@ -853,50 +854,6 @@ export default function Navbar() {
                           />
                         </svg>
                         <span>My Profile</span>
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="w-4 h-4 ml-auto"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M9 5l7 7-7 7"
-                          />
-                        </svg>
-                      </Link>
-                      <Link
-                        to={getDashboardPath()}
-                        onClick={() => setIsMenuOpen(false)}
-                        className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-all duration-200"
-                        style={{ color: "#2F3C96" }}
-                        onMouseEnter={(e) => {
-                          e.target.style.backgroundColor = "#E8E0EF";
-                          e.target.style.color = "#474F97";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.target.style.backgroundColor = "transparent";
-                          e.target.style.color = "#2F3C96";
-                        }}
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="w-4 h-4"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M3 12l2-3m0 0l7-4 7 4M5 9v10a1 1 0 001 1h12a1 1 0 001-1V9m-9 4l4 2m-2-8l4-2m-6 2l-4-2"
-                          />
-                        </svg>
-                        <span>Dashboard</span>
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
                           className="w-4 h-4 ml-auto"

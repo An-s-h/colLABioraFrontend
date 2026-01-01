@@ -14,6 +14,8 @@ import {
   Send,
   Sparkles,
   ChevronUp,
+  Star,
+  Loader2,
 } from "lucide-react";
 import Layout from "../components/Layout.jsx";
 import AnimatedBackgroundDiff from "../components/ui/AnimatedBackgroundDiff.jsx";
@@ -33,13 +35,35 @@ export default function Forums() {
   const [newThreadBody, setNewThreadBody] = useState("");
   const [replyBody, setReplyBody] = useState({});
   const [replyingTo, setReplyingTo] = useState(null);
+  const [favorites, setFavorites] = useState([]);
+  const [favoritingItems, setFavoritingItems] = useState(new Set());
   const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
   useEffect(() => {
     const userData = JSON.parse(localStorage.getItem("user") || "{}");
     setUser(userData);
     loadCategories();
+    if (userData?._id || userData?.id) {
+      loadFavorites();
+    }
   }, []);
+
+  async function loadFavorites() {
+    const userData = JSON.parse(localStorage.getItem("user") || "{}");
+    if (!userData?._id && !userData?.id) return;
+
+    try {
+      const response = await fetch(
+        `${base}/api/favorites/${userData._id || userData.id}`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setFavorites(data.items || []);
+      }
+    } catch (error) {
+      console.error("Error loading favorites:", error);
+    }
+  }
 
   useEffect(() => {
     if (selectedCategoryId) {
@@ -336,6 +360,117 @@ export default function Forums() {
       }
     } catch (error) {
       console.error("Error voting:", error);
+    }
+  }
+
+  // Helper function to get unique key for favorite tracking
+  const getFavoriteKey = (type, itemId, item) => {
+    return `${type}-${item.id || item._id || itemId}`;
+  };
+
+  async function toggleFavorite(type, itemId, item) {
+    if (!user?._id && !user?.id) {
+      toast.error("Please sign in to favorite items");
+      return;
+    }
+
+    const favoriteKey = getFavoriteKey(type, itemId, item);
+
+    // Prevent duplicate clicks
+    if (favoritingItems.has(favoriteKey)) {
+      return;
+    }
+
+    // For threads, use _id or id
+    let checkId = itemId;
+    if (type === "thread" || type === "forum") {
+      checkId = item._id || item.id || itemId;
+    }
+
+    // Check if favorited - support both "thread" and "forum" types
+    const isFavorited = favorites.some((fav) => {
+      if (fav.type !== "thread" && fav.type !== "forum") return false;
+      // Allow matching between "thread" and "forum" types for compatibility
+      if ((fav.type === "thread" || fav.type === "forum") && (type === "thread" || type === "forum")) {
+        return (
+          fav.item?.id === checkId ||
+          fav.item?._id === checkId ||
+          fav.item?.threadId === checkId
+        );
+      }
+      return false;
+    });
+
+    // Optimistic UI update
+    const previousFavorites = [...favorites];
+    let optimisticFavorites;
+
+    if (isFavorited) {
+      optimisticFavorites = favorites.filter((fav) => {
+        if (fav.type !== "thread" && fav.type !== "forum") return true;
+        return !(
+          fav.item?.id === checkId ||
+          fav.item?._id === checkId ||
+          fav.item?.threadId === checkId
+        );
+      });
+    } else {
+      const itemToStore = {
+        ...item,
+        id: checkId,
+        _id: item._id || checkId,
+      };
+
+      optimisticFavorites = [
+        ...favorites,
+        {
+          type: "thread",
+          item: itemToStore,
+          _id: `temp-${Date.now()}`,
+        },
+      ];
+    }
+
+    setFavorites(optimisticFavorites);
+    setFavoritingItems((prev) => new Set(prev).add(favoriteKey));
+
+    try {
+      if (isFavorited) {
+        await fetch(
+          `${base}/api/favorites/${user._id || user.id}?type=thread&id=${encodeURIComponent(checkId)}`,
+          { method: "DELETE" }
+        );
+        toast.success("Removed from favorites");
+      } else {
+        const itemToStore = {
+          ...item,
+          id: checkId,
+          _id: item._id || checkId,
+        };
+
+        await fetch(`${base}/api/favorites/${user._id || user.id}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "thread",
+            item: itemToStore,
+          }),
+        });
+        toast.success("Added to favorites");
+      }
+
+      // Reload favorites from backend
+      await loadFavorites();
+    } catch (error) {
+      console.error("Error toggling favorite:", error);
+      setFavorites(previousFavorites);
+      toast.error("Failed to update favorites");
+    } finally {
+      setFavoritingItems((prev) => {
+        const next = new Set(prev);
+        next.delete(favoriteKey);
+        return next;
+      });
     }
   }
 
@@ -807,11 +942,101 @@ export default function Forums() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between mb-2 gap-2">
                               <h3
-                                className="text-base font-bold text-slate-900 break-words cursor-pointer hover:text-indigo-700 transition-colors duration-300"
+                                className="text-base font-bold text-slate-900 break-words cursor-pointer hover:text-indigo-700 transition-colors duration-300 flex-1"
                                 onClick={() => toggleThread(thread._id)}
                               >
                                 {thread.title}
                               </h3>
+                              {/* Favorite Button */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleFavorite("thread", thread._id, thread);
+                                }}
+                                disabled={favoritingItems.has(
+                                  getFavoriteKey("thread", thread._id, thread)
+                                )}
+                                className="shrink-0 p-2 rounded-lg border transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                style={{
+                                  backgroundColor: favorites.some(
+                                    (fav) =>
+                                      (fav.type === "thread" || fav.type === "forum") &&
+                                      (fav.item?.id === thread._id ||
+                                        fav.item?._id === thread._id ||
+                                        fav.item?.threadId === thread._id)
+                                  )
+                                    ? "rgba(245, 158, 11, 0.1)"
+                                    : "rgba(245, 242, 248, 0.5)",
+                                  borderColor: favorites.some(
+                                    (fav) =>
+                                      (fav.type === "thread" || fav.type === "forum") &&
+                                      (fav.item?.id === thread._id ||
+                                        fav.item?._id === thread._id ||
+                                        fav.item?.threadId === thread._id)
+                                  )
+                                    ? "rgba(245, 158, 11, 0.3)"
+                                    : "rgba(208, 196, 226, 0.3)",
+                                  color: favorites.some(
+                                    (fav) =>
+                                      (fav.type === "thread" || fav.type === "forum") &&
+                                      (fav.item?.id === thread._id ||
+                                        fav.item?._id === thread._id ||
+                                        fav.item?.threadId === thread._id)
+                                  )
+                                    ? "#F59E0B"
+                                    : "#787878",
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (!favorites.some(
+                                    (fav) =>
+                                      (fav.type === "thread" || fav.type === "forum") &&
+                                      (fav.item?.id === thread._id ||
+                                        fav.item?._id === thread._id ||
+                                        fav.item?.threadId === thread._id)
+                                  )) {
+                                    e.currentTarget.style.backgroundColor =
+                                      "rgba(245, 158, 11, 0.1)";
+                                    e.currentTarget.style.borderColor =
+                                      "rgba(245, 158, 11, 0.3)";
+                                    e.currentTarget.style.color = "#F59E0B";
+                                  }
+                                }}
+                                onMouseLeave={(e) => {
+                                  if (!favorites.some(
+                                    (fav) =>
+                                      (fav.type === "thread" || fav.type === "forum") &&
+                                      (fav.item?.id === thread._id ||
+                                        fav.item?._id === thread._id ||
+                                        fav.item?.threadId === thread._id)
+                                  )) {
+                                    e.currentTarget.style.backgroundColor =
+                                      "rgba(245, 242, 248, 0.5)";
+                                    e.currentTarget.style.borderColor =
+                                      "rgba(208, 196, 226, 0.3)";
+                                    e.currentTarget.style.color = "#787878";
+                                  }
+                                }}
+                              >
+                                {favoritingItems.has(
+                                  getFavoriteKey("thread", thread._id, thread)
+                                ) ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <Star
+                                    className={`w-4 h-4 ${
+                                      favorites.some(
+                                        (fav) =>
+                                          (fav.type === "thread" || fav.type === "forum") &&
+                                          (fav.item?.id === thread._id ||
+                                            fav.item?._id === thread._id ||
+                                            fav.item?.threadId === thread._id)
+                                      )
+                                        ? "fill-current"
+                                        : ""
+                                    }`}
+                                  />
+                                )}
+                              </button>
                             </div>
                             <div className="flex items-center gap-2 flex-wrap mb-3 text-xs text-slate-600">
                               <span className="inline-flex items-center px-2.5 py-1 bg-indigo-100 text-indigo-700 rounded-full font-medium border border-indigo-200">
