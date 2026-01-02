@@ -43,7 +43,7 @@ export default function OnboardPatient() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [isGenderDropdownOpen, setIsGenderDropdownOpen] = useState(false);
-  const [isQuickSelectOpen, setIsQuickSelectOpen] = useState(false);
+  const [isQuickSelectOpen, setIsQuickSelectOpen] = useState(true); // Expanded by default
   const [showAllConditions, setShowAllConditions] = useState(false);
   const [socialLoginLoading, setSocialLoginLoading] = useState(null); // Track which social login is loading
   const [agreedToTerms, setAgreedToTerms] = useState(false);

@@ -39,6 +39,7 @@ import {
   GraduationCap,
   Award,
   Loader2,
+  Bell,
 } from "lucide-react";
 import Modal from "../components/ui/Modal";
 import { MultiStepLoader } from "../components/ui/multi-step-loader";
@@ -1765,6 +1766,128 @@ export default function DashboardPatient() {
 
         {/* Main Content Section - Full Width */}
         <div className="mb-8">
+          {/* Activity Bar - Upcoming Meetings & Recent Activity */}
+          <div
+            className="rounded-xl shadow-md border p-2 mb-4"
+            style={{
+              background: "linear-gradient(135deg, #D0C4E2, #E8E0EF, #F5F2F8)",
+              borderColor: "rgba(208, 196, 226, 0.5)",
+            }}
+          >
+            <div className="flex items-center gap-2 overflow-x-auto">
+              {/* Upcoming Meeting 1 */}
+              <div
+                className="flex items-center gap-2 px-3 py-2 rounded-lg whitespace-nowrap transition-all cursor-pointer"
+                style={{
+                  backgroundColor: "rgba(255, 255, 255, 0.7)",
+                  border: "1px solid rgba(208, 196, 226, 0.3)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor =
+                    "rgba(255, 255, 255, 0.9)";
+                  e.currentTarget.style.borderColor = "rgba(47, 60, 150, 0.4)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor =
+                    "rgba(255, 255, 255, 0.7)";
+                  e.currentTarget.style.borderColor =
+                    "rgba(208, 196, 226, 0.3)";
+                }}
+                onClick={() => navigate("/insights?tab=upcoming-meetings")}
+              >
+                <Calendar className="w-4 h-4" style={{ color: "#2F3C96" }} />
+                <div className="flex flex-col">
+                  <span
+                    className="text-xs font-medium leading-tight"
+                    style={{ color: "#787878" }}
+                  >
+                    Next Meeting
+                  </span>
+                  <span
+                    className="text-sm font-semibold"
+                    style={{ color: "#2F3C96" }}
+                  >
+                    Jan 15, 2:00 PM
+                  </span>
+                </div>
+              </div>
+
+              {/* Recent Activity */}
+              <div
+                className="flex items-center gap-2 px-3 py-2 rounded-lg whitespace-nowrap transition-all cursor-pointer"
+                style={{
+                  backgroundColor: "rgba(255, 255, 255, 0.7)",
+                  border: "1px solid rgba(208, 196, 226, 0.3)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor =
+                    "rgba(255, 255, 255, 0.9)";
+                  e.currentTarget.style.borderColor = "rgba(47, 60, 150, 0.4)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor =
+                    "rgba(255, 255, 255, 0.7)";
+                  e.currentTarget.style.borderColor =
+                    "rgba(208, 196, 226, 0.3)";
+                }}
+                onClick={() => navigate("/insights?tab=activity")}
+              >
+                <Bell className="w-4 h-4" style={{ color: "#2F3C96" }} />
+                <div className="flex flex-col">
+                  <span
+                    className="text-xs font-medium leading-tight"
+                    style={{ color: "#787878" }}
+                  >
+                    Recent Activity
+                  </span>
+                  <span
+                    className="text-sm font-semibold"
+                    style={{ color: "#2F3C96" }}
+                  >
+                    3 Notifications
+                  </span>
+                </div>
+              </div>
+
+              {/* Upcoming Meeting 2 */}
+              <div
+                className="flex items-center gap-2 px-3 py-2 rounded-lg whitespace-nowrap transition-all cursor-pointer"
+                style={{
+                  backgroundColor: "rgba(255, 255, 255, 0.7)",
+                  border: "1px solid rgba(208, 196, 226, 0.3)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor =
+                    "rgba(255, 255, 255, 0.9)";
+                  e.currentTarget.style.borderColor = "rgba(47, 60, 150, 0.4)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor =
+                    "rgba(255, 255, 255, 0.7)";
+                  e.currentTarget.style.borderColor =
+                    "rgba(208, 196, 226, 0.3)";
+                }}
+                onClick={() => navigate("/insights?tab=upcoming-meetings")}
+              >
+                <Calendar className="w-4 h-4" style={{ color: "#2F3C96" }} />
+                <div className="flex flex-col">
+                  <span
+                    className="text-xs font-medium leading-tight"
+                    style={{ color: "#787878" }}
+                  >
+                    Upcoming
+                  </span>
+                  <span
+                    className="text-sm font-semibold"
+                    style={{ color: "#2F3C96" }}
+                  >
+                    Jan 20, 10:00 AM
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Category Buttons Bar */}
           <div
             className="rounded-xl shadow-md border p-2 mb-6"
