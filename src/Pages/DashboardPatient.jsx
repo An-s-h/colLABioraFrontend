@@ -24,6 +24,7 @@ import {
   Briefcase,
   Building2,
   Mail,
+  Phone,
   Filter,
   Plus,
   Edit3,
@@ -66,6 +67,7 @@ export default function DashboardPatient() {
   const [trialDetailsModal, setTrialDetailsModal] = useState({
     open: false,
     trial: null,
+    loading: false,
   });
   const [contactModal, setContactModal] = useState({
     open: false,
@@ -73,6 +75,11 @@ export default function DashboardPatient() {
     message: "",
     sent: false,
     generating: false,
+  });
+  const [contactInfoModal, setContactInfoModal] = useState({
+    open: false,
+    trial: null,
+    loading: false,
   });
   const [publicationDetailsModal, setPublicationDetailsModal] = useState({
     open: false,
@@ -107,7 +114,10 @@ export default function DashboardPatient() {
   const [filterModalOpen, setFilterModalOpen] = useState(false);
   const [loadingFiltered, setLoadingFiltered] = useState(false);
   const [favoritingItems, setFavoritingItems] = useState(new Set()); // Track items being favorited/unfavorited
-  const [simplifiedTitles, setSimplifiedTitles] = useState(new Map()); // Cache of simplified titles
+  const [simplifiedTitles, setSimplifiedTitles] = useState(new Map()); // Cache of simplified publication titles
+  const [simplifiedTrialSummaries, setSimplifiedTrialSummaries] = useState(
+    new Map()
+  ); // Cache of simplified trial summaries
   const navigate = useNavigate();
   const location = useLocation();
   const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
@@ -234,6 +244,32 @@ export default function DashboardPatient() {
                 }
               });
             }
+
+            // Simplify trial titles/summaries
+            if (sortedData.trials && sortedData.trials.length > 0) {
+              sortedData.trials.forEach((trial) => {
+                if (trial.title && trial.title.length > 80) {
+                  // Only simplify if title is long enough
+                  fetch(`${base}/api/ai/simplify-trial-summary`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ trial }),
+                  })
+                    .then((res) => res.json())
+                    .then((data) => {
+                      const simplified = data.simplifiedSummary || trial.title;
+                      setSimplifiedTrialSummaries((prev) => {
+                        const newMap = new Map(prev);
+                        newMap.set(trial.title, simplified);
+                        return newMap;
+                      });
+                    })
+                    .catch((error) => {
+                      console.error("Error simplifying trial summary:", error);
+                    });
+                }
+              });
+            }
           }
 
           // Fetch favorites
@@ -262,6 +298,31 @@ export default function DashboardPatient() {
                       });
                     }
                   );
+                }
+                // Simplify trial titles in favorites
+                if (
+                  fav.type === "trial" &&
+                  fav.item?.title &&
+                  fav.item.title.length > 80
+                ) {
+                  fetch(`${base}/api/ai/simplify-trial-summary`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ trial: fav.item }),
+                  })
+                    .then((res) => res.json())
+                    .then((data) => {
+                      const simplified =
+                        data.simplifiedSummary || fav.item.title;
+                      setSimplifiedTrialSummaries((prev) => {
+                        const newMap = new Map(prev);
+                        newMap.set(fav.item.title, simplified);
+                        return newMap;
+                      });
+                    })
+                    .catch((error) => {
+                      console.error("Error simplifying trial summary:", error);
+                    });
                 }
               });
             }
@@ -414,6 +475,7 @@ export default function DashboardPatient() {
         body: JSON.stringify({
           text,
           type,
+          simplify: true, // Always simplify for patient view
           // Pass full trial object for structured summary
           ...(type === "trial" && { trial: item }),
         }),
@@ -450,10 +512,42 @@ export default function DashboardPatient() {
     });
   }
 
-  function openTrialDetailsModal(trial) {
+  async function openTrialDetailsModal(trial) {
+    setTrialDetailsModal({
+      open: true,
+      trial: trial, // Show basic info immediately
+      loading: true,
+    });
+
+    // Fetch detailed trial information from backend
+    if (trial.id || trial._id) {
+      try {
+        const nctId = trial.id || trial._id;
+        const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
+        const response = await fetch(`${base}/api/search/trial/${nctId}`);
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.trial) {
+            // Merge detailed info with existing trial data
+            setTrialDetailsModal({
+              open: true,
+              trial: { ...trial, ...data.trial },
+              loading: false,
+            });
+            return;
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching detailed trial info:", error);
+      }
+    }
+
+    // If fetch fails or no NCT ID, just use the trial we have
     setTrialDetailsModal({
       open: true,
       trial: trial,
+      loading: false,
     });
   }
 
@@ -461,6 +555,7 @@ export default function DashboardPatient() {
     setTrialDetailsModal({
       open: false,
       trial: null,
+      loading: false,
     });
   }
 
@@ -471,6 +566,53 @@ export default function DashboardPatient() {
       message: "",
       sent: false,
       generating: false,
+    });
+  }
+
+  async function openContactInfoModal(trial) {
+    setContactInfoModal({
+      open: true,
+      trial: trial, // Show basic info immediately
+      loading: true,
+    });
+
+    // Fetch detailed trial information from backend
+    if (trial.id || trial._id) {
+      try {
+        const nctId = trial.id || trial._id;
+        const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
+        const response = await fetch(`${base}/api/search/trial/${nctId}`);
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.trial) {
+            // Merge detailed info with existing trial data
+            setContactInfoModal({
+              open: true,
+              trial: { ...trial, ...data.trial },
+              loading: false,
+            });
+            return;
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching detailed trial info:", error);
+      }
+    }
+
+    // If fetch fails or no NCT ID, just use the trial we have
+    setContactInfoModal({
+      open: true,
+      trial: trial,
+      loading: false,
+    });
+  }
+
+  function closeContactInfoModal() {
+    setContactInfoModal({
+      open: false,
+      trial: null,
+      loading: false,
     });
   }
 
@@ -646,7 +788,10 @@ export default function DashboardPatient() {
     // Check if favorited - for experts, prioritize name matching
     const isFavorited = favorites.some((fav) => {
       // For thread/forum types, allow matching between both types
-      if ((type === "thread" || type === "forum") && (fav.type === "thread" || fav.type === "forum")) {
+      if (
+        (type === "thread" || type === "forum") &&
+        (fav.type === "thread" || fav.type === "forum")
+      ) {
         return (
           fav.item?.id === checkId ||
           fav.item?._id === checkId ||
@@ -710,7 +855,10 @@ export default function DashboardPatient() {
       // Optimistically remove from favorites
       optimisticFavorites = favorites.filter((fav) => {
         // For thread/forum types, allow matching between both types
-        if ((type === "thread" || type === "forum") && (fav.type === "thread" || fav.type === "forum")) {
+        if (
+          (type === "thread" || type === "forum") &&
+          (fav.type === "thread" || fav.type === "forum")
+        ) {
           return !(
             fav.item?.id === checkId ||
             fav.item?._id === checkId ||
@@ -763,7 +911,8 @@ export default function DashboardPatient() {
       }
 
       // Use "thread" as the type for forum favorites (consistent with backend)
-      const favoriteType = (type === "forum" || type === "thread") ? "thread" : type;
+      const favoriteType =
+        type === "forum" || type === "thread" ? "thread" : type;
 
       optimisticFavorites = [
         ...favorites,
@@ -815,8 +964,9 @@ export default function DashboardPatient() {
         }
 
         // Use "thread" as the type for forum favorites (consistent with backend)
-        const deleteType = (type === "forum" || type === "thread") ? "thread" : type;
-        
+        const deleteType =
+          type === "forum" || type === "thread" ? "thread" : type;
+
         await fetch(
           `${base}/api/favorites/${
             user._id || user.id
@@ -849,8 +999,9 @@ export default function DashboardPatient() {
         }
 
         // Use "thread" as the type for forum favorites (consistent with backend)
-        const favoriteType = (type === "forum" || type === "thread") ? "thread" : type;
-        
+        const favoriteType =
+          type === "forum" || type === "thread" ? "thread" : type;
+
         await fetch(`${base}/api/favorites/${user._id || user.id}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1604,7 +1755,9 @@ export default function DashboardPatient() {
                 }}
               >
                 <Star className="w-4 h-4 shrink-0" />
-                <span className="hidden sm:inline whitespace-nowrap">View All Saved Items</span>
+                <span className="hidden sm:inline whitespace-nowrap">
+                  View All Saved Items
+                </span>
               </button>
             </div>
           </div>
@@ -1868,35 +2021,12 @@ export default function DashboardPatient() {
                             className="text-lg font-bold mb-0 line-clamp-3 leading-snug"
                             style={{ color: "#2F3C96" }}
                           >
-                            {t.title}
+                            {simplifiedTrialSummaries.get(t.title) || t.title}
                           </h3>
                         </div>
 
                         {/* Basic Info */}
-                        <div className="space-y-1.5 mb-4">
-                          {t.conditions && (
-                            <div
-                              className="flex items-center text-sm"
-                              style={{ color: "#787878" }}
-                            >
-                              <Info className="w-3.5 h-3.5 mr-2 shrink-0" />
-                              <span className="line-clamp-1">
-                                {Array.isArray(t.conditions)
-                                  ? t.conditions.join(", ")
-                                  : t.conditions}
-                              </span>
-                            </div>
-                          )}
-                          {t.phase && (
-                            <div
-                              className="flex items-center text-sm"
-                              style={{ color: "#787878" }}
-                            >
-                              <Calendar className="w-3.5 h-3.5 mr-2 shrink-0" />{" "}
-                              Phase {t.phase}
-                            </div>
-                          )}
-                        </div>
+                        {/* Conditions and Phase removed */}
 
                         {/* Description/Details Preview */}
                         {(t.description || t.conditionDescription) && (
@@ -2064,9 +2194,9 @@ export default function DashboardPatient() {
                           </button>
                         </div>
 
-                        {/* Contact Button */}
+                        {/* View Contact Information Button */}
                         <button
-                          onClick={() => openContactModal(t)}
+                          onClick={() => openContactInfoModal(t)}
                           className="flex items-center justify-center gap-2 py-2 text-xs font-medium rounded-lg transition-colors mt-3 w-full"
                           style={{
                             color: "#2F3C96",
@@ -2083,8 +2213,8 @@ export default function DashboardPatient() {
                             e.target.style.color = "#2F3C96";
                           }}
                         >
-                          <Send className="w-3.5 h-3.5" />
-                          Contact Moderator
+                          <Info className="w-3.5 h-3.5" />
+                          View Contact Information
                         </button>
                       </div>
                     </div>
@@ -2666,7 +2796,8 @@ export default function DashboardPatient() {
                                               >
                                                 {e.name || "Unknown Expert"}
                                               </h3>
-                                              {e.orcid && (
+                                              {/* Hide ORCID for on-platform experts */}
+                                              {e.orcid && !isCuralinkExpert && (
                                                 <span className="text-sm text-slate-500 font-mono">
                                                   {e.orcid}
                                                 </span>
@@ -3299,7 +3430,8 @@ export default function DashboardPatient() {
                                               >
                                                 {e.name || "Unknown Expert"}
                                               </h3>
-                                              {e.orcid && (
+                                              {/* Hide ORCID for on-platform experts */}
+                                              {e.orcid && !isCuralinkExpert && (
                                                 <span className="text-sm text-slate-500 font-mono">
                                                   {e.orcid}
                                                 </span>
@@ -3716,10 +3848,7 @@ export default function DashboardPatient() {
                     >
                       Forums
                     </h2>
-                    <p
-                      className="text-sm"
-                      style={{ color: "#787878" }}
-                    >
+                    <p className="text-sm" style={{ color: "#787878" }}>
                       Connect with the community and find support
                     </p>
                   </div>
@@ -3730,7 +3859,8 @@ export default function DashboardPatient() {
                       className="bg-white rounded-xl shadow-sm border p-6"
                       style={{
                         borderColor: "rgba(208, 196, 226, 0.3)",
-                        background: "linear-gradient(135deg, rgba(245, 242, 248, 0.5), rgba(232, 224, 239, 0.3))",
+                        background:
+                          "linear-gradient(135deg, rgba(245, 242, 248, 0.5), rgba(232, 224, 239, 0.3))",
                       }}
                     >
                       <div className="flex items-start gap-4">
@@ -3756,8 +3886,10 @@ export default function DashboardPatient() {
                             className="text-sm leading-relaxed"
                             style={{ color: "#787878" }}
                           >
-                            Connect with patients, caregivers, and healthcare professionals. 
-                            Share experiences, ask questions, and find support from people who understand your journey.
+                            Connect with patients, caregivers, and healthcare
+                            professionals. Share experiences, ask questions, and
+                            find support from people who understand your
+                            journey.
                           </p>
                         </div>
                       </div>
@@ -3921,74 +4053,119 @@ export default function DashboardPatient() {
                                               <button
                                                 onClick={(e) => {
                                                   e.stopPropagation();
-                                                  toggleFavorite("thread", thread._id, thread);
+                                                  toggleFavorite(
+                                                    "thread",
+                                                    thread._id,
+                                                    thread
+                                                  );
                                                 }}
                                                 disabled={favoritingItems.has(
-                                                  getFavoriteKey("thread", thread._id, thread)
+                                                  getFavoriteKey(
+                                                    "thread",
+                                                    thread._id,
+                                                    thread
+                                                  )
                                                 )}
                                                 className="shrink-0 p-1.5 rounded-lg border transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                                 style={{
-                                                  backgroundColor: favorites.some(
-                                                    (fav) =>
-                                                      (fav.type === "thread" || fav.type === "forum") &&
-                                                      (fav.item?.id === thread._id ||
-                                                        fav.item?._id === thread._id ||
-                                                        fav.item?.threadId === thread._id)
-                                                  )
-                                                    ? "rgba(245, 158, 11, 0.1)"
-                                                    : "rgba(245, 242, 248, 0.5)",
+                                                  backgroundColor:
+                                                    favorites.some(
+                                                      (fav) =>
+                                                        (fav.type ===
+                                                          "thread" ||
+                                                          fav.type ===
+                                                            "forum") &&
+                                                        (fav.item?.id ===
+                                                          thread._id ||
+                                                          fav.item?._id ===
+                                                            thread._id ||
+                                                          fav.item?.threadId ===
+                                                            thread._id)
+                                                    )
+                                                      ? "rgba(245, 158, 11, 0.1)"
+                                                      : "rgba(245, 242, 248, 0.5)",
                                                   borderColor: favorites.some(
                                                     (fav) =>
-                                                      (fav.type === "thread" || fav.type === "forum") &&
-                                                      (fav.item?.id === thread._id ||
-                                                        fav.item?._id === thread._id ||
-                                                        fav.item?.threadId === thread._id)
+                                                      (fav.type === "thread" ||
+                                                        fav.type === "forum") &&
+                                                      (fav.item?.id ===
+                                                        thread._id ||
+                                                        fav.item?._id ===
+                                                          thread._id ||
+                                                        fav.item?.threadId ===
+                                                          thread._id)
                                                   )
                                                     ? "rgba(245, 158, 11, 0.3)"
                                                     : "rgba(208, 196, 226, 0.3)",
                                                   color: favorites.some(
                                                     (fav) =>
-                                                      (fav.type === "thread" || fav.type === "forum") &&
-                                                      (fav.item?.id === thread._id ||
-                                                        fav.item?._id === thread._id ||
-                                                        fav.item?.threadId === thread._id)
+                                                      (fav.type === "thread" ||
+                                                        fav.type === "forum") &&
+                                                      (fav.item?.id ===
+                                                        thread._id ||
+                                                        fav.item?._id ===
+                                                          thread._id ||
+                                                        fav.item?.threadId ===
+                                                          thread._id)
                                                   )
                                                     ? "#F59E0B"
                                                     : "#787878",
                                                 }}
                                                 onMouseEnter={(e) => {
-                                                  if (!favorites.some(
-                                                    (fav) =>
-                                                      (fav.type === "thread" || fav.type === "forum") &&
-                                                      (fav.item?.id === thread._id ||
-                                                        fav.item?._id === thread._id ||
-                                                        fav.item?.threadId === thread._id)
-                                                  )) {
+                                                  if (
+                                                    !favorites.some(
+                                                      (fav) =>
+                                                        (fav.type ===
+                                                          "thread" ||
+                                                          fav.type ===
+                                                            "forum") &&
+                                                        (fav.item?.id ===
+                                                          thread._id ||
+                                                          fav.item?._id ===
+                                                            thread._id ||
+                                                          fav.item?.threadId ===
+                                                            thread._id)
+                                                    )
+                                                  ) {
                                                     e.currentTarget.style.backgroundColor =
                                                       "rgba(245, 158, 11, 0.1)";
                                                     e.currentTarget.style.borderColor =
                                                       "rgba(245, 158, 11, 0.3)";
-                                                    e.currentTarget.style.color = "#F59E0B";
+                                                    e.currentTarget.style.color =
+                                                      "#F59E0B";
                                                   }
                                                 }}
                                                 onMouseLeave={(e) => {
-                                                  if (!favorites.some(
-                                                    (fav) =>
-                                                      (fav.type === "thread" || fav.type === "forum") &&
-                                                      (fav.item?.id === thread._id ||
-                                                        fav.item?._id === thread._id ||
-                                                        fav.item?.threadId === thread._id)
-                                                  )) {
+                                                  if (
+                                                    !favorites.some(
+                                                      (fav) =>
+                                                        (fav.type ===
+                                                          "thread" ||
+                                                          fav.type ===
+                                                            "forum") &&
+                                                        (fav.item?.id ===
+                                                          thread._id ||
+                                                          fav.item?._id ===
+                                                            thread._id ||
+                                                          fav.item?.threadId ===
+                                                            thread._id)
+                                                    )
+                                                  ) {
                                                     e.currentTarget.style.backgroundColor =
                                                       "rgba(245, 242, 248, 0.5)";
                                                     e.currentTarget.style.borderColor =
                                                       "rgba(208, 196, 226, 0.3)";
-                                                    e.currentTarget.style.color = "#787878";
+                                                    e.currentTarget.style.color =
+                                                      "#787878";
                                                   }
                                                 }}
                                               >
                                                 {favoritingItems.has(
-                                                  getFavoriteKey("thread", thread._id, thread)
+                                                  getFavoriteKey(
+                                                    "thread",
+                                                    thread._id,
+                                                    thread
+                                                  )
                                                 ) ? (
                                                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
                                                 ) : (
@@ -3996,10 +4173,17 @@ export default function DashboardPatient() {
                                                     className={`w-3.5 h-3.5 ${
                                                       favorites.some(
                                                         (fav) =>
-                                                          (fav.type === "thread" || fav.type === "forum") &&
-                                                          (fav.item?.id === thread._id ||
-                                                            fav.item?._id === thread._id ||
-                                                            fav.item?.threadId === thread._id)
+                                                          (fav.type ===
+                                                            "thread" ||
+                                                            fav.type ===
+                                                              "forum") &&
+                                                          (fav.item?.id ===
+                                                            thread._id ||
+                                                            fav.item?._id ===
+                                                              thread._id ||
+                                                            fav.item
+                                                              ?.threadId ===
+                                                              thread._id)
                                                       )
                                                         ? "fill-current"
                                                         : ""
@@ -4015,8 +4199,8 @@ export default function DashboardPatient() {
                                               >
                                                 <User className="w-3 h-3" />
                                                 <span className="truncate max-w-[80px]">
-                                                  {thread.authorUserId?.username ||
-                                                    "Anonymous"}
+                                                  {thread.authorUserId
+                                                    ?.username || "Anonymous"}
                                                 </span>
                                               </div>
                                               <div
@@ -4024,7 +4208,9 @@ export default function DashboardPatient() {
                                                 style={{ color: "#787878" }}
                                               >
                                                 <MessageSquare className="w-3 h-3" />
-                                                <span>{thread.replyCount || 0}</span>
+                                                <span>
+                                                  {thread.replyCount || 0}
+                                                </span>
                                               </div>
                                               <div
                                                 className="flex items-center gap-1"
@@ -4034,10 +4220,13 @@ export default function DashboardPatient() {
                                                 <span>
                                                   {new Date(
                                                     thread.createdAt
-                                                  ).toLocaleDateString("en-US", {
-                                                    month: "short",
-                                                    day: "numeric",
-                                                  })}
+                                                  ).toLocaleDateString(
+                                                    "en-US",
+                                                    {
+                                                      month: "short",
+                                                      day: "numeric",
+                                                    }
+                                                  )}
                                                 </span>
                                               </div>
                                             </div>
@@ -4112,12 +4301,17 @@ export default function DashboardPatient() {
                     (() => {
                       // Group favorites by type
                       const groupedFavorites = {
-                        publication: favorites.filter((f) => f.type === "publication"),
+                        publication: favorites.filter(
+                          (f) => f.type === "publication"
+                        ),
                         trial: favorites.filter((f) => f.type === "trial"),
                         expert: favorites.filter(
-                          (f) => f.type === "expert" || f.type === "collaborator"
+                          (f) =>
+                            f.type === "expert" || f.type === "collaborator"
                         ),
-                        forum: favorites.filter((f) => f.type === "forum" || f.type === "thread"),
+                        forum: favorites.filter(
+                          (f) => f.type === "forum" || f.type === "thread"
+                        ),
                       };
 
                       const hasAnyFavorites =
@@ -4158,12 +4352,14 @@ export default function DashboardPatient() {
                                       <span
                                         className="text-sm font-normal px-3 py-1 rounded-full"
                                         style={{
-                                          backgroundColor: "rgba(208, 196, 226, 0.3)",
+                                          backgroundColor:
+                                            "rgba(208, 196, 226, 0.3)",
                                           color: "#253075",
                                         }}
                                       >
                                         {groupedFavorites.publication.length}{" "}
-                                        {groupedFavorites.publication.length === 1
+                                        {groupedFavorites.publication.length ===
+                                        1
                                           ? "Publication"
                                           : "Publications"}
                                       </span>
@@ -4172,7 +4368,8 @@ export default function DashboardPatient() {
                                       className="text-sm leading-relaxed"
                                       style={{ color: "#787878" }}
                                     >
-                                      Your saved research publications and papers
+                                      Your saved research publications and
+                                      papers
                                     </p>
                                   </div>
                                 </div>
@@ -4218,8 +4415,9 @@ export default function DashboardPatient() {
                                           style={{ color: "#2F3C96" }}
                                         >
                                           {item.title
-                                            ? simplifiedTitles.get(item.title) ||
-                                              item.title
+                                            ? simplifiedTitles.get(
+                                                item.title
+                                              ) || item.title
                                             : "Untitled"}
                                         </h4>
                                         <div className="space-y-2 mb-4">
@@ -4319,7 +4517,8 @@ export default function DashboardPatient() {
                                       <span
                                         className="text-sm font-normal px-3 py-1 rounded-full"
                                         style={{
-                                          backgroundColor: "rgba(208, 196, 226, 0.3)",
+                                          backgroundColor:
+                                            "rgba(208, 196, 226, 0.3)",
                                           color: "#253075",
                                         }}
                                       >
@@ -4333,7 +4532,8 @@ export default function DashboardPatient() {
                                       className="text-sm leading-relaxed"
                                       style={{ color: "#787878" }}
                                     >
-                                      Your saved clinical trials and research studies
+                                      Your saved clinical trials and research
+                                      studies
                                     </p>
                                   </div>
                                 </div>
@@ -4387,7 +4587,11 @@ export default function DashboardPatient() {
                                           className="font-bold text-base mb-2"
                                           style={{ color: "#2F3C96" }}
                                         >
-                                          {item.title || "Untitled Trial"}
+                                          {simplifiedTrialSummaries.get(
+                                            item.title
+                                          ) ||
+                                            item.title ||
+                                            "Untitled Trial"}
                                         </h4>
                                         <div className="space-y-2 mb-4">
                                           {item.conditions &&
@@ -4400,14 +4604,21 @@ export default function DashboardPatient() {
                                               >
                                                 <Info className="w-3.5 h-3.5" />
                                                 <span>
-                                                  {Array.isArray(item.conditions)
+                                                  {Array.isArray(
+                                                    item.conditions
+                                                  )
                                                     ? item.conditions
                                                         .slice(0, 2)
                                                         .join(", ")
                                                     : item.conditions}
-                                                  {Array.isArray(item.conditions) &&
-                                                    item.conditions.length > 2 &&
-                                                    ` +${item.conditions.length - 2} more`}
+                                                  {Array.isArray(
+                                                    item.conditions
+                                                  ) &&
+                                                    item.conditions.length >
+                                                      2 &&
+                                                    ` +${
+                                                      item.conditions.length - 2
+                                                    } more`}
                                                 </span>
                                               </div>
                                             )}
@@ -4481,7 +4692,8 @@ export default function DashboardPatient() {
                                       <span
                                         className="text-sm font-normal px-3 py-1 rounded-full"
                                         style={{
-                                          backgroundColor: "rgba(208, 196, 226, 0.3)",
+                                          backgroundColor:
+                                            "rgba(208, 196, 226, 0.3)",
                                           color: "#253075",
                                         }}
                                       >
@@ -4495,7 +4707,8 @@ export default function DashboardPatient() {
                                       className="text-sm leading-relaxed"
                                       style={{ color: "#787878" }}
                                     >
-                                      Your saved researchers and healthcare experts
+                                      Your saved researchers and healthcare
+                                      experts
                                     </p>
                                   </div>
                                 </div>
@@ -4571,14 +4784,20 @@ export default function DashboardPatient() {
                                               >
                                                 <MapPin className="w-3.5 h-3.5" />
                                                 <span>
-                                                  {typeof item.location === "string"
+                                                  {typeof item.location ===
+                                                  "string"
                                                     ? item.location
-                                                    : `${item.location.city || ""}${
+                                                    : `${
+                                                        item.location.city || ""
+                                                      }${
                                                         item.location.city &&
                                                         item.location.country
                                                           ? ", "
                                                           : ""
-                                                      }${item.location.country || ""}`.trim()}
+                                                      }${
+                                                        item.location.country ||
+                                                        ""
+                                                      }`.trim()}
                                                 </span>
                                               </div>
                                             )}
@@ -4646,7 +4865,8 @@ export default function DashboardPatient() {
                                       <span
                                         className="text-sm font-normal px-3 py-1 rounded-full"
                                         style={{
-                                          backgroundColor: "rgba(208, 196, 226, 0.3)",
+                                          backgroundColor:
+                                            "rgba(208, 196, 226, 0.3)",
                                           color: "#253075",
                                         }}
                                       >
@@ -4705,7 +4925,9 @@ export default function DashboardPatient() {
                                           className="font-bold text-base mb-2"
                                           style={{ color: "#2F3C96" }}
                                         >
-                                          {item.title || item.name || "Forum Thread"}
+                                          {item.title ||
+                                            item.name ||
+                                            "Forum Thread"}
                                         </h4>
                                         {item.body && (
                                           <p
@@ -4717,7 +4939,11 @@ export default function DashboardPatient() {
                                         )}
                                         <button
                                           onClick={() =>
-                                            navigate(`/forums?thread=${item._id || item.id}`)
+                                            navigate(
+                                              `/forums?thread=${
+                                                item._id || item.id
+                                              }`
+                                            )
                                           }
                                           className="flex items-center justify-center gap-2 py-2 px-4 rounded-lg text-sm font-semibold transition-all w-full"
                                           style={{
@@ -4815,7 +5041,17 @@ export default function DashboardPatient() {
         onClose={closeTrialDetailsModal}
         title="Clinical Trial Details"
       >
-        {trialDetailsModal.trial && (
+        {trialDetailsModal.loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2
+              className="w-8 h-8 animate-spin"
+              style={{ color: "#2F3C96" }}
+            />
+            <span className="ml-3 text-sm" style={{ color: "#787878" }}>
+              Loading detailed trial information...
+            </span>
+          </div>
+        ) : trialDetailsModal.trial ? (
           <div className="flex flex-col h-full -mx-6 -my-6">
             <div className="space-y-6 flex-1 overflow-y-auto px-6 pt-6 pb-24">
               {/* Header */}
@@ -5195,53 +5431,103 @@ export default function DashboardPatient() {
                 )}
 
                 {/* Location */}
-                {trialDetailsModal.trial.location &&
-                  trialDetailsModal.trial.location !== "Not specified" && (
-                    <div className="bg-green-50 rounded-xl p-4 border border-green-200">
-                      <h4
-                        className="font-bold mb-3 flex items-center gap-2 text-sm"
-                        style={{ color: "#2F3C96" }}
-                      >
-                        <MapPin className="w-4 h-4 text-green-600" />
-                        Trial Locations
-                      </h4>
-                      <p
-                        className="text-sm leading-relaxed"
-                        style={{ color: "#787878" }}
-                      >
-                        {trialDetailsModal.trial.location}
-                      </p>
+                {trialDetailsModal.trial.locations &&
+                trialDetailsModal.trial.locations.length > 0 ? (
+                  <div className="bg-green-50 rounded-xl p-4 border border-green-200">
+                    <h4
+                      className="font-bold mb-3 flex items-center gap-2 text-sm"
+                      style={{ color: "#2F3C96" }}
+                    >
+                      <MapPin className="w-4 h-4 text-green-600" />
+                      Trial Locations (
+                      {trialDetailsModal.trial.locations.length})
+                    </h4>
+                    <div className="space-y-2">
+                      {trialDetailsModal.trial.locations
+                        .slice(0, 3)
+                        .map((loc, idx) => (
+                          <div
+                            key={idx}
+                            className="text-sm"
+                            style={{ color: "#787878" }}
+                          >
+                            {loc.facility && (
+                              <span
+                                className="font-semibold"
+                                style={{ color: "#2F3C96" }}
+                              >
+                                {loc.facility}:{" "}
+                              </span>
+                            )}
+                            {loc.fullAddress || loc.address}
+                          </div>
+                        ))}
+                      {trialDetailsModal.trial.locations.length > 3 && (
+                        <div
+                          className="text-xs italic"
+                          style={{ color: "#787878" }}
+                        >
+                          + {trialDetailsModal.trial.locations.length - 3} more
+                          location(s)
+                        </div>
+                      )}
                     </div>
-                  )}
+                  </div>
+                ) : trialDetailsModal.trial.location &&
+                  trialDetailsModal.trial.location !== "Not specified" ? (
+                  <div className="bg-green-50 rounded-xl p-4 border border-green-200">
+                    <h4
+                      className="font-bold mb-3 flex items-center gap-2 text-sm"
+                      style={{ color: "#2F3C96" }}
+                    >
+                      <MapPin className="w-4 h-4 text-green-600" />
+                      Trial Locations
+                    </h4>
+                    <p
+                      className="text-sm leading-relaxed"
+                      style={{ color: "#787878" }}
+                    >
+                      {trialDetailsModal.trial.location}
+                    </p>
+                  </div>
+                ) : null}
               </div>
             </div>
 
-            {/* Sticky Footer with ClinicalTrials.gov Link */}
-            {trialDetailsModal.trial.clinicalTrialsGovUrl && (
-              <div
-                className=" -bottom-10 px-6 pb-6 pt-4 border-t bg-white/95 backdrop-blur-sm shadow-lg  "
-                style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
-              >
-                <a
-                  href={trialDetailsModal.trial.clinicalTrialsGovUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 py-3 px-4 text-white rounded-lg transition-colors text-sm font-semibold shadow-md hover:shadow-lg w-full"
-                  style={{ backgroundColor: "#2F3C96" }}
-                  onMouseEnter={(e) =>
-                    (e.target.style.backgroundColor = "#253075")
-                  }
-                  onMouseLeave={(e) =>
-                    (e.target.style.backgroundColor = "#2F3C96")
-                  }
-                >
-                  <ExternalLink className="w-4 h-4" />
-                  View Full Details on ClinicalTrials.gov
-                </a>
+            {/* Sticky Footer with Actions */}
+            <div
+              className=" -bottom-10 px-6 pb-6 pt-4 border-t bg-white/95 backdrop-blur-sm shadow-lg  "
+              style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+            >
+              <div className="flex flex-col gap-2">
+                {/* Read Full Paper button commented out for now */}
+                {/* {(trialDetailsModal.trial.id ||
+                  trialDetailsModal.trial._id) && (
+                  <button
+                    onClick={() => {
+                      const nctId =
+                        trialDetailsModal.trial.id ||
+                        trialDetailsModal.trial._id;
+                      navigate(`/trial/${nctId}`);
+                      closeTrialDetailsModal();
+                    }}
+                    className="flex items-center justify-center gap-2 py-3 px-4 text-white rounded-lg transition-colors text-sm font-semibold shadow-md hover:shadow-lg w-full"
+                    style={{ backgroundColor: "#2F3C96" }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.backgroundColor = "#253075")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.backgroundColor = "#2F3C96")
+                    }
+                  >
+                    <BookOpen className="w-4 h-4" />
+                    Read Full Paper
+                  </button>
+                )} */}
               </div>
-            )}
+            </div>
           </div>
-        )}
+        ) : null}
       </Modal>
 
       {/* Publication Details Modal */}
@@ -6472,7 +6758,6 @@ export default function DashboardPatient() {
             <>
               <div className="pb-4 border-b border-slate-200">
                 <div className="flex items-center gap-3 mb-2">
-                  <Beaker className="w-5 h-5 text-indigo-600" />
                   <h4 className="font-bold text-slate-900 text-lg">
                     {contactModal.trial?.title || "Trial"}
                   </h4>
@@ -6542,6 +6827,145 @@ export default function DashboardPatient() {
               </div>
             </>
           )}
+        </div>
+      </Modal>
+
+      {/* Contact Information Modal */}
+      <Modal
+        isOpen={contactInfoModal.open}
+        onClose={closeContactInfoModal}
+        title="Contact Information"
+      >
+        <div className="space-y-4">
+          {contactInfoModal.loading ? (
+            <div className="text-center py-8">
+              <Loader2
+                className="w-8 h-8 animate-spin mx-auto mb-4"
+                style={{ color: "#2F3C96" }}
+              />
+              <p className="text-sm" style={{ color: "#787878" }}>
+                Loading contact information...
+              </p>
+            </div>
+          ) : contactInfoModal.trial ? (
+            <>
+              <div className="pb-4 border-b border-slate-200">
+                <div className="flex items-center gap-3 mb-2">
+                  <h4 className="font-bold text-slate-900 text-lg">
+                    {contactInfoModal.trial?.title || "Trial"}
+                  </h4>
+                </div>
+              </div>
+
+              {contactInfoModal.trial.contacts &&
+              contactInfoModal.trial.contacts.length > 0 ? (
+                <div className="space-y-4">
+                  {contactInfoModal.trial.contacts.map((contact, i) => (
+                    <div
+                      key={i}
+                      className="bg-gray-50 rounded-lg p-4 border"
+                      style={{ borderColor: "rgba(232, 232, 232, 1)" }}
+                    >
+                      {contact.name && (
+                        <div
+                          className="font-bold mb-3 text-base flex items-center gap-2"
+                          style={{ color: "#2F3C96" }}
+                        >
+                          <User
+                            className="w-4 h-4"
+                            style={{ color: "#787878" }}
+                          />
+                          {contact.name}
+                        </div>
+                      )}
+                      <div className="space-y-2">
+                        {contact.email && (
+                          <a
+                            href={`mailto:${contact.email}`}
+                            className="flex items-center gap-2 text-sm font-medium transition-colors"
+                            style={{ color: "#2F3C96" }}
+                            onMouseEnter={(e) =>
+                              (e.target.style.color = "#253075")
+                            }
+                            onMouseLeave={(e) =>
+                              (e.target.style.color = "#2F3C96")
+                            }
+                          >
+                            <Mail className="w-4 h-4" />
+                            {contact.email}
+                          </a>
+                        )}
+                        {contact.phone && (
+                          <div
+                            className="flex items-center gap-2 text-sm"
+                            style={{ color: "#787878" }}
+                          >
+                            <Phone
+                              className="w-4 h-4"
+                              style={{ color: "#2F3C96" }}
+                            />
+                            <a
+                              href={`tel:${contact.phone}`}
+                              className="transition-colors"
+                              style={{ color: "#787878" }}
+                              onMouseEnter={(e) =>
+                                (e.target.style.color = "#2F3C96")
+                              }
+                              onMouseLeave={(e) =>
+                                (e.target.style.color = "#787878")
+                              }
+                            >
+                              {contact.phone}
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Info className="w-8 h-8 text-gray-400" />
+                  </div>
+                  <p className="text-gray-600">
+                    No contact information available for this trial.
+                  </p>
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => {
+                    closeContactInfoModal();
+                    openContactModal(contactInfoModal.trial);
+                  }}
+                  className="flex-1 py-2.5 text-xs font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+                  style={{
+                    color: "#2F3C96",
+                    backgroundColor: "rgba(208, 196, 226, 0.2)",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.target.style.backgroundColor = "rgba(208, 196, 226, 0.3)";
+                    e.target.style.color = "#253075";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.backgroundColor = "rgba(208, 196, 226, 0.2)";
+                    e.target.style.color = "#2F3C96";
+                  }}
+                >
+                  <Send className="w-4 h-4" />
+                  Contact Admin
+                </button>
+                <button
+                  onClick={closeContactInfoModal}
+                  className="px-6 py-2.5 border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl transition-all"
+                >
+                  Close
+                </button>
+              </div>
+            </>
+          ) : null}
         </div>
       </Modal>
 
@@ -6986,4 +7410,3 @@ export default function DashboardPatient() {
     </div>
   );
 }
-

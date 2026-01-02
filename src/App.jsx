@@ -23,6 +23,7 @@ import AdminDashboard from "./Pages/AdminDashboard.jsx";
 import Auth0Callback from "./Pages/Auth0Callback.jsx";
 import CompleteProfile from "./Pages/CompleteProfile.jsx";
 import AboutUs from "./Pages/AboutUs.jsx";
+import TrialDetails from "./Pages/TrialDetails.jsx";
 import "./App.css";
 import Navbar from "./components/Navbar.jsx";
 import { ProfileProvider } from "./contexts/ProfileContext.jsx";
@@ -67,6 +68,7 @@ const AppContent = () => {
         <Route path="/dashboard/patient" element={<DashboardPatient />} />
         <Route path="/dashboard/researcher" element={<DashboardResearcher />} />
         <Route path="/trials" element={<Trials />} />
+        <Route path="/trial/:nctId" element={<TrialDetails />} />
         <Route path="/publications" element={<Publications />} />
         <Route path="/experts" element={<Experts />} />
         <Route path="/expert/profile" element={<ExpertProfile />} />

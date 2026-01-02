@@ -86,6 +86,7 @@ export default function DashboardResearcher() {
   const [trialDetailsModal, setTrialDetailsModal] = useState({
     open: false,
     trial: null,
+    loading: false,
   });
   const [contactModal, setContactModal] = useState({
     open: false,
@@ -464,10 +465,42 @@ export default function DashboardResearcher() {
     navigate("/");
   }
 
-  function openTrialDetailsModal(trial) {
+  async function openTrialDetailsModal(trial) {
+    setTrialDetailsModal({
+      open: true,
+      trial: trial, // Show basic info immediately
+      loading: true,
+    });
+
+    // Fetch detailed trial information from backend
+    if (trial.id || trial._id) {
+      try {
+        const nctId = trial.id || trial._id;
+        const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
+        const response = await fetch(`${base}/api/search/trial/${nctId}`);
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.trial) {
+            // Merge detailed info with existing trial data
+            setTrialDetailsModal({
+              open: true,
+              trial: { ...trial, ...data.trial },
+              loading: false,
+            });
+            return;
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching detailed trial info:", error);
+      }
+    }
+
+    // If fetch fails or no NCT ID, just use the trial we have
     setTrialDetailsModal({
       open: true,
       trial: trial,
+      loading: false,
     });
   }
 
@@ -475,6 +508,7 @@ export default function DashboardResearcher() {
     setTrialDetailsModal({
       open: false,
       trial: null,
+      loading: false,
     });
   }
 
@@ -1357,7 +1391,7 @@ export default function DashboardResearcher() {
       case "profile":
         return userProfile?.researcher?.orcid ? 1 : 0;
       case "collaborators":
-        return data.experts.length + globalExperts.length;
+        return data.experts.length + globalExperts.length - 1;
       case "forums":
         return forumsCategories.filter(
           (category) => (category.threadCount || 0) >= 2
@@ -2570,31 +2604,6 @@ export default function DashboardResearcher() {
                               </h3>
                             </div>
 
-                            {/* Basic Info */}
-                            <div className="space-y-1.5 mb-4">
-                              {t.conditions && (
-                                <div
-                                  className="flex items-center text-sm"
-                                  style={{ color: "#787878" }}
-                                >
-                                  <Info className="w-3.5 h-3.5 mr-2 shrink-0" />
-                                  <span className="line-clamp-1">
-                                    {Array.isArray(t.conditions)
-                                      ? t.conditions.join(", ")
-                                      : t.conditions}
-                                  </span>
-                                </div>
-                              )}
-                              {t.phase && (
-                                <div
-                                  className="flex items-center text-sm"
-                                  style={{ color: "#787878" }}
-                                >
-                                  <Calendar className="w-3.5 h-3.5 mr-2 shrink-0" />{" "}
-                                  Phase {t.phase}
-                                </div>
-                              )}
-                            </div>
 
                             {/* Description/Details Preview */}
                             {(t.description || t.conditionDescription) && (
@@ -3312,7 +3321,8 @@ export default function DashboardResearcher() {
                                                   >
                                                     {e.name || "Unknown Expert"}
                                                   </h3>
-                                                  {e.orcid && (
+                                                  {/* Hide ORCID for on-platform experts */}
+                                                  {e.orcid && !isCuralinkExpert && (
                                                     <span className="text-sm text-slate-500 font-mono">
                                                       {e.orcid}
                                                     </span>
@@ -3662,6 +3672,9 @@ export default function DashboardResearcher() {
                               </div>
                               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                                 {globalExpertsList.map((e, idx) => {
+                                  const isCuralinkExpert = !!(
+                                    e._id || e.userId
+                                  );
                                   const expertId =
                                     e.name || e.id || e._id || `expert-${idx}`;
                                   const itemId = e.orcid || e.id || e._id;
@@ -3765,7 +3778,8 @@ export default function DashboardResearcher() {
                                                   >
                                                     {e.name || "Unknown Expert"}
                                                   </h3>
-                                                  {e.orcid && (
+                                                  {/* Hide ORCID for on-platform experts */}
+                                                  {e.orcid && !isCuralinkExpert && (
                                                     <span className="text-sm text-slate-500 font-mono">
                                                       {e.orcid}
                                                     </span>
@@ -4749,43 +4763,6 @@ export default function DashboardResearcher() {
                                         >
                                           {item.title || "Untitled Trial"}
                                         </h4>
-                                        <div className="space-y-2 mb-4">
-                                          {item.conditions &&
-                                            (Array.isArray(item.conditions)
-                                              ? item.conditions.length > 0
-                                              : item.conditions) && (
-                                              <div
-                                                className="flex items-center gap-2 text-sm"
-                                                style={{ color: "#787878" }}
-                                              >
-                                                <Info className="w-3.5 h-3.5" />
-                                                <span>
-                                                  {Array.isArray(
-                                                    item.conditions
-                                                  )
-                                                    ? item.conditions
-                                                        .slice(0, 2)
-                                                        .join(", ")
-                                                    : item.conditions}
-                                                  {Array.isArray(
-                                                    item.conditions
-                                                  ) &&
-                                                    item.conditions.length >
-                                                      2 &&
-                                                    "..."}
-                                                </span>
-                                              </div>
-                                            )}
-                                          {item.phase && (
-                                            <div
-                                              className="flex items-center gap-2 text-sm"
-                                              style={{ color: "#787878" }}
-                                            >
-                                              <Calendar className="w-3.5 h-3.5" />
-                                              <span>Phase {item.phase}</span>
-                                            </div>
-                                          )}
-                                        </div>
                                         <button
                                           onClick={() =>
                                             openTrialDetailsModal(item)
@@ -5215,227 +5192,463 @@ export default function DashboardResearcher() {
       <Modal
         isOpen={trialDetailsModal.open}
         onClose={closeTrialDetailsModal}
-        title="Trial Details"
+        title="Clinical Trial Details"
       >
-        {trialDetailsModal.trial && (
-          <div className="space-y-6">
-            {/* Header */}
-            <div className="pb-4 border-b border-slate-200">
-              <div className="flex items-center gap-3 mb-2">
-                <Beaker className="w-5 h-5 text-indigo-600" />
-                <h4 className="font-bold text-slate-900 text-lg">
-                  {trialDetailsModal.trial.title}
-                </h4>
-              </div>
-              <div className="flex flex-wrap gap-2 mt-2">
-                <span className="inline-flex items-center px-2.5 py-1 bg-indigo-100 text-indigo-700 text-xs font-medium rounded-full border border-indigo-200">
-                  {trialDetailsModal.trial._id ||
-                    trialDetailsModal.trial.id ||
-                    "N/A"}
-                </span>
-                {trialDetailsModal.trial.status && (
-                  <span
-                    className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(
-                      trialDetailsModal.trial.status
-                    )}`}
+        {trialDetailsModal.loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2
+              className="w-8 h-8 animate-spin"
+              style={{ color: "#2F3C96" }}
+            />
+            <span className="ml-3 text-sm" style={{ color: "#787878" }}>
+              Loading detailed trial information...
+            </span>
+          </div>
+        ) : trialDetailsModal.trial ? (
+          <div className="flex flex-col h-full -mx-6 -my-6">
+            <div className="space-y-6 flex-1 overflow-y-auto px-6 pt-6 pb-24">
+              {/* Header */}
+              <div
+                className="pb-4 border-b sticky top-0 bg-white z-10 -mt-6 pt-6 -mx-6 px-6"
+                style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+              >
+                <div className="flex items-center gap-3 mb-2">
+                  <Beaker className="w-5 h-5" style={{ color: "#2F3C96" }} />
+                  <h4
+                    className="font-bold text-lg"
+                    style={{ color: "#2F3C96" }}
                   >
-                    {trialDetailsModal.trial.status.replace(/_/g, " ")}
-                  </span>
-                )}
-                {trialDetailsModal.trial.phase && (
-                  <span className="inline-flex items-center px-2.5 py-1 bg-slate-100 text-slate-700 text-xs font-medium rounded-full border border-slate-200">
-                    Phase {trialDetailsModal.trial.phase}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Description */}
-            {(trialDetailsModal.trial.description ||
-              trialDetailsModal.trial.conditionDescription) && (
-              <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-                <h4 className="font-bold text-slate-900 mb-3 flex items-center gap-2 text-base">
-                  <FileText className="w-5 h-5 text-indigo-600" />
-                  Description
-                </h4>
-                <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-line">
-                  {trialDetailsModal.trial.description ||
-                    trialDetailsModal.trial.conditionDescription}
-                </p>
-              </div>
-            )}
-
-            {/* Location */}
-            {trialDetailsModal.trial.location &&
-              trialDetailsModal.trial.location !== "Not specified" && (
-                <div className="bg-green-50 rounded-xl p-4 border border-green-200">
-                  <h4 className="font-bold text-slate-900 mb-3 flex items-center gap-2 text-base">
-                    <MapPin className="w-5 h-5 text-green-600" />
-                    Trial Locations
+                    {trialDetailsModal.trial.title}
                   </h4>
-                  <p className="text-sm text-slate-700 leading-relaxed">
-                    {trialDetailsModal.trial.location}
+                </div>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  <span
+                    className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full border"
+                    style={{
+                      backgroundColor: "rgba(209, 211, 229, 1)",
+                      color: "#253075",
+                      borderColor: "rgba(163, 167, 203, 1)",
+                    }}
+                  >
+                    {trialDetailsModal.trial._id ||
+                      trialDetailsModal.trial.id ||
+                      "N/A"}
+                  </span>
+                  {trialDetailsModal.trial.status && (
+                    <span
+                      className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(
+                        trialDetailsModal.trial.status
+                      )}`}
+                    >
+                      {trialDetailsModal.trial.status.replace(/_/g, " ")}
+                    </span>
+                  )}
+                  {trialDetailsModal.trial.phase && (
+                    <span
+                      className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full border"
+                      style={{
+                        backgroundColor: "#F5F5F5",
+                        color: "#787878",
+                        borderColor: "rgba(232, 232, 232, 1)",
+                      }}
+                    >
+                      Phase {trialDetailsModal.trial.phase}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* 1. Study Purpose */}
+              {(trialDetailsModal.trial.description ||
+                trialDetailsModal.trial.conditionDescription) && (
+                <div
+                  className="bg-gradient-to-br rounded-xl p-5 mt-10 border shadow-sm"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, rgba(232, 233, 242, 1), rgba(245, 242, 248, 1))",
+                    borderColor: "rgba(163, 167, 203, 1)",
+                  }}
+                >
+                  <h4
+                    className="font-bold mb-3 flex items-center gap-2 text-base"
+                    style={{ color: "#2F3C96" }}
+                  >
+                    <FileText
+                      className="w-5 h-5"
+                      style={{ color: "#2F3C96" }}
+                    />
+                    Study Purpose
+                  </h4>
+                  <p
+                    className="text-sm leading-relaxed whitespace-pre-line"
+                    style={{ color: "#787878" }}
+                  >
+                    {trialDetailsModal.trial.description ||
+                      trialDetailsModal.trial.conditionDescription}
                   </p>
                 </div>
               )}
 
-            {/* Conditions */}
-            {trialDetailsModal.trial.conditions?.length > 0 && (
-              <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
-                <h4 className="font-bold text-slate-900 mb-3 flex items-center gap-2 text-base">
-                  <Activity className="w-5 h-5 text-blue-600" />
-                  Conditions
-                </h4>
-                <div className="flex flex-wrap gap-2">
-                  {trialDetailsModal.trial.conditions.map((condition, idx) => (
-                    <span
-                      key={idx}
-                      className="px-3 py-1.5 bg-white text-blue-700 text-sm font-medium rounded-lg border border-blue-300 shadow-sm"
+              {/* 2. Who Can Join (Eligibility) */}
+              {trialDetailsModal.trial.eligibility && (
+                <div
+                  className="bg-gradient-to-br rounded-xl p-5 border shadow-sm"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, rgba(245, 242, 248, 1), rgba(232, 224, 239, 1))",
+                    borderColor: "#D0C4E2",
+                  }}
+                >
+                  <h4
+                    className="font-bold mb-4 flex items-center gap-2 text-base"
+                    style={{ color: "#2F3C96" }}
+                  >
+                    <ListChecks
+                      className="w-5 h-5"
+                      style={{ color: "#2F3C96" }}
+                    />
+                    Who Can Join (Eligibility)
+                  </h4>
+
+                  {/* Quick Eligibility Info Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                    {/* Gender */}
+                    <div
+                      className="bg-white rounded-lg p-3 border shadow-sm"
+                      style={{ borderColor: "rgba(232, 224, 239, 1)" }}
                     >
-                      {condition}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Eligibility */}
-            {trialDetailsModal.trial.eligibility && (
-              <div className="bg-gradient-to-br from-indigo-50 to-blue-50 rounded-xl p-5 border border-indigo-200">
-                <h4 className="font-bold text-slate-900 mb-4 flex items-center gap-2 text-base">
-                  <ListChecks className="w-5 h-5 text-indigo-600" />
-                  Eligibility Criteria
-                </h4>
-
-                {/* Quick Eligibility Info Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-                  {/* Gender */}
-                  <div className="bg-white rounded-lg p-3 border border-indigo-100 shadow-sm">
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <Users className="w-4 h-4 text-indigo-600" />
-                      <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                        Gender
-                      </span>
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <Users
+                          className="w-4 h-4"
+                          style={{ color: "#2F3C96" }}
+                        />
+                        <span
+                          className="text-xs font-semibold uppercase tracking-wide"
+                          style={{ color: "#787878" }}
+                        >
+                          Gender
+                        </span>
+                      </div>
+                      <p
+                        className="text-sm font-bold"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        {trialDetailsModal.trial.eligibility.gender || "All"}
+                      </p>
                     </div>
-                    <p className="text-sm font-bold text-slate-900">
-                      {trialDetailsModal.trial.eligibility.gender || "All"}
-                    </p>
+
+                    {/* Age Range */}
+                    <div
+                      className="bg-white rounded-lg p-3 border shadow-sm"
+                      style={{ borderColor: "rgba(232, 224, 239, 1)" }}
+                    >
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <Calendar
+                          className="w-4 h-4"
+                          style={{ color: "#2F3C96" }}
+                        />
+                        <span
+                          className="text-xs font-semibold uppercase tracking-wide"
+                          style={{ color: "#787878" }}
+                        >
+                          Age Range
+                        </span>
+                      </div>
+                      <p
+                        className="text-sm font-bold"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        {trialDetailsModal.trial.eligibility.minimumAge !==
+                          "Not specified" &&
+                        trialDetailsModal.trial.eligibility.minimumAge
+                          ? trialDetailsModal.trial.eligibility.minimumAge
+                          : "N/A"}
+                        {" - "}
+                        {trialDetailsModal.trial.eligibility.maximumAge !==
+                          "Not specified" &&
+                        trialDetailsModal.trial.eligibility.maximumAge
+                          ? trialDetailsModal.trial.eligibility.maximumAge
+                          : "N/A"}
+                      </p>
+                    </div>
+
+                    {/* Healthy Volunteers */}
+                    <div
+                      className="bg-white rounded-lg p-3 border shadow-sm"
+                      style={{ borderColor: "rgba(232, 224, 239, 1)" }}
+                    >
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <CheckCircle
+                          className="w-4 h-4"
+                          style={{ color: "#2F3C96" }}
+                        />
+                        <span
+                          className="text-xs font-semibold uppercase tracking-wide"
+                          style={{ color: "#787878" }}
+                        >
+                          Volunteers
+                        </span>
+                      </div>
+                      <p
+                        className="text-sm font-bold"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        {trialDetailsModal.trial.eligibility
+                          .healthyVolunteers || "Unknown"}
+                      </p>
+                    </div>
                   </div>
 
-                  {/* Age Range */}
-                  <div className="bg-white rounded-lg p-3 border border-indigo-100 shadow-sm">
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <Calendar className="w-4 h-4 text-indigo-600" />
-                      <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                        Age Range
-                      </span>
-                    </div>
-                    <p className="text-sm font-bold text-slate-900">
-                      {trialDetailsModal.trial.eligibility.minimumAge !==
-                        "Not specified" &&
-                      trialDetailsModal.trial.eligibility.minimumAge
-                        ? trialDetailsModal.trial.eligibility.minimumAge
-                        : "N/A"}
-                      {" - "}
-                      {trialDetailsModal.trial.eligibility.maximumAge !==
-                        "Not specified" &&
-                      trialDetailsModal.trial.eligibility.maximumAge
-                        ? trialDetailsModal.trial.eligibility.maximumAge
-                        : "N/A"}
-                    </p>
-                  </div>
+                  {/* Detailed Eligibility Criteria */}
+                  {trialDetailsModal.trial.eligibility.criteria &&
+                    trialDetailsModal.trial.eligibility.criteria !==
+                      "Not specified" && (
+                      <div
+                        className="mt-4 pt-4 border-t"
+                        style={{ borderColor: "#D0C4E2" }}
+                      >
+                        <h5
+                          className="font-semibold mb-3 flex items-center gap-2 text-sm"
+                          style={{ color: "#2F3C96" }}
+                        >
+                          <Info
+                            className="w-4 h-4"
+                            style={{ color: "#2F3C96" }}
+                          />
+                          Detailed Eligibility Criteria
+                        </h5>
+                        <div
+                          className="bg-white rounded-lg p-4 border"
+                          style={{ borderColor: "rgba(232, 224, 239, 1)" }}
+                        >
+                          <p
+                            className="text-sm leading-relaxed whitespace-pre-line"
+                            style={{ color: "#787878" }}
+                          >
+                            {trialDetailsModal.trial.eligibility.criteria}
+                          </p>
+                        </div>
+                      </div>
+                    )}
 
-                  {/* Healthy Volunteers */}
-                  <div className="bg-white rounded-lg p-3 border border-indigo-100 shadow-sm">
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <CheckCircle className="w-4 h-4 text-indigo-600" />
-                      <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                        Volunteers
-                      </span>
-                    </div>
-                    <p className="text-sm font-bold text-slate-900">
-                      {trialDetailsModal.trial.eligibility.healthyVolunteers ||
-                        "Unknown"}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Detailed Eligibility Criteria */}
-                {trialDetailsModal.trial.eligibility.criteria &&
-                  trialDetailsModal.trial.eligibility.criteria !==
-                    "Not specified" && (
-                    <div className="mt-4 pt-4 border-t border-indigo-200">
-                      <h5 className="font-semibold text-slate-800 mb-3 flex items-center gap-2 text-sm">
-                        <Info className="w-4 h-4 text-indigo-600" />
-                        Detailed Eligibility Criteria
+                  {/* Study Population Description */}
+                  {trialDetailsModal.trial.eligibility.population && (
+                    <div
+                      className="mt-4 pt-4 border-t"
+                      style={{ borderColor: "#D0C4E2" }}
+                    >
+                      <h5
+                        className="font-semibold mb-3 flex items-center gap-2 text-sm"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        <Users
+                          className="w-4 h-4"
+                          style={{ color: "#2F3C96" }}
+                        />
+                        Study Population
                       </h5>
-                      <div className="bg-white rounded-lg p-4 border border-indigo-100">
-                        <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-line">
-                          {trialDetailsModal.trial.eligibility.criteria}
+                      <div
+                        className="bg-white rounded-lg p-4 border"
+                        style={{ borderColor: "rgba(232, 224, 239, 1)" }}
+                      >
+                        <p
+                          className="text-sm leading-relaxed whitespace-pre-line"
+                          style={{ color: "#787878" }}
+                        >
+                          {trialDetailsModal.trial.eligibility.population}
                         </p>
                       </div>
                     </div>
                   )}
-              </div>
-            )}
+                </div>
+              )}
 
-            {/* Contacts */}
-            {trialDetailsModal.trial.contacts?.length > 0 && (
-              <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-                <h4 className="font-bold text-slate-900 mb-3 flex items-center gap-2 text-base">
-                  <User className="w-5 h-5 text-indigo-600" />
-                  Contact Information
-                </h4>
-                <div className="space-y-3">
-                  {trialDetailsModal.trial.contacts.map((contact, i) => (
-                    <div
-                      key={i}
-                      className="bg-white rounded-lg p-4 border border-slate-200 shadow-sm"
-                    >
-                      {contact.name && (
-                        <div className="font-bold text-slate-900 mb-2 text-sm">
-                          {contact.name}
-                        </div>
-                      )}
-                      <div className="space-y-1.5">
-                        {contact.email && (
-                          <a
-                            href={`mailto:${contact.email}`}
-                            className="flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+              {/* 3. Contact Information */}
+              {trialDetailsModal.trial.contacts?.length > 0 && (
+                <div
+                  className="bg-gradient-to-br rounded-xl p-5 border shadow-sm"
+                  style={{
+                    background: "linear-gradient(135deg, #F5F5F5, #F5F5F5)",
+                    borderColor: "rgba(232, 232, 232, 1)",
+                  }}
+                >
+                  <h4
+                    className="font-bold mb-4 flex items-center gap-2 text-base"
+                    style={{ color: "#2F3C96" }}
+                  >
+                    <Mail className="w-5 h-5" style={{ color: "#787878" }} />
+                    Contact Information
+                  </h4>
+                  <div className="space-y-3">
+                    {trialDetailsModal.trial.contacts.map((contact, i) => (
+                      <div
+                        key={i}
+                        className="bg-white rounded-lg p-4 border shadow-sm"
+                        style={{ borderColor: "rgba(232, 232, 232, 1)" }}
+                      >
+                        {contact.name && (
+                          <div
+                            className="font-bold mb-3 text-base flex items-center gap-2"
+                            style={{ color: "#2F3C96" }}
                           >
-                            <Mail className="w-4 h-4" />
-                            {contact.email}
-                          </a>
-                        )}
-                        {contact.phone && (
-                          <div className="flex items-center gap-2 text-sm text-slate-700">
-                            <span className="text-indigo-600">📞</span>
-                            {contact.phone}
+                            <User
+                              className="w-4 h-4"
+                              style={{ color: "#787878" }}
+                            />
+                            {contact.name}
                           </div>
                         )}
+                        <div className="space-y-2">
+                          {contact.email && (
+                            <a
+                              href={`mailto:${contact.email}`}
+                              className="flex items-center gap-2 text-sm font-medium transition-colors"
+                              style={{ color: "#2F3C96" }}
+                              onMouseEnter={(e) =>
+                                (e.target.style.color = "#253075")
+                              }
+                              onMouseLeave={(e) =>
+                                (e.target.style.color = "#2F3C96")
+                              }
+                            >
+                              <Mail className="w-4 h-4" />
+                              {contact.email}
+                            </a>
+                          )}
+                          {contact.phone && (
+                            <div
+                              className="flex items-center gap-2 text-sm"
+                              style={{ color: "#787878" }}
+                            >
+                              <span style={{ color: "#2F3C96" }}>📞</span>
+                              <a
+                                href={`tel:${contact.phone}`}
+                                className="transition-colors"
+                                style={{ color: "#787878" }}
+                                onMouseEnter={(e) =>
+                                  (e.target.style.color = "#2F3C96")
+                                }
+                                onMouseLeave={(e) =>
+                                  (e.target.style.color = "#787878")
+                                }
+                              >
+                                {contact.phone}
+                              </a>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* ClinicalTrials.gov Link */}
-            {trialDetailsModal.trial.clinicalTrialsGovUrl && (
-              <div className="pt-4 border-t border-slate-200">
-                <a
-                  href={trialDetailsModal.trial.clinicalTrialsGovUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 py-2.5 px-4 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-semibold"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                  View Full Details on ClinicalTrials.gov
-                </a>
+              {/* Additional Information */}
+              <div
+                className="space-y-4 pt-4 border-t"
+                style={{ borderColor: "rgba(232, 232, 232, 1)" }}
+              >
+                {/* Conditions */}
+                {trialDetailsModal.trial.conditions?.length > 0 && (
+                  <div
+                    className="rounded-xl p-4 border"
+                    style={{
+                      backgroundColor: "rgba(245, 242, 248, 1)",
+                      borderColor: "#D0C4E2",
+                    }}
+                  >
+                    <h4
+                      className="font-bold mb-3 flex items-center gap-2 text-sm"
+                      style={{ color: "#2F3C96" }}
+                    >
+                      <Activity
+                        className="w-4 h-4"
+                        style={{ color: "#2F3C96" }}
+                      />
+                      Conditions Studied
+                    </h4>
+                    <div className="flex flex-wrap gap-2">
+                      {trialDetailsModal.trial.conditions.map(
+                        (condition, idx) => (
+                          <span
+                            key={idx}
+                            className="px-3 py-1.5 bg-white text-sm font-medium rounded-lg border shadow-sm"
+                            style={{ color: "#2F3C96", borderColor: "#D0C4E2" }}
+                          >
+                            {condition}
+                          </span>
+                        )
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Location */}
+                {trialDetailsModal.trial.locations &&
+                trialDetailsModal.trial.locations.length > 0 ? (
+                  <div className="bg-green-50 rounded-xl p-4 border border-green-200">
+                    <h4
+                      className="font-bold mb-3 flex items-center gap-2 text-sm"
+                      style={{ color: "#2F3C96" }}
+                    >
+                      <MapPin className="w-4 h-4 text-green-600" />
+                      Trial Locations (
+                      {trialDetailsModal.trial.locations.length})
+                    </h4>
+                    <div className="space-y-2">
+                      {trialDetailsModal.trial.locations
+                        .slice(0, 3)
+                        .map((loc, idx) => (
+                          <div
+                            key={idx}
+                            className="text-sm"
+                            style={{ color: "#787878" }}
+                          >
+                            {loc.facility && (
+                              <span
+                                className="font-semibold"
+                                style={{ color: "#2F3C96" }}
+                              >
+                                {loc.facility}:{" "}
+                              </span>
+                            )}
+                            {loc.fullAddress || loc.address}
+                          </div>
+                        ))}
+                      {trialDetailsModal.trial.locations.length > 3 && (
+                        <div
+                          className="text-xs italic"
+                          style={{ color: "#787878" }}
+                        >
+                          + {trialDetailsModal.trial.locations.length - 3} more
+                          location(s)
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : trialDetailsModal.trial.location &&
+                  trialDetailsModal.trial.location !== "Not specified" ? (
+                  <div className="bg-green-50 rounded-xl p-4 border border-green-200">
+                    <h4
+                      className="font-bold mb-3 flex items-center gap-2 text-sm"
+                      style={{ color: "#2F3C96" }}
+                    >
+                      <MapPin className="w-4 h-4 text-green-600" />
+                      Trial Locations
+                    </h4>
+                    <p
+                      className="text-sm leading-relaxed"
+                      style={{ color: "#787878" }}
+                    >
+                      {trialDetailsModal.trial.location}
+                    </p>
+                  </div>
+                ) : null}
               </div>
-            )}
+            </div>
           </div>
-        )}
+        ) : null}
+
       </Modal>
 
       {/* Publication Details Modal */}
