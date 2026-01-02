@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import Layout from "../components/Layout.jsx";
@@ -9,6 +9,7 @@ import SmartSearchInput from "../components/SmartSearchInput.jsx";
 import LocationInput from "../components/LocationInput.jsx";
 import { SMART_SUGGESTION_KEYWORDS } from "../utils/smartSuggestions.js";
 import { useAuth0Social } from "../hooks/useAuth0Social.js";
+import icd11Dataset from "../data/icd11Dataset.json";
 import {
   User,
   Heart,
@@ -108,6 +109,48 @@ export default function OnboardPatient() {
     "Lupus",
     "Rheumatoid Arthritis",
   ];
+
+  // Extract terms from ICD11 dataset for suggestions
+  const icd11Suggestions = useMemo(() => {
+    const termsSet = new Set();
+    
+    if (Array.isArray(icd11Dataset)) {
+      icd11Dataset.forEach((item) => {
+        // Add display_name
+        if (item.display_name && typeof item.display_name === "string") {
+          const displayName = item.display_name.trim();
+          if (displayName) {
+            termsSet.add(displayName);
+          }
+        }
+        
+        // Add patient_terms, but filter out ICD code patterns
+        if (Array.isArray(item.patient_terms)) {
+          item.patient_terms.forEach((term) => {
+            if (typeof term === "string") {
+              const trimmedTerm = term.trim();
+              if (!trimmedTerm) return;
+              
+              // Filter out terms containing ICD code patterns
+              const lowerTerm = trimmedTerm.toLowerCase();
+              // Check for patterns like "icd11 code aa00", "icd code aa00", "icd aa00", "icd11 aa00"
+              const hasIcdPattern = 
+                lowerTerm.includes("icd11 code") ||
+                lowerTerm.includes("icd code") ||
+                /icd11\s+[a-z]{2}[0-9]{2}/i.test(trimmedTerm) || // "icd11 aa00"
+                /icd\s+[a-z]{2}[0-9]{2}/i.test(trimmedTerm); // "icd aa00", "icd ba20"
+              
+              if (!hasIcdPattern) {
+                termsSet.add(trimmedTerm);
+              }
+            }
+          });
+        }
+      });
+    }
+    
+    return Array.from(termsSet);
+  }, []);
 
   function capitalizeMedicalCondition(condition) {
     if (!condition || typeof condition !== "string") return condition;
@@ -731,6 +774,7 @@ export default function OnboardPatient() {
                             extraTerms={[
                               ...commonConditions,
                               ...SMART_SUGGESTION_KEYWORDS,
+                              ...icd11Suggestions,
                             ]}
                             maxSuggestions={8}
                             autoSubmitOnSelect={true}
