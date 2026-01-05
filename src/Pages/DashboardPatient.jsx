@@ -40,6 +40,8 @@ import {
   Award,
   Loader2,
   Bell,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import Modal from "../components/ui/Modal";
 import { MultiStepLoader } from "../components/ui/multi-step-loader";
@@ -117,6 +119,7 @@ export default function DashboardPatient() {
   const [filterModalOpen, setFilterModalOpen] = useState(false);
   const [loadingFiltered, setLoadingFiltered] = useState(false);
   const [favoritingItems, setFavoritingItems] = useState(new Set()); // Track items being favorited/unfavorited
+  const [isProfileBannerExpanded, setIsProfileBannerExpanded] = useState(false); // For mobile collapsible profile banner
   const [simplifiedTitles, setSimplifiedTitles] = useState(new Map()); // Cache of simplified publication titles
   const [simplifiedTrialSummaries, setSimplifiedTrialSummaries] = useState(
     new Map()
@@ -1724,9 +1727,9 @@ export default function DashboardPatient() {
       <div className="px-4 sm:px-6 md:px-8 lg:px-12 mx-auto max-w-7xl pt-6 pb-12 relative ">
         {/* Top Bar with Profile and Insights */}
         <div className="mb-8">
-          {/* Profile Section with Insights */}
+          {/* Profile Section with Insights - Collapsible on Mobile */}
           <div
-            className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-2xl shadow-xl border relative overflow-hidden w-full p-5 sm:p-4 mt-18"
+            className="rounded-2xl shadow-xl border relative overflow-hidden w-full mt-18"
             style={{
               background: "linear-gradient(135deg, #D0C4E2, #E8E0EF, #F5F2F8)",
               borderColor: "rgba(208, 196, 226, 0.5)",
@@ -1742,30 +1745,213 @@ export default function DashboardPatient() {
               style={{ backgroundColor: "rgba(47, 60, 150, 0.1)" }}
             ></div>
 
-            <div className="relative z-10 flex items-center gap-4 flex-1 min-w-0 w-full sm:w-auto">
-              {/* Avatar */}
-              <div
-                className="w-12 h-12 backdrop-blur-sm rounded-full flex items-center justify-center text-white font-bold text-xl shadow-lg ring-2 shrink-0"
-                style={{
-                  backgroundColor: "#2F3C96",
-                  ringColor: "rgba(47, 60, 150, 0.5)",
-                }}
-              >
-                {user?.username?.charAt(0)?.toUpperCase() || "U"}
-              </div>
+            {/* Collapsible Header - Always Visible */}
+            <div className="relative z-10 flex items-center justify-between gap-4 p-5 sm:p-4">
+              <div className="flex items-center gap-4 flex-1 min-w-0">
+                {/* Avatar */}
+                <div
+                  className="w-12 h-12 backdrop-blur-sm rounded-full flex items-center justify-center text-white font-bold text-xl shadow-lg ring-2 shrink-0"
+                  style={{
+                    backgroundColor: "#2F3C96",
+                    ringColor: "rgba(47, 60, 150, 0.5)",
+                  }}
+                >
+                  {user?.username?.charAt(0)?.toUpperCase() || "U"}
+                </div>
 
-              {/* Profile Info */}
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-6 flex-1 min-w-0">
-                <div className="flex-1 min-w-0">
+                {/* Profile Info - Simplified on Mobile */}
+                <div className="flex-1 min-w-0 sm:hidden">
                   <h3
-                    className="text-base sm:text-lg font-bold mb-1"
+                    className="text-base font-bold mb-1 truncate"
                     style={{ color: "#2F3C96" }}
                   >
-                    Hello, {user?.username || "User"} 👋 — here's your health
-                    dashboard
+                    Hello, {user?.username || "User"} 👋
+                  </h3>
+                  <p className="text-xs" style={{ color: "#787878" }}>
+                    Tap to view details
+                  </p>
+                </div>
+
+                {/* Desktop Profile Info */}
+                <div className="hidden sm:flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-6 flex-1 min-w-0">
+                  <div className="flex-1 min-w-0">
+                    <h3
+                      className="text-base sm:text-lg font-bold mb-1"
+                      style={{ color: "#2F3C96" }}
+                    >
+                      Hello, {user?.username || "User"} 👋 — here's your health
+                      dashboard
+                    </h3>
+                    <div
+                      className="flex flex-wrap items-center gap-3 text-xs sm:text-sm"
+                      style={{ color: "#787878" }}
+                    >
+                      {userConditions.length > 0 ? (
+                        userConditions.map((condition, idx) => (
+                          <span
+                            key={idx}
+                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+                            style={{
+                              backgroundColor: "rgba(47, 60, 150, 0.15)",
+                              border: "1px solid rgba(47, 60, 150, 0.3)",
+                              color: "#2F3C96",
+                            }}
+                          >
+                            <Heart className="w-3.5 h-3.5 shrink-0" />
+                            <span className="truncate max-w-[150px] sm:max-w-none">
+                              {condition}
+                            </span>
+                          </span>
+                        ))
+                      ) : (
+                        <span
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+                          style={{
+                            backgroundColor: "rgba(47, 60, 150, 0.15)",
+                            border: "1px solid rgba(47, 60, 150, 0.3)",
+                            color: "#2F3C96",
+                          }}
+                        >
+                          <Heart className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate max-w-[150px] sm:max-w-none">
+                            {userDisease}
+                          </span>
+                        </span>
+                      )}
+                      <span
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+                        style={{
+                          backgroundColor: "rgba(47, 60, 150, 0.15)",
+                          border: "1px solid rgba(47, 60, 150, 0.3)",
+                          color: "#2F3C96",
+                        }}
+                      >
+                        <MapPin className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate max-w-[150px] sm:max-w-none">
+                          {locationText}
+                        </span>
+                      </span>
+                      {/* Email Verification Status */}
+                      <span
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full ${
+                          user?.emailVerified
+                            ? "bg-green-50 border-green-200"
+                            : "bg-yellow-50 border-yellow-200"
+                        }`}
+                        style={{
+                          border: user?.emailVerified
+                            ? "1px solid rgba(16, 185, 129, 0.3)"
+                            : "1px solid rgba(234, 179, 8, 0.3)",
+                          color: user?.emailVerified ? "#059669" : "#d97706",
+                        }}
+                      >
+                        {user?.emailVerified ? (
+                          <>
+                            <CheckCircle className="w-3.5 h-3.5 shrink-0" />
+                            <span className="truncate max-w-[150px] sm:max-w-none">
+                              Verified
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                            <span className="truncate max-w-[150px] sm:max-w-none">
+                              Unverified
+                            </span>
+                          </>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons - Desktop */}
+              <div className="hidden sm:flex items-center gap-3 shrink-0 flex-wrap">
+                {/* Email Verification Button */}
+                {!user?.emailVerified && (
+                  <button
+                    onClick={() => setVerifyEmailModalOpen(true)}
+                    className="relative flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all text-sm font-semibold text-white shadow-lg hover:shadow-xl hover:scale-105"
+                    style={{
+                      backgroundColor: "#d97706",
+                      border: "1px solid rgba(217, 119, 6, 0.5)",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = "#b45309";
+                      e.currentTarget.style.borderColor = "rgba(217, 119, 6, 0.7)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = "#d97706";
+                      e.currentTarget.style.borderColor = "rgba(217, 119, 6, 0.5)";
+                    }}
+                  >
+                    <Mail className="w-4 h-4 shrink-0" />
+                    <span className="whitespace-nowrap">Verify Now</span>
+                  </button>
+                )}
+                {/* View All Saved Items Button */}
+                <button
+                  onClick={() => navigate("/favorites")}
+                  className="relative flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all text-sm font-semibold text-white shadow-lg hover:shadow-xl hover:scale-105"
+                  style={{
+                    backgroundColor: "#2F3C96",
+                    border: "1px solid rgba(47, 60, 150, 0.5)",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = "#253075";
+                    e.currentTarget.style.borderColor = "rgba(47, 60, 150, 0.7)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = "#2F3C96";
+                    e.currentTarget.style.borderColor = "rgba(47, 60, 150, 0.5)";
+                  }}
+                >
+                  <Star className="w-4 h-4 shrink-0" />
+                  <span className="whitespace-nowrap">View All Saved Items</span>
+                </button>
+              </div>
+
+              {/* Mobile Collapse Button */}
+              <button
+                onClick={() => setIsProfileBannerExpanded(!isProfileBannerExpanded)}
+                className="sm:hidden flex items-center justify-center w-10 h-10 rounded-lg transition-all"
+                style={{
+                  backgroundColor: "rgba(47, 60, 150, 0.15)",
+                  color: "#2F3C96",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = "rgba(47, 60, 150, 0.25)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = "rgba(47, 60, 150, 0.15)";
+                }}
+              >
+                {isProfileBannerExpanded ? (
+                  <ChevronUp className="w-5 h-5" />
+                ) : (
+                  <ChevronDown className="w-5 h-5" />
+                )}
+              </button>
+            </div>
+
+            {/* Collapsible Content - Profile Details & Meetings */}
+            <div
+              className={`relative z-10 overflow-hidden transition-all duration-300 ${
+                isProfileBannerExpanded ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0"
+              } sm:max-h-none sm:opacity-100`}
+            >
+              <div className="px-5 sm:px-4 pb-5 sm:pb-0 border-t border-white/20 sm:border-t-0 pt-4 sm:pt-0">
+                {/* Profile Info - Full Details for Mobile */}
+                <div className="sm:hidden flex flex-col gap-3 mb-4">
+                  <h3
+                    className="text-base font-bold"
+                    style={{ color: "#2F3C96" }}
+                  >
+                    Hello, {user?.username || "User"} 👋 — here's your health dashboard
                   </h3>
                   <div
-                    className="flex flex-wrap items-center gap-3 text-xs sm:text-sm"
+                    className="flex flex-wrap items-center gap-3 text-xs"
                     style={{ color: "#787878" }}
                   >
                     {userConditions.length > 0 ? (
@@ -1780,9 +1966,7 @@ export default function DashboardPatient() {
                           }}
                         >
                           <Heart className="w-3.5 h-3.5 shrink-0" />
-                          <span className="truncate max-w-[150px] sm:max-w-none">
-                            {condition}
-                          </span>
+                          <span>{condition}</span>
                         </span>
                       ))
                     ) : (
@@ -1795,9 +1979,7 @@ export default function DashboardPatient() {
                         }}
                       >
                         <Heart className="w-3.5 h-3.5 shrink-0" />
-                        <span className="truncate max-w-[150px] sm:max-w-none">
-                          {userDisease}
-                        </span>
+                        <span>{userDisease}</span>
                       </span>
                     )}
                     <span
@@ -1809,11 +1991,8 @@ export default function DashboardPatient() {
                       }}
                     >
                       <MapPin className="w-3.5 h-3.5 shrink-0" />
-                      <span className="truncate max-w-[150px] sm:max-w-none">
-                        {locationText}
-                      </span>
+                      <span>{locationText}</span>
                     </span>
-                    {/* Email Verification Status */}
                     <span
                       className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full ${
                         user?.emailVerified
@@ -1830,81 +2009,56 @@ export default function DashboardPatient() {
                       {user?.emailVerified ? (
                         <>
                           <CheckCircle className="w-3.5 h-3.5 shrink-0" />
-                          <span className="truncate max-w-[150px] sm:max-w-none">
-                            Verified
-                          </span>
+                          <span>Verified</span>
                         </>
                       ) : (
                         <>
                           <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                          <span className="truncate max-w-[150px] sm:max-w-none">
-                            Unverified
-                          </span>
+                          <span>Unverified</span>
                         </>
                       )}
                     </span>
                   </div>
                 </div>
-              </div>
-            </div>
 
-            {/* Action Buttons */}
-            <div className="relative z-10 flex items-center gap-3 shrink-0 flex-wrap">
-              {/* Email Verification Button */}
-              {!user?.emailVerified && (
-                <button
-                  onClick={() => setVerifyEmailModalOpen(true)}
-                  className="relative flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all text-sm font-semibold text-white shadow-lg hover:shadow-xl hover:scale-105"
-                  style={{
-                    backgroundColor: "#d97706",
-                    border: "1px solid rgba(217, 119, 6, 0.5)",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = "#b45309";
-                    e.currentTarget.style.borderColor = "rgba(217, 119, 6, 0.7)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = "#d97706";
-                    e.currentTarget.style.borderColor = "rgba(217, 119, 6, 0.5)";
-                  }}
-                >
-                  <Mail className="w-4 h-4 shrink-0" />
-                  <span className="hidden sm:inline whitespace-nowrap">
-                    Verify Now
-                  </span>
-                </button>
-              )}
-              {/* View All Saved Items Button */}
-              <button
-                onClick={() => navigate("/favorites")}
-                className="relative flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all text-sm font-semibold text-white shadow-lg hover:shadow-xl hover:scale-105"
-                style={{
-                  backgroundColor: "#2F3C96",
-                  border: "1px solid rgba(47, 60, 150, 0.5)",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = "#253075";
-                  e.currentTarget.style.borderColor = "rgba(47, 60, 150, 0.7)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = "#2F3C96";
-                  e.currentTarget.style.borderColor = "rgba(47, 60, 150, 0.5)";
-                }}
-              >
-                <Star className="w-4 h-4 shrink-0" />
-                <span className="hidden sm:inline whitespace-nowrap">
-                  View All Saved Items
-                </span>
-              </button>
+                {/* Action Buttons - Mobile */}
+                <div className="sm:hidden flex items-center gap-3 flex-wrap mb-4">
+                  {!user?.emailVerified && (
+                    <button
+                      onClick={() => setVerifyEmailModalOpen(true)}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all text-sm font-semibold text-white shadow-lg"
+                      style={{
+                        backgroundColor: "#d97706",
+                        border: "1px solid rgba(217, 119, 6, 0.5)",
+                      }}
+                    >
+                      <Mail className="w-4 h-4 shrink-0" />
+                      <span>Verify Now</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => navigate("/favorites")}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all text-sm font-semibold text-white shadow-lg"
+                    style={{
+                      backgroundColor: "#2F3C96",
+                      border: "1px solid rgba(47, 60, 150, 0.5)",
+                    }}
+                  >
+                    <Star className="w-4 h-4 shrink-0" />
+                    <span>View All Saved Items</span>
+                  </button>
+                </div>
+
+              </div>
             </div>
           </div>
         </div>
 
         {/* Main Content Section - Full Width */}
         <div className="mb-8">
-          {/* Activity Bar - Upcoming Meetings & Recent Activity */}
+          {/* Activity Bar - Upcoming Meetings & Recent Activity - Hidden on Mobile (moved to collapsible) */}
           <div
-            className="rounded-xl shadow-md border p-2 mb-4"
+            className="hidden sm:block rounded-xl shadow-md border p-2 mb-4"
             style={{
               background: "linear-gradient(135deg, #D0C4E2, #E8E0EF, #F5F2F8)",
               borderColor: "rgba(208, 196, 226, 0.5)",
@@ -2024,7 +2178,7 @@ export default function DashboardPatient() {
             </div>
           </div>
 
-          {/* Category Buttons Bar */}
+          {/* Category Buttons Bar - Grid on Mobile, Scrollable on Desktop */}
           <div
             className="rounded-xl shadow-md border p-2 mb-6"
             style={{
@@ -2032,7 +2186,79 @@ export default function DashboardPatient() {
               borderColor: "rgba(208, 196, 226, 0.5)",
             }}
           >
-            <div className="flex items-center gap-2 overflow-x-auto">
+            {/* Mobile: Grid Layout */}
+            <div className="grid grid-cols-2 sm:hidden gap-2">
+              {[
+                {
+                  key: "publications",
+                  label: "Publications",
+                  icon: FileText,
+                },
+                {
+                  key: "trials",
+                  label: "Trials",
+                  icon: Beaker,
+                },
+                {
+                  key: "experts",
+                  label: "Experts",
+                  icon: Users,
+                },
+                {
+                  key: "forums",
+                  label: "Forums",
+                  icon: MessageCircle,
+                },
+                {
+                  key: "favorites",
+                  label: "Favorites",
+                  icon: Star,
+                },
+              ].map((category) => {
+                const Icon = category.icon;
+                const isSelected = selectedCategory === category.key;
+                return (
+                  <button
+                    key={category.key}
+                    onClick={() => setSelectedCategory(category.key)}
+                    className={`flex flex-col items-center justify-center gap-1.5 px-3 py-3 rounded-lg border transition-all duration-200 ${
+                      !isSelected ? "category-button-hover" : ""
+                    }`}
+                    style={
+                      isSelected
+                        ? {
+                            backgroundColor: "#2F3C96",
+                            color: "#FFFFFF",
+                            borderColor: "#2F3C96",
+                          }
+                        : {
+                            backgroundColor: "rgba(255, 255, 255, 0.6)",
+                            color: "#787878",
+                            borderColor: "rgba(47, 60, 150, 0.2)",
+                          }
+                    }
+                  >
+                    <Icon className="w-5 h-5 shrink-0" />
+                    <span className="text-xs font-semibold text-center">
+                      {category.label}
+                    </span>
+                    <span
+                      className="text-xs font-bold"
+                      style={{
+                        color: isSelected
+                          ? "rgba(255, 255, 255, 0.9)"
+                          : "#2F3C96",
+                      }}
+                    >
+                      ({getCategoryCount(category.key)})
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Desktop: Scrollable Layout */}
+            <div className="hidden sm:flex items-center gap-2 overflow-x-auto">
               {[
                 {
                   key: "publications",
@@ -2103,12 +2329,12 @@ export default function DashboardPatient() {
                 );
               })}
 
-              {/* Filter/Sort Button */}
+              {/* Filter/Sort Button - Desktop */}
               {(selectedCategory === "trials" ||
                 selectedCategory === "publications") && (
                 <button
                   onClick={() => setFilterModalOpen(true)}
-                  className="ml-auto flex items-center gap-2 px-4 py-2 rounded-lg border transition-all duration-200 whitespace-nowrap"
+                  className="ml-auto hidden sm:flex items-center gap-2 px-4 py-2 rounded-lg border transition-all duration-200 whitespace-nowrap"
                   style={{
                     backgroundColor: "rgba(47, 60, 150, 0.15)",
                     color: "#2F3C96",
@@ -2136,6 +2362,31 @@ export default function DashboardPatient() {
                 </button>
               )}
             </div>
+
+            {/* Filter/Sort Button - Mobile (Full Width Below Grid) */}
+            {(selectedCategory === "trials" ||
+              selectedCategory === "publications") && (
+              <button
+                onClick={() => setFilterModalOpen(true)}
+                className="sm:hidden w-full mt-2 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border transition-all duration-200"
+                style={{
+                  backgroundColor: "rgba(47, 60, 150, 0.15)",
+                  color: "#2F3C96",
+                  borderColor: "rgba(47, 60, 150, 0.3)",
+                }}
+              >
+                <Filter className="w-4 h-4 shrink-0" />
+                <span className="text-sm font-semibold">
+                  {selectedCategory === "trials" ? "Filter" : "Sort"}
+                </span>
+                {(trialFilter || publicationSort !== "relevance") && (
+                  <span
+                    className="w-2 h-2 rounded-full"
+                    style={{ backgroundColor: "#2F3C96" }}
+                  ></span>
+                )}
+              </button>
+            )}
           </div>
 
           {/* Main Recommendations Section */}

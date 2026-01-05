@@ -37,6 +37,8 @@ import {
   AlertCircle,
   MessageSquare,
   Clock,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import Modal from "../components/ui/Modal";
 import { MultiStepLoader } from "../components/ui/multi-step-loader";
@@ -64,6 +66,9 @@ export default function DashboardResearcher() {
   const [filterModalOpen, setFilterModalOpen] = useState(false);
   const [loadingFiltered, setLoadingFiltered] = useState(false);
   const [favoritingItems, setFavoritingItems] = useState(new Set()); // Track items being favorited/unfavorited
+  const [isProfileBannerExpanded, setIsProfileBannerExpanded] = useState(false); // For mobile collapsible profile banner
+  const [isEmploymentExpanded, setIsEmploymentExpanded] = useState(false); // For mobile collapsible employment history
+  const [isPublicationsExpanded, setIsPublicationsExpanded] = useState(false); // For mobile collapsible publications
   const [userProfile, setUserProfile] = useState(null);
   const [verifyEmailModalOpen, setVerifyEmailModalOpen] = useState(false);
   const [summaryModal, setSummaryModal] = useState({
@@ -302,12 +307,15 @@ export default function DashboardResearcher() {
     // Listen for cross-tab messages (email verification, user updates)
     const cleanupCrossTab = listenForMessages((type, data) => {
       if (type === "email-verified" || type === "user-updated") {
-        const updatedUser = data.user || JSON.parse(localStorage.getItem("user") || "{}");
+        const updatedUser =
+          data.user || JSON.parse(localStorage.getItem("user") || "{}");
         setUser(updatedUser);
         // Also trigger login event for other listeners
         window.dispatchEvent(new Event("login"));
         if (type === "email-verified") {
-          toast.success("Email verified successfully! (Updated from another tab)");
+          toast.success(
+            "Email verified successfully! (Updated from another tab)"
+          );
         }
       }
     });
@@ -327,15 +335,20 @@ export default function DashboardResearcher() {
         if (response.ok) {
           const data = await response.json();
           const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
-          
+
           // If email verification status changed, update user state
-          if (currentUser.emailVerified !== data.emailVerified && data.emailVerified) {
+          if (
+            currentUser.emailVerified !== data.emailVerified &&
+            data.emailVerified
+          ) {
             currentUser.emailVerified = true;
             localStorage.setItem("user", JSON.stringify(currentUser));
             setUser(currentUser);
             window.dispatchEvent(new Event("login"));
-            toast.success("Email verified successfully! (Updated from another device)");
-            
+            toast.success(
+              "Email verified successfully! (Updated from another device)"
+            );
+
             // Stop polling once verified
             if (emailCheckInterval) {
               clearInterval(emailCheckInterval);
@@ -354,7 +367,7 @@ export default function DashboardResearcher() {
     if (userData && !userData.emailVerified) {
       // Check immediately
       checkEmailVerificationStatus();
-      
+
       // Then check every 30 seconds
       emailCheckInterval = setInterval(() => {
         checkEmailVerificationStatus();
@@ -1530,9 +1543,9 @@ export default function DashboardResearcher() {
       <div className="px-4 sm:px-6 md:px-8 lg:px-12 mx-auto max-w-7xl pt-6 pb-12 relative">
         {/* Top Bar with Profile and Insights */}
         <div className="mb-8">
-          {/* Profile Section with Insights */}
+          {/* Profile Section with Insights - Collapsible on Mobile */}
           <div
-            className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-2xl shadow-xl border relative overflow-hidden w-full p-5 sm:p-4 mt-18"
+            className="rounded-2xl shadow-xl border relative overflow-hidden w-full mt-18"
             style={{
               background: "linear-gradient(135deg, #D0C4E2, #E8E0EF, #F5F2F8)",
               borderColor: "rgba(208, 196, 226, 0.5)",
@@ -1548,29 +1561,244 @@ export default function DashboardResearcher() {
               style={{ backgroundColor: "rgba(47, 60, 150, 0.1)" }}
             ></div>
 
-            <div className="relative z-10 flex items-center gap-4 flex-1 min-w-0 w-full sm:w-auto">
-              {/* Avatar */}
-              <div
-                className="w-12 h-12 backdrop-blur-sm rounded-full flex items-center justify-center text-white font-bold text-xl shadow-lg ring-2 shrink-0"
-                style={{
-                  backgroundColor: "#2F3C96",
-                  ringColor: "rgba(47, 60, 150, 0.5)",
-                }}
-              >
-                {user?.username?.charAt(0)?.toUpperCase() || "R"}
+            {/* Collapsible Header - Always Visible */}
+            <div className="relative z-10 flex items-center justify-between gap-3 sm:gap-4 p-4 sm:p-5">
+              <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
+                {/* Avatar */}
+                <div
+                  className="w-10 h-10 sm:w-12 sm:h-12 backdrop-blur-sm rounded-full flex items-center justify-center text-white font-bold text-lg sm:text-xl shadow-lg ring-2 shrink-0"
+                  style={{
+                    backgroundColor: "#2F3C96",
+                    ringColor: "rgba(47, 60, 150, 0.5)",
+                  }}
+                >
+                  {user?.username?.charAt(0)?.toUpperCase() || "R"}
+                </div>
+
+                {/* Profile Info - Simplified on Mobile */}
+                <div className="flex-1 min-w-0 sm:hidden">
+                  <h3
+                    className="text-sm sm:text-base font-bold mb-0.5 sm:mb-1 truncate"
+                    style={{ color: "#2F3C96" }}
+                  >
+                    Hello, {user?.username || "Researcher"} 👋
+                  </h3>
+                  <p className="text-xs" style={{ color: "#787878" }}>
+                    Tap to view details
+                  </p>
+                </div>
+
+                {/* Desktop Profile Info */}
+                <div className="hidden sm:flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-6 flex-1 min-w-0">
+                  <div className="flex-1 min-w-0">
+                    <h3
+                      className="text-base sm:text-lg font-bold mb-1"
+                      style={{ color: "#2F3C96" }}
+                    >
+                      Hello, {user?.username || "Researcher"} 👋
+                    </h3>
+                    <div
+                      className="flex flex-wrap items-center gap-3 text-xs sm:text-sm"
+                      style={{ color: "#787878" }}
+                    >
+                      {userProfile?.researcher?.specialties &&
+                        userProfile.researcher.specialties.length > 0 && (
+                          <span
+                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+                            style={{
+                              backgroundColor: "rgba(47, 60, 150, 0.15)",
+                              border: "1px solid rgba(47, 60, 150, 0.3)",
+                              color: "#2F3C96",
+                            }}
+                          >
+                            <Briefcase className="w-3.5 h-3.5 shrink-0" />
+                            <span className="truncate max-w-[150px] sm:max-w-none">
+                              Specialties:{" "}
+                              {userProfile.researcher.specialties.join(", ")}
+                            </span>
+                          </span>
+                        )}
+                      {userProfile?.researcher?.interests &&
+                        userProfile.researcher.interests.length > 0 && (
+                          <span
+                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+                            style={{
+                              backgroundColor: "rgba(47, 60, 150, 0.15)",
+                              border: "1px solid rgba(47, 60, 150, 0.3)",
+                              color: "#2F3C96",
+                            }}
+                          >
+                            <Beaker className="w-3.5 h-3.5 shrink-0" />
+                            <span className="truncate max-w-[150px] sm:max-w-none">
+                              Research Interests:{" "}
+                              {userProfile.researcher.interests.join(", ")}
+                            </span>
+                          </span>
+                        )}
+                      {(!userProfile?.researcher?.specialties ||
+                        userProfile.researcher.specialties.length === 0) &&
+                        (!userProfile?.researcher?.interests ||
+                          userProfile.researcher.interests.length === 0) && (
+                          <span
+                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+                            style={{
+                              backgroundColor: "rgba(47, 60, 150, 0.15)",
+                              border: "1px solid rgba(47, 60, 150, 0.3)",
+                              color: "#2F3C96",
+                            }}
+                          >
+                            <Beaker className="w-3.5 h-3.5 shrink-0" />
+                            <span className="truncate max-w-[150px] sm:max-w-none">
+                              {userInterests}
+                            </span>
+                          </span>
+                        )}
+                      <span
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+                        style={{
+                          backgroundColor: "rgba(47, 60, 150, 0.15)",
+                          border: "1px solid rgba(47, 60, 150, 0.3)",
+                          color: "#2F3C96",
+                        }}
+                      >
+                        <MapPin className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate max-w-[150px] sm:max-w-none">
+                          {locationText}
+                        </span>
+                      </span>
+                      {/* Email Verification Status */}
+                      <span
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full ${
+                          user?.emailVerified
+                            ? "bg-green-50 border-green-200"
+                            : "bg-yellow-50 border-yellow-200"
+                        }`}
+                        style={{
+                          border: user?.emailVerified
+                            ? "1px solid rgba(16, 185, 129, 0.3)"
+                            : "1px solid rgba(234, 179, 8, 0.3)",
+                          color: user?.emailVerified ? "#059669" : "#d97706",
+                        }}
+                      >
+                        {user?.emailVerified ? (
+                          <>
+                            <CheckCircle className="w-3.5 h-3.5 shrink-0" />
+                            <span className="truncate max-w-[150px] sm:max-w-none">
+                              Verified
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                            <span className="truncate max-w-[150px] sm:max-w-none">
+                              Unverified
+                            </span>
+                          </>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              {/* Profile Info */}
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-6 flex-1 min-w-0">
-                <div className="flex-1 min-w-0">
+              {/* Action Buttons - Desktop */}
+              <div className="hidden sm:flex items-center gap-3 shrink-0 flex-wrap">
+                {/* Email Verification Button */}
+                {!user?.emailVerified && (
+                  <button
+                    onClick={() => setVerifyEmailModalOpen(true)}
+                    className="relative flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all text-sm font-semibold text-white shadow-lg hover:shadow-xl hover:scale-105"
+                    style={{
+                      backgroundColor: "#d97706",
+                      border: "1px solid rgba(217, 119, 6, 0.5)",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = "#b45309";
+                      e.currentTarget.style.borderColor =
+                        "rgba(217, 119, 6, 0.7)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = "#d97706";
+                      e.currentTarget.style.borderColor =
+                        "rgba(217, 119, 6, 0.5)";
+                    }}
+                  >
+                    <Mail className="w-4 h-4 shrink-0" />
+                    <span className="whitespace-nowrap">Verify Now</span>
+                  </button>
+                )}
+                {/* View All Saved Items Button */}
+                <button
+                  onClick={() => navigate("/favorites")}
+                  className="relative flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all text-sm font-semibold text-white shadow-lg hover:shadow-xl hover:scale-105"
+                  style={{
+                    backgroundColor: "#2F3C96",
+                    border: "1px solid rgba(47, 60, 150, 0.5)",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = "#253075";
+                    e.currentTarget.style.borderColor =
+                      "rgba(47, 60, 150, 0.7)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = "#2F3C96";
+                    e.currentTarget.style.borderColor =
+                      "rgba(47, 60, 150, 0.5)";
+                  }}
+                >
+                  <Star className="w-4 h-4 shrink-0" />
+                  <span className="whitespace-nowrap">
+                    View All Saved Items
+                  </span>
+                </button>
+              </div>
+
+              {/* Mobile Collapse Button */}
+              <button
+                onClick={() =>
+                  setIsProfileBannerExpanded(!isProfileBannerExpanded)
+                }
+                className="sm:hidden flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-lg transition-all shrink-0"
+                style={{
+                  backgroundColor: "rgba(47, 60, 150, 0.15)",
+                  color: "#2F3C96",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor =
+                    "rgba(47, 60, 150, 0.25)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor =
+                    "rgba(47, 60, 150, 0.15)";
+                }}
+              >
+                {isProfileBannerExpanded ? (
+                  <ChevronUp className="w-4 h-4 sm:w-5 sm:h-5" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5" />
+                )}
+              </button>
+            </div>
+
+            {/* Collapsible Content - Profile Details */}
+            <div
+              className={`relative z-10 overflow-hidden transition-all duration-300 ${
+                isProfileBannerExpanded
+                  ? "max-h-[2000px] opacity-100"
+                  : "max-h-0 opacity-0"
+              } sm:max-h-none sm:opacity-100`}
+            >
+              <div className="px-5 sm:px-4 pb-5 sm:pb-0 border-t border-white/20 sm:border-t-0 pt-4 sm:pt-0">
+                {/* Profile Info - Full Details for Mobile */}
+                <div className="sm:hidden flex flex-col gap-3 mb-4">
                   <h3
-                    className="text-base sm:text-lg font-bold mb-1"
+                    className="text-base font-bold"
                     style={{ color: "#2F3C96" }}
                   >
                     Hello, {user?.username || "Researcher"} 👋
                   </h3>
                   <div
-                    className="flex flex-wrap items-center gap-3 text-xs sm:text-sm"
+                    className="flex flex-wrap items-center gap-3 text-xs"
                     style={{ color: "#787878" }}
                   >
                     {userProfile?.researcher?.specialties &&
@@ -1584,7 +1812,7 @@ export default function DashboardResearcher() {
                           }}
                         >
                           <Briefcase className="w-3.5 h-3.5 shrink-0" />
-                          <span className="truncate max-w-[150px] sm:max-w-none">
+                          <span>
                             Specialties:{" "}
                             {userProfile.researcher.specialties.join(", ")}
                           </span>
@@ -1601,7 +1829,7 @@ export default function DashboardResearcher() {
                           }}
                         >
                           <Beaker className="w-3.5 h-3.5 shrink-0" />
-                          <span className="truncate max-w-[150px] sm:max-w-none">
+                          <span>
                             Research Interests:{" "}
                             {userProfile.researcher.interests.join(", ")}
                           </span>
@@ -1620,9 +1848,7 @@ export default function DashboardResearcher() {
                           }}
                         >
                           <Beaker className="w-3.5 h-3.5 shrink-0" />
-                          <span className="truncate max-w-[150px] sm:max-w-none">
-                            {userInterests}
-                          </span>
+                          <span>{userInterests}</span>
                         </span>
                       )}
                     <span
@@ -1634,11 +1860,8 @@ export default function DashboardResearcher() {
                       }}
                     >
                       <MapPin className="w-3.5 h-3.5 shrink-0" />
-                      <span className="truncate max-w-[150px] sm:max-w-none">
-                        {locationText}
-                      </span>
+                      <span>{locationText}</span>
                     </span>
-                    {/* Email Verification Status */}
                     <span
                       className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full ${
                         user?.emailVerified
@@ -1655,81 +1878,55 @@ export default function DashboardResearcher() {
                       {user?.emailVerified ? (
                         <>
                           <CheckCircle className="w-3.5 h-3.5 shrink-0" />
-                          <span className="truncate max-w-[150px] sm:max-w-none">
-                            Verified
-                          </span>
+                          <span>Verified</span>
                         </>
                       ) : (
                         <>
                           <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                          <span className="truncate max-w-[150px] sm:max-w-none">
-                            Unverified
-                          </span>
+                          <span>Unverified</span>
                         </>
                       )}
                     </span>
                   </div>
                 </div>
-              </div>
-            </div>
 
-            {/* Action Buttons */}
-            <div className="relative z-10 flex items-center gap-3 shrink-0 flex-wrap">
-              {/* Email Verification Button */}
-              {!user?.emailVerified && (
-                <button
-                  onClick={() => setVerifyEmailModalOpen(true)}
-                  className="relative flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all text-sm font-semibold text-white shadow-lg hover:shadow-xl hover:scale-105"
-                  style={{
-                    backgroundColor: "#d97706",
-                    border: "1px solid rgba(217, 119, 6, 0.5)",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = "#b45309";
-                    e.currentTarget.style.borderColor = "rgba(217, 119, 6, 0.7)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = "#d97706";
-                    e.currentTarget.style.borderColor = "rgba(217, 119, 6, 0.5)";
-                  }}
-                >
-                  <Mail className="w-4 h-4 shrink-0" />
-                  <span className="hidden sm:inline whitespace-nowrap">
-                    Verify Now
-                  </span>
-                </button>
-              )}
-              {/* View All Saved Items Button */}
-              <button
-                onClick={() => navigate("/favorites")}
-                className="relative flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all text-sm font-semibold text-white shadow-lg hover:shadow-xl hover:scale-105"
-                style={{
-                  backgroundColor: "#2F3C96",
-                  border: "1px solid rgba(47, 60, 150, 0.5)",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = "#253075";
-                  e.currentTarget.style.borderColor = "rgba(47, 60, 150, 0.7)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = "#2F3C96";
-                  e.currentTarget.style.borderColor = "rgba(47, 60, 150, 0.5)";
-                }}
-              >
-                <Star className="w-4 h-4 shrink-0" />
-                <span className="hidden sm:inline whitespace-nowrap">
-                  View All Saved Items
-                </span>
-              </button>
+                {/* Action Buttons - Mobile */}
+                <div className="sm:hidden flex items-center gap-3 flex-wrap mb-4">
+                  {!user?.emailVerified && (
+                    <button
+                      onClick={() => setVerifyEmailModalOpen(true)}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all text-sm font-semibold text-white shadow-lg"
+                      style={{
+                        backgroundColor: "#d97706",
+                        border: "1px solid rgba(217, 119, 6, 0.5)",
+                      }}
+                    >
+                      <Mail className="w-4 h-4 shrink-0" />
+                      <span>Verify Now</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => navigate("/favorites")}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all text-sm font-semibold text-white shadow-lg"
+                    style={{
+                      backgroundColor: "#2F3C96",
+                      border: "1px solid rgba(47, 60, 150, 0.5)",
+                    }}
+                  >
+                    <Star className="w-4 h-4 shrink-0" />
+                    <span>View All Saved Items</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
         {/* Main Content Section - Full Width */}
         <div className="mb-8">
-          {/* Activity Bar - Upcoming Meetings & Mentions */}
+          {/* Activity Bar - Upcoming Meetings & Mentions - Hidden on Mobile */}
           <div
-            className="rounded-xl shadow-md border p-2 mb-4"
+            className="hidden sm:block rounded-xl shadow-md border p-2 mb-4"
             style={{
               background: "linear-gradient(135deg, #D0C4E2, #E8E0EF, #F5F2F8)",
               borderColor: "rgba(208, 196, 226, 0.5)",
@@ -1846,7 +2043,7 @@ export default function DashboardResearcher() {
             </div>
           </div>
 
-          {/* Category Buttons Bar */}
+          {/* Category Buttons Bar - Grid on Mobile, Scrollable on Desktop */}
           <div
             className="rounded-xl shadow-md border p-2 mb-6"
             style={{
@@ -1854,7 +2051,111 @@ export default function DashboardResearcher() {
               borderColor: "rgba(208, 196, 226, 0.5)",
             }}
           >
-            <div className="flex items-center gap-2 overflow-x-auto">
+            {/* Mobile: Grid Layout */}
+            <div className="grid grid-cols-2 sm:hidden gap-2.5">
+              {[
+                {
+                  key: "profile",
+                  label: "Your Profile",
+                  icon: User,
+                },
+                {
+                  key: "collaborators",
+                  label: "Collaborators",
+                  icon: Users,
+                },
+                {
+                  key: "forums",
+                  label: "Forums",
+                  icon: MessageCircle,
+                },
+                {
+                  key: "publications",
+                  label: "Publications",
+                  icon: FileText,
+                },
+                {
+                  key: "trials",
+                  label: "Clinical Trials",
+                  icon: Beaker,
+                },
+                {
+                  key: "favorites",
+                  label: "Favorites",
+                  icon: Star,
+                },
+              ].map((category) => {
+                const Icon = category.icon;
+                const isSelected = selectedCategory === category.key;
+                return (
+                  <button
+                    key={category.key}
+                    onClick={() => setSelectedCategory(category.key)}
+                    className={`flex flex-col items-center justify-center gap-1.5 px-2.5 py-3 rounded-lg border transition-all duration-200 ${
+                      !isSelected ? "category-button-hover" : ""
+                    }`}
+                    style={
+                      isSelected
+                        ? {
+                            backgroundColor: "#2F3C96",
+                            color: "#FFFFFF",
+                            borderColor: "#2F3C96",
+                          }
+                        : {
+                            backgroundColor: "rgba(255, 255, 255, 0.6)",
+                            color: "#787878",
+                            borderColor: "rgba(47, 60, 150, 0.2)",
+                          }
+                    }
+                  >
+                    <Icon className="w-4.5 h-4.5 sm:w-5 sm:h-5 shrink-0" />
+                    <span className="text-xs font-semibold text-center leading-tight">
+                      {category.label}
+                    </span>
+                    {category.key !== "profile" && (
+                      <span
+                        className="text-xs font-bold"
+                        style={
+                          isSelected
+                            ? { color: "rgba(255, 255, 255, 0.9)" }
+                            : { color: "#2F3C96" }
+                        }
+                      >
+                        ({getCategoryCount(category.key)})
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+
+              {/* Filter/Sort Button - Mobile (Inside Grid) */}
+              {(selectedCategory === "trials" ||
+                selectedCategory === "publications") && (
+                <button
+                  onClick={() => setFilterModalOpen(true)}
+                  className="col-span-2 sm:hidden flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border transition-all duration-200 mt-1"
+                  style={{
+                    backgroundColor: "rgba(208, 196, 226, 0.2)",
+                    color: "#2F3C96",
+                    borderColor: "rgba(208, 196, 226, 0.3)",
+                  }}
+                >
+                  <Filter className="w-4 h-4 shrink-0" />
+                  <span className="text-sm font-semibold">
+                    {selectedCategory === "trials" ? "Filter" : "Sort"}
+                  </span>
+                  {(trialFilter || publicationSort !== "relevance") && (
+                    <span
+                      className="w-2 h-2 rounded-full ml-1"
+                      style={{ backgroundColor: "#2F3C96" }}
+                    ></span>
+                  )}
+                </button>
+              )}
+            </div>
+
+            {/* Desktop: Scrollable Layout */}
+            <div className="hidden sm:flex items-center gap-2 overflow-x-auto">
               {[
                 {
                   key: "profile",
@@ -1932,12 +2233,12 @@ export default function DashboardResearcher() {
                 );
               })}
 
-              {/* Filter/Sort Button */}
+              {/* Filter/Sort Button - Desktop */}
               {(selectedCategory === "trials" ||
                 selectedCategory === "publications") && (
                 <button
                   onClick={() => setFilterModalOpen(true)}
-                  className="ml-auto flex items-center gap-2 px-4 py-2 rounded-lg border transition-all duration-200 whitespace-nowrap"
+                  className="ml-auto hidden sm:flex items-center gap-2 px-4 py-2 rounded-lg border transition-all duration-200 whitespace-nowrap"
                   style={{
                     backgroundColor: "rgba(208, 196, 226, 0.2)",
                     color: "#2F3C96",
@@ -2021,33 +2322,33 @@ export default function DashboardResearcher() {
                 <div className="col-span-full">
                   {!userProfile?.researcher?.orcid ? (
                     <div
-                      className="backdrop-blur-xl rounded-xl shadow-lg border p-6 sm:p-8"
+                      className="backdrop-blur-xl rounded-xl shadow-lg border p-4 sm:p-6 lg:p-8"
                       style={{
                         backgroundColor: "rgba(255, 255, 255, 0.95)",
                         borderColor: "rgba(208, 196, 226, 0.3)",
                       }}
                     >
-                      <div className="flex items-start gap-4">
+                      <div className="flex items-start gap-3 sm:gap-4">
                         <div
-                          className="w-12 h-12 rounded-full flex items-center justify-center shrink-0"
+                          className="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center shrink-0"
                           style={{
                             backgroundColor: "rgba(208, 196, 226, 0.3)",
                           }}
                         >
                           <LinkIcon
-                            className="w-6 h-6"
+                            className="w-5 h-5 sm:w-6 sm:h-6"
                             style={{ color: "#2F3C96" }}
                           />
                         </div>
-                        <div className="flex-1">
+                        <div className="flex-1 min-w-0">
                           <h3
-                            className="text-lg font-semibold mb-2"
+                            className="text-base sm:text-lg font-semibold mb-1.5 sm:mb-2"
                             style={{ color: "#2F3C96" }}
                           >
                             ORCID ID Not Added
                           </h3>
                           <p
-                            className="text-sm mb-4"
+                            className="text-xs sm:text-sm mb-3 sm:mb-4 leading-relaxed"
                             style={{ color: "#787878" }}
                           >
                             Add your ORCID ID to link your research activities
@@ -2056,7 +2357,7 @@ export default function DashboardResearcher() {
                           </p>
                           <button
                             onClick={() => navigate("/profile")}
-                            className="inline-flex items-center gap-2 px-5 py-2.5 text-white text-sm font-semibold rounded-lg transition-colors"
+                            className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 text-white text-xs sm:text-sm font-semibold rounded-lg transition-colors w-full sm:w-auto justify-center"
                             style={{
                               background:
                                 "linear-gradient(135deg, #2F3C96, #253075)",
@@ -2070,7 +2371,7 @@ export default function DashboardResearcher() {
                                 "linear-gradient(135deg, #2F3C96, #253075)";
                             }}
                           >
-                            <Edit3 className="w-4 h-4" />
+                            <Edit3 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                             Add ORCID ID
                           </button>
                         </div>
@@ -2078,122 +2379,122 @@ export default function DashboardResearcher() {
                     </div>
                   ) : (
                     <div
-                      className="backdrop-blur-xl rounded-xl shadow-lg border p-6 sm:p-8"
+                      className="backdrop-blur-xl rounded-xl shadow-lg border p-4 sm:p-6 lg:p-8"
                       style={{
                         backgroundColor: "rgba(255, 255, 255, 0.95)",
                         borderColor: "rgba(208, 196, 226, 0.3)",
                       }}
                     >
                       <div
-                        className="flex items-center justify-between mb-6 pb-4"
+                        className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 sm:gap-6 mb-4 sm:mb-6 pb-4 sm:pb-6"
                         style={{
                           borderBottom: "1px solid rgba(208, 196, 226, 0.3)",
                         }}
                       >
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
                           <div
-                            className="w-12 h-12 rounded-full flex items-center justify-center"
+                            className="w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center shrink-0"
                             style={{
                               backgroundColor: "rgba(208, 196, 226, 0.3)",
                             }}
                           >
                             <CheckCircle
-                              className="w-6 h-6"
+                              className="w-5 h-5 sm:w-6 sm:h-6"
                               style={{ color: "#2F3C96" }}
                             />
                           </div>
-                          <div className="flex items-center gap-4">
-                            <div>
-                              <h3
-                                className="text-lg font-semibold"
-                                style={{ color: "#2F3C96" }}
-                              >
-                                ORCID Profile Connected
-                              </h3>
-                              <a
-                                href={
-                                  orcidStats?.orcidUrl ||
-                                  `https://orcid.org/${userProfile.researcher.orcid}`
-                                }
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-sm flex items-center gap-1 mt-1"
-                                style={{ color: "#2F3C96" }}
-                                onMouseEnter={(e) => {
-                                  e.target.style.color = "#253075";
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.target.style.color = "#2F3C96";
-                                }}
-                              >
+                          <div className="flex-1 min-w-0">
+                            <h3
+                              className="text-base sm:text-lg font-semibold mb-1"
+                              style={{ color: "#2F3C96" }}
+                            >
+                              ORCID Profile Connected
+                            </h3>
+                            <a
+                              href={
+                                orcidStats?.orcidUrl ||
+                                `https://orcid.org/${userProfile.researcher.orcid}`
+                              }
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs sm:text-sm flex items-center gap-1 mt-1 break-all"
+                              style={{ color: "#2F3C96" }}
+                              onMouseEnter={(e) => {
+                                e.target.style.color = "#253075";
+                              }}
+                              onMouseLeave={(e) => {
+                                e.target.style.color = "#2F3C96";
+                              }}
+                            >
+                              <span className="truncate">
                                 {userProfile.researcher.orcid}
-                                <ExternalLink className="w-4 h-4" />
-                              </a>
-                            </div>
-                            {orcidStats && (
-                              <div
-                                className="flex items-center gap-2 px-4 py-2 rounded-lg border"
-                                style={{
-                                  backgroundColor: "rgba(208, 196, 226, 0.2)",
-                                  borderColor: "rgba(208, 196, 226, 0.3)",
-                                }}
-                              >
-                                <FileText
-                                  className="w-5 h-5"
-                                  style={{ color: "#2F3C96" }}
-                                />
-                                <div>
-                                  <p
-                                    className="text-2xl font-bold"
-                                    style={{ color: "#2F3C96" }}
-                                  >
-                                    {orcidStats.totalPublications || 0}
-                                  </p>
-                                  <p
-                                    className="text-xs"
-                                    style={{ color: "#787878" }}
-                                  >
-                                    Total works
-                                  </p>
-                                </div>
-                              </div>
-                            )}
+                              </span>
+                              <ExternalLink className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                            </a>
                           </div>
                         </div>
+                        {orcidStats && (
+                          <div
+                            className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg border shrink-0"
+                            style={{
+                              backgroundColor: "rgba(208, 196, 226, 0.2)",
+                              borderColor: "rgba(208, 196, 226, 0.3)",
+                            }}
+                          >
+                            <FileText
+                              className="w-4 h-4 sm:w-5 sm:h-5 shrink-0"
+                              style={{ color: "#2F3C96" }}
+                            />
+                            <div>
+                              <p
+                                className="text-xl sm:text-2xl font-bold"
+                                style={{ color: "#2F3C96" }}
+                              >
+                                {orcidStats.totalPublications || 0}
+                              </p>
+                              <p
+                                className="text-xs"
+                                style={{ color: "#787878" }}
+                              >
+                                Total works
+                              </p>
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       {loadingOrcidStats ? (
-                        <div className="flex items-center justify-center py-12">
+                        <div className="flex items-center justify-center py-8 sm:py-12">
                           <Loader2
-                            className="w-8 h-8 animate-spin"
+                            className="w-6 h-6 sm:w-8 sm:h-8 animate-spin"
                             style={{ color: "#2F3C96" }}
                           />
                         </div>
                       ) : orcidStats ? (
-                        <div className="space-y-6">
+                        <div className="space-y-4 sm:space-y-6">
                           {/* Biography at the top */}
                           {orcidStats.biography && (
                             <div
-                              className="rounded-lg p-5 border"
+                              className="rounded-lg p-4 sm:p-5 border"
                               style={{
                                 backgroundColor: "rgba(245, 242, 248, 0.5)",
                                 borderColor: "rgba(208, 196, 226, 0.3)",
                               }}
                             >
-                              <div className="flex items-center gap-2 mb-3">
+                              <div className="flex items-center gap-2 mb-2 sm:mb-3">
                                 <User
-                                  className="w-5 h-5"
+                                  className="w-4 h-4 sm:w-5 sm:h-5 shrink-0"
                                   style={{ color: "#2F3C96" }}
                                 />
                                 <span
-                                  className="text-sm font-semibold"
+                                  className="text-xs sm:text-sm font-semibold"
                                   style={{ color: "#2F3C96" }}
                                 >
                                   Biography
                                 </span>
                               </div>
                               <p
-                                className="text-sm leading-relaxed"
+                                className="text-xs sm:text-sm leading-relaxed"
                                 style={{ color: "#787878" }}
                               >
                                 {orcidStats.biography}
@@ -2202,30 +2503,30 @@ export default function DashboardResearcher() {
                           )}
 
                           {/* Profile Information Section as a list */}
-                          <div className="space-y-4">
+                          <div className="space-y-3 sm:space-y-4">
                             {/* Current Position */}
                             {orcidStats.currentPosition && (
                               <div
-                                className="rounded-lg p-4 border"
+                                className="rounded-lg p-3 sm:p-4 border"
                                 style={{
                                   backgroundColor: "rgba(245, 242, 248, 0.5)",
                                   borderColor: "rgba(208, 196, 226, 0.3)",
                                 }}
                               >
-                                <div className="flex items-center gap-2 mb-2">
+                                <div className="flex items-center gap-2 mb-1.5 sm:mb-2">
                                   <Briefcase
-                                    className="w-5 h-5"
+                                    className="w-4 h-4 sm:w-5 sm:h-5 shrink-0"
                                     style={{ color: "#2F3C96" }}
                                   />
                                   <span
-                                    className="text-sm font-semibold"
+                                    className="text-xs sm:text-sm font-semibold"
                                     style={{ color: "#2F3C96" }}
                                   >
                                     Current Position
                                   </span>
                                 </div>
                                 <p
-                                  className="text-sm"
+                                  className="text-xs sm:text-sm leading-relaxed"
                                   style={{ color: "#787878" }}
                                 >
                                   {orcidStats.currentPosition}
@@ -2236,26 +2537,26 @@ export default function DashboardResearcher() {
                             {/* Location */}
                             {orcidStats.location && (
                               <div
-                                className="rounded-lg p-4 border"
+                                className="rounded-lg p-3 sm:p-4 border"
                                 style={{
                                   backgroundColor: "rgba(245, 242, 248, 0.5)",
                                   borderColor: "rgba(208, 196, 226, 0.3)",
                                 }}
                               >
-                                <div className="flex items-center gap-2 mb-2">
+                                <div className="flex items-center gap-2 mb-1.5 sm:mb-2">
                                   <MapPin
-                                    className="w-5 h-5"
+                                    className="w-4 h-4 sm:w-5 sm:h-5 shrink-0"
                                     style={{ color: "#2F3C96" }}
                                   />
                                   <span
-                                    className="text-sm font-semibold"
+                                    className="text-xs sm:text-sm font-semibold"
                                     style={{ color: "#2F3C96" }}
                                   >
                                     Location
                                   </span>
                                 </div>
                                 <p
-                                  className="text-sm"
+                                  className="text-xs sm:text-sm leading-relaxed"
                                   style={{ color: "#787878" }}
                                 >
                                   {orcidStats.location}
@@ -2267,31 +2568,31 @@ export default function DashboardResearcher() {
                             {orcidStats.researchInterests &&
                               orcidStats.researchInterests.length > 0 && (
                                 <div
-                                  className="rounded-lg p-4 border"
+                                  className="rounded-lg p-3 sm:p-4 border"
                                   style={{
                                     backgroundColor: "rgba(245, 242, 248, 0.5)",
                                     borderColor: "rgba(208, 196, 226, 0.3)",
                                   }}
                                 >
-                                  <div className="flex items-center gap-2 mb-3">
+                                  <div className="flex items-center gap-2 mb-2 sm:mb-3">
                                     <Sparkles
-                                      className="w-5 h-5"
+                                      className="w-4 h-4 sm:w-5 sm:h-5 shrink-0"
                                       style={{ color: "#2F3C96" }}
                                     />
                                     <span
-                                      className="text-sm font-semibold"
+                                      className="text-xs sm:text-sm font-semibold"
                                       style={{ color: "#2F3C96" }}
                                     >
                                       Research Interests
                                     </span>
                                   </div>
-                                  <div className="flex flex-wrap gap-2">
+                                  <div className="flex flex-wrap gap-1.5 sm:gap-2">
                                     {orcidStats.researchInterests
                                       .slice(0, 10)
                                       .map((interest, idx) => (
                                         <span
                                           key={idx}
-                                          className="inline-flex items-center px-3 py-1 rounded-md text-sm font-medium transition-colors"
+                                          className="inline-flex items-center px-2.5 sm:px-3 py-1 rounded-md text-xs sm:text-sm font-medium transition-colors"
                                           style={{
                                             backgroundColor:
                                               "rgba(208, 196, 226, 0.3)",
@@ -2318,25 +2619,25 @@ export default function DashboardResearcher() {
                               Object.keys(orcidStats.externalLinks).length >
                                 1 && (
                                 <div
-                                  className="rounded-lg p-4 border"
+                                  className="rounded-lg p-3 sm:p-4 border"
                                   style={{
                                     backgroundColor: "rgba(245, 242, 248, 0.5)",
                                     borderColor: "rgba(208, 196, 226, 0.3)",
                                   }}
                                 >
-                                  <div className="flex items-center gap-2 mb-3">
+                                  <div className="flex items-center gap-2 mb-2 sm:mb-3">
                                     <LinkIcon
-                                      className="w-5 h-5"
+                                      className="w-4 h-4 sm:w-5 sm:h-5 shrink-0"
                                       style={{ color: "#2F3C96" }}
                                     />
                                     <span
-                                      className="text-sm font-semibold"
+                                      className="text-xs sm:text-sm font-semibold"
                                       style={{ color: "#2F3C96" }}
                                     >
                                       External Links
                                     </span>
                                   </div>
-                                  <div className="flex flex-wrap gap-3">
+                                  <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:gap-3">
                                     {orcidStats.externalLinks.googleScholar && (
                                       <a
                                         href={
@@ -2344,7 +2645,7 @@ export default function DashboardResearcher() {
                                         }
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-2 text-sm font-medium"
+                                        className="inline-flex items-center gap-2 text-xs sm:text-sm font-medium py-1.5 sm:py-0"
                                         style={{ color: "#2F3C96" }}
                                         onMouseEnter={(e) => {
                                           e.target.style.color = "#253075";
@@ -2354,7 +2655,7 @@ export default function DashboardResearcher() {
                                         }}
                                       >
                                         Google Scholar
-                                        <ExternalLink className="w-4 h-4" />
+                                        <ExternalLink className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
                                       </a>
                                     )}
                                     {orcidStats.externalLinks.researchGate && (
@@ -2364,7 +2665,7 @@ export default function DashboardResearcher() {
                                         }
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-2 text-sm font-medium"
+                                        className="inline-flex items-center gap-2 text-xs sm:text-sm font-medium py-1.5 sm:py-0"
                                         style={{ color: "#2F3C96" }}
                                         onMouseEnter={(e) => {
                                           e.target.style.color = "#253075";
@@ -2374,7 +2675,7 @@ export default function DashboardResearcher() {
                                         }}
                                       >
                                         ResearchGate
-                                        <ExternalLink className="w-4 h-4" />
+                                        <ExternalLink className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
                                       </a>
                                     )}
                                     {orcidStats.externalLinks.pubmed && (
@@ -2382,7 +2683,7 @@ export default function DashboardResearcher() {
                                         href={orcidStats.externalLinks.pubmed}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-2 text-sm font-medium"
+                                        className="inline-flex items-center gap-2 text-xs sm:text-sm font-medium py-1.5 sm:py-0"
                                         style={{ color: "#2F3C96" }}
                                         onMouseEnter={(e) => {
                                           e.target.style.color = "#253075";
@@ -2392,7 +2693,7 @@ export default function DashboardResearcher() {
                                         }}
                                       >
                                         PubMed
-                                        <ExternalLink className="w-4 h-4" />
+                                        <ExternalLink className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
                                       </a>
                                     )}
                                   </div>
@@ -2403,73 +2704,204 @@ export default function DashboardResearcher() {
                             {orcidStats.employments &&
                               orcidStats.employments.length > 0 && (
                                 <div
-                                  className="rounded-lg p-4 border"
+                                  className="rounded-lg p-3 sm:p-4 border"
                                   style={{
                                     backgroundColor: "rgba(245, 242, 248, 0.5)",
                                     borderColor: "rgba(208, 196, 226, 0.3)",
                                   }}
                                 >
-                                  <div className="flex items-center gap-2 mb-4">
+                                  <div className="flex items-center gap-2 mb-3 sm:mb-4">
                                     <Briefcase
-                                      className="w-5 h-5"
+                                      className="w-4 h-4 sm:w-5 sm:h-5 shrink-0"
                                       style={{ color: "#2F3C96" }}
                                     />
                                     <span
-                                      className="text-sm font-semibold"
+                                      className="text-xs sm:text-sm font-semibold"
                                       style={{ color: "#2F3C96" }}
                                     >
                                       Employment History
                                     </span>
+                                    <span
+                                      className="text-xs px-2 py-0.5 rounded-full"
+                                      style={{
+                                        backgroundColor:
+                                          "rgba(208, 196, 226, 0.3)",
+                                        color: "#2F3C96",
+                                      }}
+                                    >
+                                      {orcidStats.employments.length}
+                                    </span>
                                   </div>
-                                  <div className="space-y-3 max-h-96 overflow-y-auto">
-                                    {orcidStats.employments.map((emp, idx) => (
-                                      <div
-                                        key={idx}
-                                        style={{
-                                          borderBottom:
-                                            idx <
-                                            orcidStats.employments.length - 1
-                                              ? "1px solid rgba(208, 196, 226, 0.3)"
-                                              : "none",
-                                        }}
-                                        className="pb-3 last:pb-0"
-                                      >
-                                        <div className="flex items-start justify-between gap-3">
-                                          <div className="flex-1">
-                                            <p
-                                              className="text-sm font-semibold mb-1"
-                                              style={{ color: "#2F3C96" }}
-                                            >
-                                              {emp.roleTitle || "Position"}
-                                            </p>
-                                            <p
-                                              className="text-sm mb-1"
-                                              style={{ color: "#787878" }}
-                                            >
-                                              {emp.organization ||
-                                                "Organization"}
-                                            </p>
-                                            {emp.department && (
+                                  <div className="space-y-2.5 sm:space-y-3">
+                                    {/* Show first 3 always */}
+                                    {orcidStats.employments
+                                      .slice(0, 3)
+                                      .map((emp, idx) => (
+                                        <div
+                                          key={idx}
+                                          style={{
+                                            borderBottom:
+                                              idx < 2
+                                                ? "1px solid rgba(208, 196, 226, 0.3)"
+                                                : "none",
+                                          }}
+                                          className="pb-2.5 sm:pb-3 last:pb-0"
+                                        >
+                                          <div className="flex items-start justify-between gap-2 sm:gap-3">
+                                            <div className="flex-1 min-w-0">
                                               <p
-                                                className="text-xs mb-1"
+                                                className="text-xs sm:text-sm font-semibold mb-0.5 sm:mb-1"
+                                                style={{ color: "#2F3C96" }}
+                                              >
+                                                {emp.roleTitle || "Position"}
+                                              </p>
+                                              <p
+                                                className="text-xs sm:text-sm mb-0.5 sm:mb-1 leading-relaxed"
                                                 style={{ color: "#787878" }}
                                               >
-                                                {emp.department}
+                                                {emp.organization ||
+                                                  "Organization"}
                                               </p>
-                                            )}
-                                            {(emp.startDate || emp.endDate) && (
-                                              <p
-                                                className="text-xs"
-                                                style={{ color: "#787878" }}
-                                              >
-                                                {emp.startDate || "?"} -{" "}
-                                                {emp.endDate || "Present"}
-                                              </p>
-                                            )}
+                                              {emp.department && (
+                                                <p
+                                                  className="text-xs mb-0.5 sm:mb-1 leading-relaxed"
+                                                  style={{ color: "#787878" }}
+                                                >
+                                                  {emp.department}
+                                                </p>
+                                              )}
+                                              {(emp.startDate ||
+                                                emp.endDate) && (
+                                                <p
+                                                  className="text-xs leading-relaxed"
+                                                  style={{ color: "#787878" }}
+                                                >
+                                                  {emp.startDate || "?"} -{" "}
+                                                  {emp.endDate || "Present"}
+                                                </p>
+                                              )}
+                                            </div>
                                           </div>
                                         </div>
-                                      </div>
-                                    ))}
+                                      ))}
+
+                                    {/* Collapsible section for remaining items */}
+                                    {orcidStats.employments.length > 3 && (
+                                      <>
+                                        <div
+                                          className={`overflow-hidden transition-all duration-300 ${
+                                            isEmploymentExpanded
+                                              ? "max-h-[2000px] opacity-100"
+                                              : "max-h-0 opacity-0"
+                                          }`}
+                                        >
+                                          <div className="space-y-2.5 sm:space-y-3 pt-2.5 sm:pt-3 border-t border-slate-200">
+                                            {orcidStats.employments
+                                              .slice(3)
+                                              .map((emp, idx) => (
+                                                <div
+                                                  key={idx + 3}
+                                                  style={{
+                                                    borderBottom:
+                                                      idx <
+                                                      orcidStats.employments
+                                                        .length -
+                                                        4
+                                                        ? "1px solid rgba(208, 196, 226, 0.3)"
+                                                        : "none",
+                                                  }}
+                                                  className="pb-2.5 sm:pb-3 last:pb-0"
+                                                >
+                                                  <div className="flex items-start justify-between gap-2 sm:gap-3">
+                                                    <div className="flex-1 min-w-0">
+                                                      <p
+                                                        className="text-xs sm:text-sm font-semibold mb-0.5 sm:mb-1"
+                                                        style={{
+                                                          color: "#2F3C96",
+                                                        }}
+                                                      >
+                                                        {emp.roleTitle ||
+                                                          "Position"}
+                                                      </p>
+                                                      <p
+                                                        className="text-xs sm:text-sm mb-0.5 sm:mb-1 leading-relaxed"
+                                                        style={{
+                                                          color: "#787878",
+                                                        }}
+                                                      >
+                                                        {emp.organization ||
+                                                          "Organization"}
+                                                      </p>
+                                                      {emp.department && (
+                                                        <p
+                                                          className="text-xs mb-0.5 sm:mb-1 leading-relaxed"
+                                                          style={{
+                                                            color: "#787878",
+                                                          }}
+                                                        >
+                                                          {emp.department}
+                                                        </p>
+                                                      )}
+                                                      {(emp.startDate ||
+                                                        emp.endDate) && (
+                                                        <p
+                                                          className="text-xs leading-relaxed"
+                                                          style={{
+                                                            color: "#787878",
+                                                          }}
+                                                        >
+                                                          {emp.startDate || "?"}{" "}
+                                                          -{" "}
+                                                          {emp.endDate ||
+                                                            "Present"}
+                                                        </p>
+                                                      )}
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                              ))}
+                                          </div>
+                                        </div>
+                                        <button
+                                          onClick={() =>
+                                            setIsEmploymentExpanded(
+                                              !isEmploymentExpanded
+                                            )
+                                          }
+                                          className="w-full sm:w-auto flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all mt-2"
+                                          style={{
+                                            backgroundColor:
+                                              "rgba(208, 196, 226, 0.2)",
+                                            color: "#2F3C96",
+                                            border:
+                                              "1px solid rgba(208, 196, 226, 0.3)",
+                                          }}
+                                          onMouseEnter={(e) => {
+                                            e.currentTarget.style.backgroundColor =
+                                              "rgba(208, 196, 226, 0.3)";
+                                          }}
+                                          onMouseLeave={(e) => {
+                                            e.currentTarget.style.backgroundColor =
+                                              "rgba(208, 196, 226, 0.2)";
+                                          }}
+                                        >
+                                          {isEmploymentExpanded ? (
+                                            <>
+                                              <ChevronUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                              Show Less
+                                            </>
+                                          ) : (
+                                            <>
+                                              <ChevronDown className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                              Show{" "}
+                                              {orcidStats.employments.length -
+                                                3}{" "}
+                                              More
+                                            </>
+                                          )}
+                                        </button>
+                                      </>
+                                    )}
                                   </div>
                                 </div>
                               )}
@@ -2477,34 +2909,48 @@ export default function DashboardResearcher() {
                             {/* Recent Publications */}
                             {orcidStats.recentPublications &&
                               orcidStats.recentPublications.length > 0 && (
-                                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                                  <div className="bg-gradient-to-r from-indigo-50 to-blue-50 px-6 py-4 border-b border-slate-200">
-                                    <div className="flex items-center justify-between">
-                                      <div className="flex items-center gap-3">
-                                        <div className="p-2 bg-indigo-100 rounded-lg">
-                                          <BookOpen className="w-5 h-5 text-indigo-600" />
-                                        </div>
-                                        <div>
-                                          <h3 className="text-base font-bold text-slate-900">
-                                            Recent Publications
-                                          </h3>
-                                          {orcidStats.totalPublications > 5 && (
-                                            <p className="text-xs text-slate-600 mt-0.5">
-                                              Showing 5 of{" "}
-                                              {orcidStats.totalPublications}{" "}
-                                              publications
-                                            </p>
-                                          )}
-                                        </div>
-                                      </div>
+                                <div
+                                  className="rounded-lg p-3 sm:p-4 border sm:bg-white sm:rounded-xl sm:shadow-sm sm:border-slate-200 sm:overflow-hidden"
+                                  style={{
+                                    backgroundColor: "rgba(245, 242, 248, 0.5)",
+                                    borderColor: "rgba(208, 196, 226, 0.3)",
+                                  }}
+                                >
+                                  <div className="flex items-center gap-2 mb-3 sm:mb-4 sm:pb-4 sm:border-b sm:border-slate-200 sm:bg-gradient-to-r sm:from-indigo-50 sm:to-blue-50 sm:px-0 sm:py-0 sm:-mx-3 sm:-mt-3 sm:px-4 sm:pt-3 sm:mb-4">
+                                    <BookOpen
+                                      className="w-4 h-4 sm:w-5 sm:h-5 shrink-0 sm:hidden"
+                                      style={{ color: "#2F3C96" }}
+                                    />
+                                    <div className="hidden sm:block p-1.5 sm:p-2 bg-indigo-100 rounded-lg shrink-0">
+                                      <BookOpen className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600" />
                                     </div>
+                                    <span
+                                      className="text-xs sm:text-sm font-semibold sm:font-bold sm:text-slate-900"
+                                      style={{ color: "#2F3C96" }}
+                                    >
+                                      Recent Publications
+                                    </span>
+                                    {orcidStats.totalPublications > 5 && (
+                                      <span className="hidden sm:block text-xs text-slate-600 ml-2">
+                                        (Showing 5 of{" "}
+                                        {orcidStats.totalPublications})
+                                      </span>
+                                    )}
                                   </div>
-                                  <div className="p-4 space-y-3 max-h-[500px] overflow-y-auto">
-                                    {orcidStats.recentPublications.map(
-                                      (pub, idx) => (
+                                  <div className="space-y-2.5 sm:space-y-3 sm:p-0">
+                                    {/* Show first 3 always */}
+                                    {orcidStats.recentPublications
+                                      .slice(0, 3)
+                                      .map((pub, idx) => (
                                         <div
                                           key={idx}
-                                          className="group bg-slate-50 hover:bg-indigo-50 rounded-lg p-4 border border-slate-200 hover:border-indigo-300 transition-all duration-200 hover:shadow-md"
+                                          style={{
+                                            borderBottom:
+                                              idx < 2
+                                                ? "1px solid rgba(208, 196, 226, 0.3)"
+                                                : "none",
+                                          }}
+                                          className="pb-2.5 sm:pb-3 last:pb-0 sm:group sm:bg-slate-50 sm:hover:bg-indigo-50 sm:rounded-lg sm:p-3 sm:border sm:border-slate-200 sm:hover:border-indigo-300 sm:transition-all sm:duration-200 sm:hover:shadow-md"
                                         >
                                           <a
                                             href={pub.link || pub.url || "#"}
@@ -2512,16 +2958,25 @@ export default function DashboardResearcher() {
                                             rel="noopener noreferrer"
                                             className="block"
                                           >
-                                            <h4 className="text-sm font-semibold text-slate-900 group-hover:text-indigo-700 line-clamp-2 mb-2 transition-colors">
+                                            <h4
+                                              className="text-xs sm:text-sm font-semibold mb-0.5 sm:mb-1.5 sm:mb-2 line-clamp-2 sm:group-hover:text-indigo-700 sm:transition-colors leading-snug"
+                                              style={{ color: "#2F3C96" }}
+                                            >
                                               {pub.title}
                                             </h4>
                                           </a>
-                                          <div className="space-y-2">
+                                          <div className="space-y-1 sm:space-y-1.5 sm:space-y-2">
                                             {pub.authors &&
                                               pub.authors.length > 0 && (
-                                                <div className="flex items-start gap-2">
-                                                  <Users className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
-                                                  <p className="text-xs text-slate-600 line-clamp-2">
+                                                <div className="flex items-start gap-1.5 sm:gap-2">
+                                                  <Users
+                                                    className="w-3 h-3 sm:w-3.5 sm:h-3.5 mt-0.5 shrink-0 sm:text-slate-400"
+                                                    style={{ color: "#787878" }}
+                                                  />
+                                                  <p
+                                                    className="text-xs line-clamp-2 leading-relaxed sm:text-slate-600"
+                                                    style={{ color: "#787878" }}
+                                                  >
                                                     {pub.authors
                                                       .slice(0, 4)
                                                       .join(", ")}
@@ -2532,59 +2987,267 @@ export default function DashboardResearcher() {
                                                   </p>
                                                 </div>
                                               )}
-                                            <div className="flex items-center gap-4 flex-wrap">
+                                            <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
                                               {pub.journal && (
                                                 <div className="flex items-center gap-1.5">
-                                                  <FileText className="w-3.5 h-3.5 text-slate-400" />
-                                                  <span className="text-xs text-slate-600 font-medium">
+                                                  <FileText
+                                                    className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0 sm:text-slate-400"
+                                                    style={{ color: "#787878" }}
+                                                  />
+                                                  <span
+                                                    className="text-xs font-medium line-clamp-1 sm:text-slate-600 sm:font-medium"
+                                                    style={{ color: "#787878" }}
+                                                  >
                                                     {pub.journal}
                                                   </span>
                                                 </div>
                                               )}
                                               {pub.year && (
                                                 <div className="flex items-center gap-1.5">
-                                                  <CalendarIcon className="w-3.5 h-3.5 text-slate-400" />
-                                                  <span className="text-xs text-slate-600">
+                                                  <CalendarIcon
+                                                    className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0 sm:text-slate-400"
+                                                    style={{ color: "#787878" }}
+                                                  />
+                                                  <span
+                                                    className="text-xs sm:text-slate-600"
+                                                    style={{ color: "#787878" }}
+                                                  >
                                                     {pub.year}
                                                   </span>
                                                 </div>
                                               )}
                                             </div>
                                             {(pub.link || pub.url) && (
-                                              <div className="pt-2 border-t border-slate-200">
+                                              <div className="pt-1 sm:pt-1.5 sm:pt-2 sm:border-t sm:border-slate-200">
                                                 <a
                                                   href={pub.link || pub.url}
                                                   target="_blank"
                                                   rel="noopener noreferrer"
-                                                  className="inline-flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-700 font-medium transition-colors"
+                                                  className="inline-flex items-center gap-1.5 text-xs font-medium transition-colors sm:text-indigo-600 sm:hover:text-indigo-700"
+                                                  style={{ color: "#2F3C96" }}
+                                                  onMouseEnter={(e) => {
+                                                    e.target.style.color =
+                                                      "#253075";
+                                                  }}
+                                                  onMouseLeave={(e) => {
+                                                    e.target.style.color =
+                                                      "#2F3C96";
+                                                  }}
                                                   onClick={(e) =>
                                                     e.stopPropagation()
                                                   }
                                                 >
-                                                  <ExternalLink className="w-3.5 h-3.5" />
+                                                  <ExternalLink className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
                                                   View Publication
                                                 </a>
                                               </div>
                                             )}
                                           </div>
                                         </div>
-                                      )
+                                      ))}
+
+                                    {/* Collapsible section for remaining publications */}
+                                    {orcidStats.recentPublications.length >
+                                      3 && (
+                                      <>
+                                        <div
+                                          className={`overflow-hidden transition-all duration-300 ${
+                                            isPublicationsExpanded
+                                              ? "max-h-[2000px] opacity-100"
+                                              : "max-h-0 opacity-0"
+                                          }`}
+                                        >
+                                          <div className="space-y-2.5 sm:space-y-3 pt-2.5 sm:pt-3 border-t border-slate-200 sm:border-t-0">
+                                            {orcidStats.recentPublications
+                                              .slice(3)
+                                              .map((pub, idx) => (
+                                                <div
+                                                  key={idx + 3}
+                                                  style={{
+                                                    borderBottom:
+                                                      idx <
+                                                      orcidStats
+                                                        .recentPublications
+                                                        .length -
+                                                        4
+                                                        ? "1px solid rgba(208, 196, 226, 0.3)"
+                                                        : "none",
+                                                  }}
+                                                  className="pb-2.5 sm:pb-3 last:pb-0 sm:group sm:bg-slate-50 sm:hover:bg-indigo-50 sm:rounded-lg sm:p-3 sm:border sm:border-slate-200 sm:hover:border-indigo-300 sm:transition-all sm:duration-200 sm:hover:shadow-md"
+                                                >
+                                                  <a
+                                                    href={
+                                                      pub.link || pub.url || "#"
+                                                    }
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="block"
+                                                  >
+                                                    <h4
+                                                      className="text-xs sm:text-sm font-semibold mb-0.5 sm:mb-1.5 sm:mb-2 line-clamp-2 sm:group-hover:text-indigo-700 sm:transition-colors leading-snug"
+                                                      style={{
+                                                        color: "#2F3C96",
+                                                      }}
+                                                    >
+                                                      {pub.title}
+                                                    </h4>
+                                                  </a>
+                                                  <div className="space-y-1 sm:space-y-1.5 sm:space-y-2">
+                                                    {pub.authors &&
+                                                      pub.authors.length >
+                                                        0 && (
+                                                        <div className="flex items-start gap-1.5 sm:gap-2">
+                                                          <Users
+                                                            className="w-3 h-3 sm:w-3.5 sm:h-3.5 mt-0.5 shrink-0 sm:text-slate-400"
+                                                            style={{
+                                                              color: "#787878",
+                                                            }}
+                                                          />
+                                                          <p
+                                                            className="text-xs line-clamp-2 leading-relaxed sm:text-slate-600"
+                                                            style={{
+                                                              color: "#787878",
+                                                            }}
+                                                          >
+                                                            {pub.authors
+                                                              .slice(0, 4)
+                                                              .join(", ")}
+                                                            {pub.authors
+                                                              .length > 4 &&
+                                                              ` +${
+                                                                pub.authors
+                                                                  .length - 4
+                                                              } more`}
+                                                          </p>
+                                                        </div>
+                                                      )}
+                                                    <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
+                                                      {pub.journal && (
+                                                        <div className="flex items-center gap-1.5">
+                                                          <FileText
+                                                            className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0 sm:text-slate-400"
+                                                            style={{
+                                                              color: "#787878",
+                                                            }}
+                                                          />
+                                                          <span
+                                                            className="text-xs font-medium line-clamp-1 sm:text-slate-600 sm:font-medium"
+                                                            style={{
+                                                              color: "#787878",
+                                                            }}
+                                                          >
+                                                            {pub.journal}
+                                                          </span>
+                                                        </div>
+                                                      )}
+                                                      {pub.year && (
+                                                        <div className="flex items-center gap-1.5">
+                                                          <CalendarIcon
+                                                            className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0 sm:text-slate-400"
+                                                            style={{
+                                                              color: "#787878",
+                                                            }}
+                                                          />
+                                                          <span
+                                                            className="text-xs sm:text-slate-600"
+                                                            style={{
+                                                              color: "#787878",
+                                                            }}
+                                                          >
+                                                            {pub.year}
+                                                          </span>
+                                                        </div>
+                                                      )}
+                                                    </div>
+                                                    {(pub.link || pub.url) && (
+                                                      <div className="pt-1 sm:pt-1.5 sm:pt-2 sm:border-t sm:border-slate-200">
+                                                        <a
+                                                          href={
+                                                            pub.link || pub.url
+                                                          }
+                                                          target="_blank"
+                                                          rel="noopener noreferrer"
+                                                          className="inline-flex items-center gap-1.5 text-xs font-medium transition-colors sm:text-indigo-600 sm:hover:text-indigo-700"
+                                                          style={{
+                                                            color: "#2F3C96",
+                                                          }}
+                                                          onMouseEnter={(e) => {
+                                                            e.target.style.color =
+                                                              "#253075";
+                                                          }}
+                                                          onMouseLeave={(e) => {
+                                                            e.target.style.color =
+                                                              "#2F3C96";
+                                                          }}
+                                                          onClick={(e) =>
+                                                            e.stopPropagation()
+                                                          }
+                                                        >
+                                                          <ExternalLink className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+                                                          View Publication
+                                                        </a>
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                              ))}
+                                          </div>
+                                        </div>
+                                        <button
+                                          onClick={() =>
+                                            setIsPublicationsExpanded(
+                                              !isPublicationsExpanded
+                                            )
+                                          }
+                                          className="w-full sm:w-auto flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all mt-2"
+                                          style={{
+                                            backgroundColor:
+                                              "rgba(208, 196, 226, 0.2)",
+                                            color: "#2F3C96",
+                                            border:
+                                              "1px solid rgba(208, 196, 226, 0.3)",
+                                          }}
+                                          onMouseEnter={(e) => {
+                                            e.currentTarget.style.backgroundColor =
+                                              "rgba(208, 196, 226, 0.3)";
+                                          }}
+                                          onMouseLeave={(e) => {
+                                            e.currentTarget.style.backgroundColor =
+                                              "rgba(208, 196, 226, 0.2)";
+                                          }}
+                                        >
+                                          {isPublicationsExpanded ? (
+                                            <>
+                                              <ChevronUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                              Show Less
+                                            </>
+                                          ) : (
+                                            <>
+                                              <ChevronDown className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                              Show{" "}
+                                              {orcidStats.recentPublications
+                                                .length - 3}{" "}
+                                              More
+                                            </>
+                                          )}
+                                        </button>
+                                      </>
                                     )}
                                   </div>
                                   {orcidStats.totalPublications > 5 && (
-                                    <div className="bg-slate-50 px-6 py-4 border-t border-slate-200">
+                                    <div className="hidden sm:block bg-slate-50 px-4 sm:px-6 py-3 sm:py-4 border-t border-slate-200 -mx-3 sm:mx-0 -mb-3 sm:mb-0">
                                       <a
                                         href={orcidStats.orcidUrl}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="inline-flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700 font-semibold transition-colors group"
+                                        className="inline-flex items-center gap-2 text-xs sm:text-sm text-indigo-600 hover:text-indigo-700 font-semibold transition-colors group"
                                       >
                                         <span>
                                           View all{" "}
                                           {orcidStats.totalPublications}{" "}
                                           publications on ORCID
                                         </span>
-                                        <ExternalLink className="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                                        <ExternalLink className="w-3.5 h-3.5 sm:w-4 sm:h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform shrink-0" />
                                       </a>
                                     </div>
                                   )}
@@ -2738,7 +3401,6 @@ export default function DashboardResearcher() {
                                 {t.title}
                               </h3>
                             </div>
-
 
                             {/* Description/Details Preview */}
                             {(t.description || t.conditionDescription) && (
@@ -3378,11 +4040,15 @@ export default function DashboardResearcher() {
                                                 >
                                                   <CheckCircle
                                                     className="w-3.5 h-3.5"
-                                                    style={{ color: "#2F3C96" }}
+                                                    style={{
+                                                      color: "#2F3C96",
+                                                    }}
                                                   />
                                                   <span
                                                     className="text-xs font-semibold"
-                                                    style={{ color: "#2F3C96" }}
+                                                    style={{
+                                                      color: "#2F3C96",
+                                                    }}
                                                   >
                                                     On Platform
                                                   </span>
@@ -3452,16 +4118,19 @@ export default function DashboardResearcher() {
                                                 <div className="flex-1 min-w-0">
                                                   <h3
                                                     className="text-lg font-bold mb-1 leading-tight"
-                                                    style={{ color: "#2F3C96" }}
+                                                    style={{
+                                                      color: "#2F3C96",
+                                                    }}
                                                   >
                                                     {e.name || "Unknown Expert"}
                                                   </h3>
                                                   {/* Hide ORCID for on-platform experts */}
-                                                  {e.orcid && !isCuralinkExpert && (
-                                                    <span className="text-sm text-slate-500 font-mono">
-                                                      {e.orcid}
-                                                    </span>
-                                                  )}
+                                                  {e.orcid &&
+                                                    !isCuralinkExpert && (
+                                                      <span className="text-sm text-slate-500 font-mono">
+                                                        {e.orcid}
+                                                      </span>
+                                                    )}
                                                 </div>
                                                 <button
                                                   onClick={(event) => {
@@ -3909,16 +4578,19 @@ export default function DashboardResearcher() {
                                                 <div className="flex-1 min-w-0">
                                                   <h3
                                                     className="text-lg font-bold mb-1 leading-tight"
-                                                    style={{ color: "#2F3C96" }}
+                                                    style={{
+                                                      color: "#2F3C96",
+                                                    }}
                                                   >
                                                     {e.name || "Unknown Expert"}
                                                   </h3>
                                                   {/* Hide ORCID for on-platform experts */}
-                                                  {e.orcid && !isCuralinkExpert && (
-                                                    <span className="text-sm text-slate-500 font-mono">
-                                                      {e.orcid}
-                                                    </span>
-                                                  )}
+                                                  {e.orcid &&
+                                                    !isCuralinkExpert && (
+                                                      <span className="text-sm text-slate-500 font-mono">
+                                                        {e.orcid}
+                                                      </span>
+                                                    )}
                                                 </div>
                                                 <button
                                                   onClick={(event) => {
@@ -5708,7 +6380,10 @@ export default function DashboardResearcher() {
                           <span
                             key={idx}
                             className="px-3 py-1.5 bg-white text-sm font-medium rounded-lg border shadow-sm"
-                            style={{ color: "#2F3C96", borderColor: "#D0C4E2" }}
+                            style={{
+                              color: "#2F3C96",
+                              borderColor: "#D0C4E2",
+                            }}
                           >
                             {condition}
                           </span>
@@ -5783,7 +6458,6 @@ export default function DashboardResearcher() {
             </div>
           </div>
         ) : null}
-
       </Modal>
 
       {/* Publication Details Modal */}
@@ -7776,7 +8450,7 @@ export default function DashboardResearcher() {
           </div>
         )}
       </Modal>
-      
+
       {/* Verify Email Modal */}
       <VerifyEmailModal
         isOpen={verifyEmailModalOpen}

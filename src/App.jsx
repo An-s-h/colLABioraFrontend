@@ -64,7 +64,7 @@ const AppContent = () => {
       />
       <Routes>
         <Route path="/" element={<Landing />} />
-        {/* <Route path="/about" element={<AboutUs />} /> */}
+        {/* <Route path="/about" element={<AboutUs />} />  */}
         <Route path="/explore" element={<Explore />} />
         <Route path="/signin" element={<SignIn />} />
         <Route path="/onboard/patient" element={<OnboardPatient />} />
