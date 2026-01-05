@@ -4,6 +4,7 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import GlobalSearch from "./GlobalSearch";
 import { ShimmerButton } from "@/components/ui/shimmer-button";
+import { listenForMessages } from "../utils/crossTabSync.js";
 
 export default function Navbar() {
   const [user, setUser] = useState(null);
@@ -101,6 +102,15 @@ export default function Navbar() {
     window.addEventListener("login", handleLogin);
     window.addEventListener("storage", handleStorageChange);
 
+    // Listen for cross-tab messages (email verification, user updates)
+    const cleanupCrossTab = listenForMessages((type, data) => {
+      if (type === "email-verified" || type === "user-updated") {
+        updateUser();
+        // Also trigger login event for other listeners
+        window.dispatchEvent(new Event("login"));
+      }
+    });
+
     const handleClickOutside = (event) => {
       if (menuRef.current && !menuRef.current.contains(event.target)) {
         setIsMenuOpen(false);
@@ -158,6 +168,7 @@ export default function Navbar() {
       window.removeEventListener("storage", handleStorageChange);
       document.removeEventListener("mousedown", handleClickOutside);
       window.removeEventListener("scroll", handleScroll);
+      cleanupCrossTab();
       if (scrollTimeoutRef.current) {
         cancelAnimationFrame(scrollTimeoutRef.current);
       }

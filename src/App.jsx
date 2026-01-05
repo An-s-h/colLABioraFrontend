@@ -1,5 +1,5 @@
 import React from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 import Landing from "./Pages/Landing.jsx";
 import Explore from "./Pages/Explore.jsx";
@@ -24,15 +24,19 @@ import Auth0Callback from "./Pages/Auth0Callback.jsx";
 import CompleteProfile from "./Pages/CompleteProfile.jsx";
 import AboutUs from "./Pages/AboutUs.jsx";
 import TrialDetails from "./Pages/TrialDetails.jsx";
+import VerifyEmail from "./Pages/VerifyEmail.jsx";
 import "./App.css";
 import Navbar from "./components/Navbar.jsx";
 import { ProfileProvider } from "./contexts/ProfileContext.jsx";
 import Auth0ProviderWithNavigate from "./contexts/Auth0ProviderWithNavigate.jsx";
 
 const AppContent = () => {
+  const location = useLocation();
+  const isVerifyEmailPage = location.pathname === "/verify-email";
+
   return (
     <div>
-      <Navbar />
+      {!isVerifyEmailPage && <Navbar />}
       <Toaster
         position="top-right"
         toastOptions={{
@@ -86,6 +90,8 @@ const AppContent = () => {
         {/* Auth0 routes */}
         <Route path="/auth/callback" element={<Auth0Callback />} />
         <Route path="/auth/complete-profile" element={<CompleteProfile />} />
+        {/* Email verification */}
+        <Route path="/verify-email" element={<VerifyEmail />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       {/* Nav is provided by Navbar in Layout */}

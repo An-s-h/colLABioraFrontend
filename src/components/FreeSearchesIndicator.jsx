@@ -73,13 +73,22 @@ export default function FreeSearchesIndicator({ user, onSearch }) {
     }
 
     // Listen for custom event for same-tab updates
-    const handleFreeSearchUsed = () => {
-      // Update from local storage immediately
-      updateFromLocal();
-      // Sync with backend after a short delay
-      setTimeout(() => {
-        syncAndUpdate(true);
-      }, 500);
+    const handleFreeSearchUsed = (event) => {
+      // If event has detail with remaining count, use it directly
+      if (event.detail && event.detail.remaining !== undefined) {
+        setFreeSearches(event.detail.remaining);
+        // Still sync with backend to ensure consistency
+        setTimeout(() => {
+          syncAndUpdate(true);
+        }, 1000);
+      } else {
+        // Update from local storage immediately
+        updateFromLocal();
+        // Sync with backend after a short delay to ensure backend has updated
+        setTimeout(() => {
+          syncAndUpdate(true);
+        }, 1000);
+      }
     };
 
     window.addEventListener("freeSearchUsed", handleFreeSearchUsed);
@@ -293,7 +302,13 @@ export function useFreeSearches() {
       return;
     }
 
-    const updateFreeSearches = async () => {
+    const updateFreeSearches = async (event) => {
+      // If event has detail with remaining count, use it directly
+      if (event && event.detail && event.detail.remaining !== undefined) {
+        setFreeSearches(event.detail.remaining);
+        return;
+      }
+
       // Update from local storage immediately
       const localRemaining = getLocalRemainingSearches();
       setFreeSearches(localRemaining);

@@ -35,6 +35,8 @@ import apiFetch from "../utils/api.js";
 import {
   incrementLocalSearchCount,
   syncWithBackend,
+  setLocalSearchCount,
+  MAX_FREE_SEARCHES,
 } from "../utils/searchLimit.js";
 
 export default function Trials() {
@@ -189,9 +191,12 @@ export default function Trials() {
         );
         setLoading(false);
         // Sync with backend to update local storage
-        syncWithBackend().catch(console.error);
-        // Update remaining searches indicator
-        window.dispatchEvent(new Event("freeSearchUsed"));
+        syncWithBackend().then((result) => {
+          // Update remaining searches indicator with synced value
+          window.dispatchEvent(new CustomEvent("freeSearchUsed", {
+            detail: { remaining: result.remaining }
+          }));
+        }).catch(console.error);
         return;
       }
 
@@ -200,10 +205,11 @@ export default function Trials() {
 
       // Handle remaining searches from server response
       if (!isUserSignedIn && data.remaining !== undefined) {
-        // Increment local storage count (for immediate UI update)
-        incrementLocalSearchCount();
-        
+        // Update local storage to match backend (backend is source of truth)
         const remaining = data.remaining;
+        const backendCount = MAX_FREE_SEARCHES - remaining;
+        setLocalSearchCount(backendCount);
+        
         if (remaining === 0) {
           toast(
             "You've used all your free searches! Sign in for unlimited searches.",
@@ -217,10 +223,10 @@ export default function Trials() {
             { duration: 3000 }
           );
         }
-        // Update remaining searches indicator and sync with backend
-        window.dispatchEvent(new Event("freeSearchUsed"));
-        // Sync with backend to ensure accuracy
-        syncWithBackend().catch(console.error);
+        // Update remaining searches indicator with the actual remaining count from backend
+        window.dispatchEvent(new CustomEvent("freeSearchUsed", {
+          detail: { remaining }
+        }));
       }
 
       // Sort by matchPercentage in descending order (highest first)
@@ -331,8 +337,12 @@ export default function Trials() {
             );
             setLoading(false);
             // Sync with backend to update local storage
-            syncWithBackend().catch(console.error);
-            window.dispatchEvent(new Event("freeSearchUsed"));
+            syncWithBackend().then((result) => {
+              // Update remaining searches indicator with synced value
+              window.dispatchEvent(new CustomEvent("freeSearchUsed", {
+                detail: { remaining: result.remaining }
+              }));
+            }).catch(console.error);
             return;
           }
           return r.json();
@@ -344,10 +354,11 @@ export default function Trials() {
 
           // Handle remaining searches from server response
           if (!isUserSignedIn && data.remaining !== undefined) {
-            // Increment local storage count (for immediate UI update)
-            incrementLocalSearchCount();
-            
+            // Update local storage to match backend (backend is source of truth)
             const remaining = data.remaining;
+            const backendCount = MAX_FREE_SEARCHES - remaining;
+            setLocalSearchCount(backendCount);
+            
             if (remaining === 0) {
               toast(
                 "You've used all your free searches! Sign in for unlimited searches.",
@@ -361,10 +372,10 @@ export default function Trials() {
                 { duration: 3000 }
               );
             }
-            // Update remaining searches indicator and sync with backend
-            window.dispatchEvent(new Event("freeSearchUsed"));
-            // Sync with backend to ensure accuracy
-            syncWithBackend().catch(console.error);
+            // Update remaining searches indicator with the actual remaining count from backend
+            window.dispatchEvent(new CustomEvent("freeSearchUsed", {
+              detail: { remaining }
+            }));
           }
 
           // Sort by matchPercentage in descending order (highest first)

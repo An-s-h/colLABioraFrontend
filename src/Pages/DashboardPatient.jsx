@@ -47,6 +47,8 @@ import { useProfile } from "../contexts/ProfileContext.jsx";
 import AnimatedBackground from "../components/ui/AnimatedBackground.jsx";
 import { getSimplifiedTitle } from "../utils/titleSimplifier.js";
 import ScrollToTop from "../components/ui/ScrollToTop.jsx";
+import VerifyEmailModal from "../components/VerifyEmailModal.jsx";
+import { listenForMessages } from "../utils/crossTabSync.js";
 
 export default function DashboardPatient() {
   const [data, setData] = useState({
@@ -119,6 +121,8 @@ export default function DashboardPatient() {
   const [simplifiedTrialSummaries, setSimplifiedTrialSummaries] = useState(
     new Map()
   ); // Cache of simplified trial summaries
+  const [sendingVerificationEmail, setSendingVerificationEmail] = useState(false);
+  const [verifyEmailModalOpen, setVerifyEmailModalOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
@@ -156,12 +160,85 @@ export default function DashboardPatient() {
     setUser(userData);
     setLoading(true);
 
-    // Listen for login events to refresh user data
+    // Listen for login events to refresh user data (same tab)
     const handleLoginEvent = () => {
       const updatedUser = JSON.parse(localStorage.getItem("user") || "{}");
       setUser(updatedUser);
     };
     window.addEventListener("login", handleLoginEvent);
+
+    // Listen for cross-tab messages (email verification, user updates)
+    const cleanupCrossTab = listenForMessages((type, data) => {
+      if (type === "email-verified" || type === "user-updated") {
+        const updatedUser = data.user || JSON.parse(localStorage.getItem("user") || "{}");
+        setUser(updatedUser);
+        // Also trigger login event for other listeners
+        window.dispatchEvent(new Event("login"));
+        if (type === "email-verified") {
+          toast.success("Email verified successfully! (Updated from another tab)");
+        }
+      }
+    });
+
+    // Function to check email verification status from backend
+    const checkEmailVerificationStatus = async () => {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+
+      try {
+        const response = await fetch(`${base}/api/auth/check-email-status`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
+          
+          // If email verification status changed, update user state
+          if (currentUser.emailVerified !== data.emailVerified && data.emailVerified) {
+            currentUser.emailVerified = true;
+            localStorage.setItem("user", JSON.stringify(currentUser));
+            setUser(currentUser);
+            window.dispatchEvent(new Event("login"));
+            toast.success("Email verified successfully! (Updated from another device)");
+            
+            // Stop polling once verified
+            if (emailCheckInterval) {
+              clearInterval(emailCheckInterval);
+              emailCheckInterval = null;
+            }
+          }
+        }
+      } catch (error) {
+        // Silently fail - don't show errors for background checks
+        console.error("Error checking email verification status:", error);
+      }
+    };
+
+    // Check email verification status periodically if not verified
+    let emailCheckInterval = null;
+    if (userData && !userData.emailVerified) {
+      // Check immediately
+      checkEmailVerificationStatus();
+      
+      // Then check every 30 seconds
+      emailCheckInterval = setInterval(() => {
+        checkEmailVerificationStatus();
+      }, 30000); // 30 seconds
+    }
+
+    // Check email verification status when page regains focus
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
+        if (currentUser && !currentUser.emailVerified) {
+          checkEmailVerificationStatus();
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     if (userData?._id || userData?.id) {
       // Check if this is the first load in this session
@@ -422,9 +499,14 @@ export default function DashboardPatient() {
       }, 2000);
     }
 
-    // Cleanup event listener
+    // Cleanup event listeners
     return () => {
       window.removeEventListener("login", handleLoginEvent);
+      cleanupCrossTab();
+      if (emailCheckInterval) {
+        clearInterval(emailCheckInterval);
+      }
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
 
@@ -1731,13 +1813,67 @@ export default function DashboardPatient() {
                         {locationText}
                       </span>
                     </span>
+                    {/* Email Verification Status */}
+                    <span
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full ${
+                        user?.emailVerified
+                          ? "bg-green-50 border-green-200"
+                          : "bg-yellow-50 border-yellow-200"
+                      }`}
+                      style={{
+                        border: user?.emailVerified
+                          ? "1px solid rgba(16, 185, 129, 0.3)"
+                          : "1px solid rgba(234, 179, 8, 0.3)",
+                        color: user?.emailVerified ? "#059669" : "#d97706",
+                      }}
+                    >
+                      {user?.emailVerified ? (
+                        <>
+                          <CheckCircle className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate max-w-[150px] sm:max-w-none">
+                            Verified
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate max-w-[150px] sm:max-w-none">
+                            Unverified
+                          </span>
+                        </>
+                      )}
+                    </span>
                   </div>
                 </div>
               </div>
             </div>
 
             {/* Action Buttons */}
-            <div className="relative z-10 flex items-center gap-3 shrink-0">
+            <div className="relative z-10 flex items-center gap-3 shrink-0 flex-wrap">
+              {/* Email Verification Button */}
+              {!user?.emailVerified && (
+                <button
+                  onClick={() => setVerifyEmailModalOpen(true)}
+                  className="relative flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all text-sm font-semibold text-white shadow-lg hover:shadow-xl hover:scale-105"
+                  style={{
+                    backgroundColor: "#d97706",
+                    border: "1px solid rgba(217, 119, 6, 0.5)",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = "#b45309";
+                    e.currentTarget.style.borderColor = "rgba(217, 119, 6, 0.7)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = "#d97706";
+                    e.currentTarget.style.borderColor = "rgba(217, 119, 6, 0.5)";
+                  }}
+                >
+                  <Mail className="w-4 h-4 shrink-0" />
+                  <span className="hidden sm:inline whitespace-nowrap">
+                    Verify Now
+                  </span>
+                </button>
+              )}
               {/* View All Saved Items Button */}
               <button
                 onClick={() => navigate("/favorites")}
@@ -7530,6 +7666,26 @@ export default function DashboardPatient() {
         }
       `}</style>
       <ScrollToTop />
+      
+      {/* Verify Email Modal */}
+      <VerifyEmailModal
+        isOpen={verifyEmailModalOpen}
+        onClose={() => {
+          setVerifyEmailModalOpen(false);
+          // Clear token from URL if present
+          const url = new URL(window.location);
+          if (url.searchParams.has("token")) {
+            url.searchParams.delete("token");
+            window.history.replaceState({}, "", url);
+          }
+        }}
+        onVerified={() => {
+          // Refresh user data
+          const updatedUser = JSON.parse(localStorage.getItem("user") || "{}");
+          setUser(updatedUser);
+          setVerifyEmailModalOpen(false);
+        }}
+      />
     </div>
   );
 }
