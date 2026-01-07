@@ -56,7 +56,7 @@ export default function FreeSearchesIndicator({ user, onSearch }) {
             ? null
             : data.remaining ?? MAX_FREE_SEARCHES;
           setFreeSearches(newValue);
-          
+
           // Update local storage to match backend
           if (!data.unlimited && data.remaining !== undefined) {
             const backendCount = MAX_FREE_SEARCHES - data.remaining;
@@ -339,9 +339,7 @@ export default function FreeSearchesIndicator({ user, onSearch }) {
 
 // Export function to check and get remaining free searches
 export function useFreeSearches() {
-  const [freeSearches, setFreeSearches] = useState(
-    getLocalRemainingSearches()
-  );
+  const [freeSearches, setFreeSearches] = useState(getLocalRemainingSearches());
 
   useEffect(() => {
     const user = JSON.parse(localStorage.getItem("user") || "null");
@@ -430,7 +428,7 @@ export function useFreeSearches() {
 
     // Return local value immediately, sync in background
     const localRemaining = getLocalRemainingSearches();
-    
+
     // Sync with backend if needed
     if (shouldSyncWithBackend()) {
       syncWithBackend().catch(console.error);

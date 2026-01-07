@@ -39,6 +39,8 @@ import {
   Clock,
   ChevronDown,
   ChevronUp,
+  Copy,
+  CheckCircle2,
 } from "lucide-react";
 import Modal from "../components/ui/Modal";
 import { MultiStepLoader } from "../components/ui/multi-step-loader";
@@ -95,6 +97,9 @@ export default function DashboardResearcher() {
     open: false,
     trial: null,
     loading: false,
+    generatedMessage: "",
+    generating: false,
+    copied: false,
   });
   const [contactModal, setContactModal] = useState({
     open: false,
@@ -564,6 +569,9 @@ export default function DashboardResearcher() {
       open: true,
       trial: trial, // Show basic info immediately
       loading: true,
+      generatedMessage: "",
+      generating: false,
+      copied: false,
     });
 
     // Fetch detailed trial information from backend
@@ -581,6 +589,9 @@ export default function DashboardResearcher() {
               open: true,
               trial: { ...trial, ...data.trial },
               loading: false,
+              generatedMessage: "",
+              generating: false,
+              copied: false,
             });
             return;
           }
@@ -595,6 +606,9 @@ export default function DashboardResearcher() {
       open: true,
       trial: trial,
       loading: false,
+      generatedMessage: "",
+      generating: false,
+      copied: false,
     });
   }
 
@@ -603,7 +617,62 @@ export default function DashboardResearcher() {
       open: false,
       trial: null,
       loading: false,
+      generatedMessage: "",
+      generating: false,
+      copied: false,
     });
+  }
+
+  async function generateTrialDetailsMessage() {
+    if (!trialDetailsModal.trial) return;
+
+    setTrialDetailsModal((prev) => ({ ...prev, generating: true }));
+
+    try {
+      const userName = user?.username || "Researcher";
+      const userLocation =
+        userProfile?.patient?.location ||
+        userProfile?.researcher?.location ||
+        null;
+
+      const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
+      const response = await fetch(`${base}/api/ai/generate-trial-message`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userName,
+          userLocation,
+          trial: trialDetailsModal.trial,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to generate message");
+      }
+
+      const data = await response.json();
+      setTrialDetailsModal((prev) => ({
+        ...prev,
+        generatedMessage: data.message || "",
+        generating: false,
+      }));
+      toast.success("Message generated successfully!");
+    } catch (error) {
+      console.error("Error generating message:", error);
+      toast.error("Failed to generate message. Please try again.");
+      setTrialDetailsModal((prev) => ({ ...prev, generating: false }));
+    }
+  }
+
+  function copyTrialDetailsMessage() {
+    if (trialDetailsModal.generatedMessage) {
+      navigator.clipboard.writeText(trialDetailsModal.generatedMessage);
+      setTrialDetailsModal((prev) => ({ ...prev, copied: true }));
+      toast.success("Message copied to clipboard!");
+      setTimeout(() => {
+        setTrialDetailsModal((prev) => ({ ...prev, copied: false }));
+      }, 2000);
+    }
   }
 
   function openContactModal(trial) {
@@ -6347,6 +6416,80 @@ export default function DashboardResearcher() {
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* Generated Message Section */}
+              {trialDetailsModal.generatedMessage && (
+                <div className="mt-4 p-4 bg-indigo-50 rounded-lg border border-indigo-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-semibold text-indigo-900">
+                      Generated Message
+                    </label>
+                    <button
+                      onClick={copyTrialDetailsMessage}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white hover:bg-indigo-100 text-indigo-700 rounded-lg border border-indigo-200 transition-all"
+                    >
+                      {trialDetailsModal.copied ? (
+                        <>
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          Copied!
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          Copy
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <div className="bg-white rounded-lg p-3 border border-indigo-100">
+                    <p className="text-sm text-slate-700 whitespace-pre-wrap">
+                      {trialDetailsModal.generatedMessage}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Help me write button */}
+              {trialDetailsModal.trial.contacts?.length > 0 && (
+                <div className="mt-4">
+                  <button
+                    onClick={generateTrialDetailsMessage}
+                    disabled={trialDetailsModal.generating}
+                    className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed w-full"
+                    style={{
+                      color: "#2F3C96",
+                      backgroundColor: "rgba(208, 196, 226, 0.2)",
+                      border: "1px solid rgba(208, 196, 226, 0.3)",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!trialDetailsModal.generating) {
+                        e.target.style.backgroundColor =
+                          "rgba(208, 196, 226, 0.3)";
+                        e.target.style.color = "#253075";
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!trialDetailsModal.generating) {
+                        e.target.style.backgroundColor =
+                          "rgba(208, 196, 226, 0.2)";
+                        e.target.style.color = "#2F3C96";
+                      }
+                    }}
+                  >
+                    {trialDetailsModal.generating ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" />
+                        Help me write
+                      </>
+                    )}
+                  </button>
                 </div>
               )}
 

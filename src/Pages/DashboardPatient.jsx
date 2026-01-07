@@ -42,6 +42,8 @@ import {
   Bell,
   ChevronDown,
   ChevronUp,
+  Copy,
+  CheckCircle2,
 } from "lucide-react";
 import Modal from "../components/ui/Modal";
 import { MultiStepLoader } from "../components/ui/multi-step-loader";
@@ -73,6 +75,9 @@ export default function DashboardPatient() {
     open: false,
     trial: null,
     loading: false,
+    generatedMessage: "",
+    generating: false,
+    copied: false,
   });
   const [contactModal, setContactModal] = useState({
     open: false,
@@ -85,6 +90,9 @@ export default function DashboardPatient() {
     open: false,
     trial: null,
     loading: false,
+    generatedMessage: "",
+    generating: false,
+    copied: false,
   });
   const [publicationDetailsModal, setPublicationDetailsModal] = useState({
     open: false,
@@ -124,7 +132,8 @@ export default function DashboardPatient() {
   const [simplifiedTrialSummaries, setSimplifiedTrialSummaries] = useState(
     new Map()
   ); // Cache of simplified trial summaries
-  const [sendingVerificationEmail, setSendingVerificationEmail] = useState(false);
+  const [sendingVerificationEmail, setSendingVerificationEmail] =
+    useState(false);
   const [verifyEmailModalOpen, setVerifyEmailModalOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
@@ -173,12 +182,15 @@ export default function DashboardPatient() {
     // Listen for cross-tab messages (email verification, user updates)
     const cleanupCrossTab = listenForMessages((type, data) => {
       if (type === "email-verified" || type === "user-updated") {
-        const updatedUser = data.user || JSON.parse(localStorage.getItem("user") || "{}");
+        const updatedUser =
+          data.user || JSON.parse(localStorage.getItem("user") || "{}");
         setUser(updatedUser);
         // Also trigger login event for other listeners
         window.dispatchEvent(new Event("login"));
         if (type === "email-verified") {
-          toast.success("Email verified successfully! (Updated from another tab)");
+          toast.success(
+            "Email verified successfully! (Updated from another tab)"
+          );
         }
       }
     });
@@ -198,15 +210,20 @@ export default function DashboardPatient() {
         if (response.ok) {
           const data = await response.json();
           const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
-          
+
           // If email verification status changed, update user state
-          if (currentUser.emailVerified !== data.emailVerified && data.emailVerified) {
+          if (
+            currentUser.emailVerified !== data.emailVerified &&
+            data.emailVerified
+          ) {
             currentUser.emailVerified = true;
             localStorage.setItem("user", JSON.stringify(currentUser));
             setUser(currentUser);
             window.dispatchEvent(new Event("login"));
-            toast.success("Email verified successfully! (Updated from another device)");
-            
+            toast.success(
+              "Email verified successfully! (Updated from another device)"
+            );
+
             // Stop polling once verified
             if (emailCheckInterval) {
               clearInterval(emailCheckInterval);
@@ -225,7 +242,7 @@ export default function DashboardPatient() {
     if (userData && !userData.emailVerified) {
       // Check immediately
       checkEmailVerificationStatus();
-      
+
       // Then check every 30 seconds
       emailCheckInterval = setInterval(() => {
         checkEmailVerificationStatus();
@@ -603,6 +620,9 @@ export default function DashboardPatient() {
       open: true,
       trial: trial, // Show basic info immediately
       loading: true,
+      generatedMessage: "",
+      generating: false,
+      copied: false,
     });
 
     // Fetch detailed trial information from backend
@@ -620,6 +640,9 @@ export default function DashboardPatient() {
               open: true,
               trial: { ...trial, ...data.trial },
               loading: false,
+              generatedMessage: "",
+              generating: false,
+              copied: false,
             });
             return;
           }
@@ -634,6 +657,9 @@ export default function DashboardPatient() {
       open: true,
       trial: trial,
       loading: false,
+      generatedMessage: "",
+      generating: false,
+      copied: false,
     });
   }
 
@@ -642,7 +668,62 @@ export default function DashboardPatient() {
       open: false,
       trial: null,
       loading: false,
+      generatedMessage: "",
+      generating: false,
+      copied: false,
     });
+  }
+
+  async function generateTrialDetailsMessage() {
+    if (!trialDetailsModal.trial) return;
+
+    setTrialDetailsModal((prev) => ({ ...prev, generating: true }));
+
+    try {
+      const userName = user?.username || "Patient";
+      const userLocation =
+        userProfile?.patient?.location ||
+        userProfile?.researcher?.location ||
+        null;
+
+      const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
+      const response = await fetch(`${base}/api/ai/generate-trial-message`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userName,
+          userLocation,
+          trial: trialDetailsModal.trial,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to generate message");
+      }
+
+      const data = await response.json();
+      setTrialDetailsModal((prev) => ({
+        ...prev,
+        generatedMessage: data.message || "",
+        generating: false,
+      }));
+      toast.success("Message generated successfully!");
+    } catch (error) {
+      console.error("Error generating message:", error);
+      toast.error("Failed to generate message. Please try again.");
+      setTrialDetailsModal((prev) => ({ ...prev, generating: false }));
+    }
+  }
+
+  function copyTrialDetailsMessage() {
+    if (trialDetailsModal.generatedMessage) {
+      navigator.clipboard.writeText(trialDetailsModal.generatedMessage);
+      setTrialDetailsModal((prev) => ({ ...prev, copied: true }));
+      toast.success("Message copied to clipboard!");
+      setTimeout(() => {
+        setTrialDetailsModal((prev) => ({ ...prev, copied: false }));
+      }, 2000);
+    }
   }
 
   function openContactModal(trial) {
@@ -660,6 +741,9 @@ export default function DashboardPatient() {
       open: true,
       trial: trial, // Show basic info immediately
       loading: true,
+      generatedMessage: "",
+      generating: false,
+      copied: false,
     });
 
     // Fetch detailed trial information from backend
@@ -677,6 +761,9 @@ export default function DashboardPatient() {
               open: true,
               trial: { ...trial, ...data.trial },
               loading: false,
+              generatedMessage: "",
+              generating: false,
+              copied: false,
             });
             return;
           }
@@ -691,6 +778,9 @@ export default function DashboardPatient() {
       open: true,
       trial: trial,
       loading: false,
+      generatedMessage: "",
+      generating: false,
+      copied: false,
     });
   }
 
@@ -699,7 +789,62 @@ export default function DashboardPatient() {
       open: false,
       trial: null,
       loading: false,
+      generatedMessage: "",
+      generating: false,
+      copied: false,
     });
+  }
+
+  async function generateContactMessage() {
+    if (!contactInfoModal.trial) return;
+
+    setContactInfoModal((prev) => ({ ...prev, generating: true }));
+
+    try {
+      const userName = user?.username || "Patient";
+      const userLocation =
+        userProfile?.patient?.location ||
+        userProfile?.researcher?.location ||
+        null;
+
+      const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
+      const response = await fetch(`${base}/api/ai/generate-trial-message`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userName,
+          userLocation,
+          trial: contactInfoModal.trial,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to generate message");
+      }
+
+      const data = await response.json();
+      setContactInfoModal((prev) => ({
+        ...prev,
+        generatedMessage: data.message || "",
+        generating: false,
+      }));
+      toast.success("Message generated successfully!");
+    } catch (error) {
+      console.error("Error generating message:", error);
+      toast.error("Failed to generate message. Please try again.");
+      setContactInfoModal((prev) => ({ ...prev, generating: false }));
+    }
+  }
+
+  function copyGeneratedMessage() {
+    if (contactInfoModal.generatedMessage) {
+      navigator.clipboard.writeText(contactInfoModal.generatedMessage);
+      setContactInfoModal((prev) => ({ ...prev, copied: true }));
+      toast.success("Message copied to clipboard!");
+      setTimeout(() => {
+        setContactInfoModal((prev) => ({ ...prev, copied: false }));
+      }, 2000);
+    }
   }
 
   async function generateMessage() {
@@ -1879,11 +2024,13 @@ export default function DashboardPatient() {
                     }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.backgroundColor = "#b45309";
-                      e.currentTarget.style.borderColor = "rgba(217, 119, 6, 0.7)";
+                      e.currentTarget.style.borderColor =
+                        "rgba(217, 119, 6, 0.7)";
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.backgroundColor = "#d97706";
-                      e.currentTarget.style.borderColor = "rgba(217, 119, 6, 0.5)";
+                      e.currentTarget.style.borderColor =
+                        "rgba(217, 119, 6, 0.5)";
                     }}
                   >
                     <Mail className="w-4 h-4 shrink-0" />
@@ -1900,31 +2047,39 @@ export default function DashboardPatient() {
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.backgroundColor = "#253075";
-                    e.currentTarget.style.borderColor = "rgba(47, 60, 150, 0.7)";
+                    e.currentTarget.style.borderColor =
+                      "rgba(47, 60, 150, 0.7)";
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.backgroundColor = "#2F3C96";
-                    e.currentTarget.style.borderColor = "rgba(47, 60, 150, 0.5)";
+                    e.currentTarget.style.borderColor =
+                      "rgba(47, 60, 150, 0.5)";
                   }}
                 >
                   <Star className="w-4 h-4 shrink-0" />
-                  <span className="whitespace-nowrap">View All Saved Items</span>
+                  <span className="whitespace-nowrap">
+                    View All Saved Items
+                  </span>
                 </button>
               </div>
 
               {/* Mobile Collapse Button */}
               <button
-                onClick={() => setIsProfileBannerExpanded(!isProfileBannerExpanded)}
+                onClick={() =>
+                  setIsProfileBannerExpanded(!isProfileBannerExpanded)
+                }
                 className="sm:hidden flex items-center justify-center w-10 h-10 rounded-lg transition-all"
                 style={{
                   backgroundColor: "rgba(47, 60, 150, 0.15)",
                   color: "#2F3C96",
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = "rgba(47, 60, 150, 0.25)";
+                  e.currentTarget.style.backgroundColor =
+                    "rgba(47, 60, 150, 0.25)";
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = "rgba(47, 60, 150, 0.15)";
+                  e.currentTarget.style.backgroundColor =
+                    "rgba(47, 60, 150, 0.15)";
                 }}
               >
                 {isProfileBannerExpanded ? (
@@ -1938,7 +2093,9 @@ export default function DashboardPatient() {
             {/* Collapsible Content - Profile Details & Meetings */}
             <div
               className={`relative z-10 overflow-hidden transition-all duration-300 ${
-                isProfileBannerExpanded ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0"
+                isProfileBannerExpanded
+                  ? "max-h-[2000px] opacity-100"
+                  : "max-h-0 opacity-0"
               } sm:max-h-none sm:opacity-100`}
             >
               <div className="px-5 sm:px-4 pb-5 sm:pb-0 border-t border-white/20 sm:border-t-0 pt-4 sm:pt-0">
@@ -1948,7 +2105,8 @@ export default function DashboardPatient() {
                     className="text-base font-bold"
                     style={{ color: "#2F3C96" }}
                   >
-                    Hello, {user?.username || "User"} 👋 — here's your health dashboard
+                    Hello, {user?.username || "User"} 👋 — here's your health
+                    dashboard
                   </h3>
                   <div
                     className="flex flex-wrap items-center gap-3 text-xs"
@@ -2048,7 +2206,6 @@ export default function DashboardPatient() {
                     <span>View All Saved Items</span>
                   </button>
                 </div>
-
               </div>
             </div>
           </div>
@@ -5900,6 +6057,80 @@ export default function DashboardPatient() {
                 </div>
               )}
 
+              {/* Generated Message Section */}
+              {trialDetailsModal.generatedMessage && (
+                <div className="mt-4 p-4 bg-indigo-50 rounded-lg border border-indigo-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-semibold text-indigo-900">
+                      Generated Message
+                    </label>
+                    <button
+                      onClick={copyTrialDetailsMessage}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white hover:bg-indigo-100 text-indigo-700 rounded-lg border border-indigo-200 transition-all"
+                    >
+                      {trialDetailsModal.copied ? (
+                        <>
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          Copied!
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          Copy
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <div className="bg-white rounded-lg p-3 border border-indigo-100">
+                    <p className="text-sm text-slate-700 whitespace-pre-wrap">
+                      {trialDetailsModal.generatedMessage}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Help me write button */}
+              {trialDetailsModal.trial.contacts?.length > 0 && (
+                <div className="mt-4">
+                  <button
+                    onClick={generateTrialDetailsMessage}
+                    disabled={trialDetailsModal.generating}
+                    className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed w-full"
+                    style={{
+                      color: "#2F3C96",
+                      backgroundColor: "rgba(208, 196, 226, 0.2)",
+                      border: "1px solid rgba(208, 196, 226, 0.3)",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!trialDetailsModal.generating) {
+                        e.target.style.backgroundColor =
+                          "rgba(208, 196, 226, 0.3)";
+                        e.target.style.color = "#253075";
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!trialDetailsModal.generating) {
+                        e.target.style.backgroundColor =
+                          "rgba(208, 196, 226, 0.2)";
+                        e.target.style.color = "#2F3C96";
+                      }
+                    }}
+                  >
+                    {trialDetailsModal.generating ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" />
+                        Help me write
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
               {/* Additional Information */}
               <div
                 className="space-y-4 pt-4 border-t"
@@ -7444,32 +7675,78 @@ export default function DashboardPatient() {
                 </div>
               )}
 
+              {/* Generated Message Section */}
+              {contactInfoModal.generatedMessage && (
+                <div className="mt-4 p-4 bg-indigo-50 rounded-lg border border-indigo-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-semibold text-indigo-900">
+                      Generated Message
+                    </label>
+                    <button
+                      onClick={copyGeneratedMessage}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white hover:bg-indigo-100 text-indigo-700 rounded-lg border border-indigo-200 transition-all"
+                    >
+                      {contactInfoModal.copied ? (
+                        <>
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          Copied!
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          Copy
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <div className="bg-white rounded-lg p-3 border border-indigo-100">
+                    <p className="text-sm text-slate-700 whitespace-pre-wrap">
+                      {contactInfoModal.generatedMessage}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div className="flex gap-3 pt-2">
                 <button
-                  onClick={() => {
-                    closeContactInfoModal();
-                    openContactModal(contactInfoModal.trial);
-                  }}
-                  className="flex-1 py-2.5 text-xs font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+                  onClick={generateContactMessage}
+                  disabled={contactInfoModal.generating}
+                  className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   style={{
                     color: "#2F3C96",
                     backgroundColor: "rgba(208, 196, 226, 0.2)",
+                    border: "1px solid rgba(208, 196, 226, 0.3)",
                   }}
                   onMouseEnter={(e) => {
-                    e.target.style.backgroundColor = "rgba(208, 196, 226, 0.3)";
-                    e.target.style.color = "#253075";
+                    if (!contactInfoModal.generating) {
+                      e.target.style.backgroundColor =
+                        "rgba(208, 196, 226, 0.3)";
+                      e.target.style.color = "#253075";
+                    }
                   }}
                   onMouseLeave={(e) => {
-                    e.target.style.backgroundColor = "rgba(208, 196, 226, 0.2)";
-                    e.target.style.color = "#2F3C96";
+                    if (!contactInfoModal.generating) {
+                      e.target.style.backgroundColor =
+                        "rgba(208, 196, 226, 0.2)";
+                      e.target.style.color = "#2F3C96";
+                    }
                   }}
                 >
-                  <Send className="w-4 h-4" />
-                  Contact Admin
+                  {contactInfoModal.generating ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      Help me write
+                    </>
+                  )}
                 </button>
                 <button
                   onClick={closeContactInfoModal}
-                  className="px-6 py-2.5 border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl transition-all"
+                  className="flex-1 px-6 py-2.5 border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl transition-all"
                 >
                   Close
                 </button>
@@ -7917,7 +8194,7 @@ export default function DashboardPatient() {
         }
       `}</style>
       <ScrollToTop />
-      
+
       {/* Verify Email Modal */}
       <VerifyEmailModal
         isOpen={verifyEmailModalOpen}

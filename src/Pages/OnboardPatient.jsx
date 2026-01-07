@@ -113,7 +113,7 @@ export default function OnboardPatient() {
   // Extract terms from ICD11 dataset for suggestions
   const icd11Suggestions = useMemo(() => {
     const termsSet = new Set();
-    
+
     if (Array.isArray(icd11Dataset)) {
       icd11Dataset.forEach((item) => {
         // Add display_name
@@ -123,23 +123,23 @@ export default function OnboardPatient() {
             termsSet.add(displayName);
           }
         }
-        
+
         // Add patient_terms, but filter out ICD code patterns
         if (Array.isArray(item.patient_terms)) {
           item.patient_terms.forEach((term) => {
             if (typeof term === "string") {
               const trimmedTerm = term.trim();
               if (!trimmedTerm) return;
-              
+
               // Filter out terms containing ICD code patterns
               const lowerTerm = trimmedTerm.toLowerCase();
               // Check for patterns like "icd11 code aa00", "icd code aa00", "icd aa00", "icd11 aa00"
-              const hasIcdPattern = 
+              const hasIcdPattern =
                 lowerTerm.includes("icd11 code") ||
                 lowerTerm.includes("icd code") ||
                 /icd11\s+[a-z]{2}[0-9]{2}/i.test(trimmedTerm) || // "icd11 aa00"
                 /icd\s+[a-z]{2}[0-9]{2}/i.test(trimmedTerm); // "icd aa00", "icd ba20"
-              
+
               if (!hasIcdPattern) {
                 termsSet.add(trimmedTerm);
               }
@@ -148,7 +148,7 @@ export default function OnboardPatient() {
         }
       });
     }
-    
+
     return Array.from(termsSet);
   }, []);
 
