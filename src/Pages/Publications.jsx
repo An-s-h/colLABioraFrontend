@@ -13,6 +13,8 @@ import {
   MapPin,
   TrendingUp,
   Loader2,
+  ListChecks,
+  AlertCircle,
 } from "lucide-react";
 import Layout from "../components/Layout.jsx";
 import Input from "../components/ui/Input.jsx";
@@ -43,6 +45,7 @@ export default function Publications() {
   const [isInitialLoad, setIsInitialLoad] = useState(true); // Track if it's the initial load
   const [isSignedIn, setIsSignedIn] = useState(false); // Track if user is signed in
   const [user, setUser] = useState(null); // Track user state
+  const [userProfile, setUserProfile] = useState(null); // Track user profile
   const [location, setLocation] = useState("");
   const [locationMode, setLocationMode] = useState("global"); // "current", "global", "custom"
   const [userLocation, setUserLocation] = useState(null);
@@ -54,7 +57,7 @@ export default function Publications() {
   const [summaryModal, setSummaryModal] = useState({
     open: false,
     title: "",
-    text: "",
+    type: "",
     summary: "",
     loading: false,
   });
@@ -528,42 +531,59 @@ export default function Publications() {
   }
 
   async function generateSummary(item) {
+    // Determine if user is patient or researcher
+    const isPatient = userProfile?.patient !== undefined;
+    const isResearcher = userProfile?.researcher !== undefined;
+    // Default to patient if profile not loaded (simplified view)
+    const shouldSimplify = isPatient || (!isPatient && !isResearcher);
+
+    const title = item.title || "Publication";
+    const text = [
+      item.title || "",
+      item.journal || "",
+      item.abstract || "",
+      Array.isArray(item.authors)
+        ? item.authors.join(", ")
+        : item.authors || "",
+      item.year || "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
     setSummaryModal({
       open: true,
-      title: item.title,
-      text: "",
+      title,
+      type: "publication",
       summary: "",
       loading: true,
     });
+
     const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
     try {
-      // Build comprehensive summary text
-      const summaryText = [
-        item.title,
-        item.journal || "",
-        item.abstract || "",
-        Array.isArray(item.authors)
-          ? item.authors.join(", ")
-          : item.authors || "",
-        item.year || "",
-      ]
-        .filter(Boolean)
-        .join(" ");
-
       const res = await fetch(`${base}/api/ai/summary`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: summaryText }),
+        body: JSON.stringify({
+          text,
+          type: "publication",
+          simplify: shouldSimplify, // Simplify for patients, technical for researchers
+        }),
       }).then((r) => r.json());
+
       setSummaryModal((prev) => ({
         ...prev,
-        summary: res.summary || "Summary unavailable",
+        summary:
+          res.summary ||
+          (typeof res.summary === "object" && res.summary.structured
+            ? res.summary
+            : { structured: false, summary: "Summary unavailable" }),
         loading: false,
       }));
     } catch (e) {
+      console.error("Summary generation error:", e);
       setSummaryModal((prev) => ({
         ...prev,
-        summary: "Failed to generate summary",
+        summary: "Failed to generate summary. Please try again.",
         loading: false,
       }));
     }
@@ -713,12 +733,13 @@ export default function Publications() {
           setUseMedicalInterest(false);
         }
 
-        // Fetch profile for location
+        // Fetch profile for location and user type
         const response = await fetch(
           `${base}/api/profile/${userData._id || userData.id}`
         );
         const data = await response.json();
         if (data.profile) {
+          setUserProfile(data.profile);
           const profileLocation =
             data.profile.patient?.location || data.profile.researcher?.location;
           if (
@@ -966,57 +987,80 @@ export default function Publications() {
                   return (
                     <div
                       key={itemId}
-                      className="bg-white rounded-xl shadow-sm border border-slate-200 hover:shadow-lg hover:border-indigo-300 transition-all duration-300 transform hover:-translate-y-0.5 animate-fade-in overflow-hidden"
-                      style={{ animationDelay: `${cardIdx * 50}ms` }}
+                      className="bg-white rounded-xl shadow-sm border transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden flex flex-col h-full animate-fade-in"
+                      style={{
+                        borderColor: "rgba(208, 196, 226, 0.3)",
+                        animationDelay: `${cardIdx * 50}ms`,
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.boxShadow =
+                          "0 10px 15px -3px rgba(47, 60, 150, 0.1), 0 4px 6px -2px rgba(47, 60, 150, 0.05)";
+                        e.currentTarget.style.borderColor =
+                          "rgba(47, 60, 150, 0.4)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.boxShadow =
+                          "0 1px 2px 0 rgba(0, 0, 0, 0.05)";
+                        e.currentTarget.style.borderColor =
+                          "rgba(208, 196, 226, 0.3)";
+                      }}
                     >
-                      <div className="p-5">
-                        {/* Match Badge Banner */}
+                      <div className="p-5 flex flex-col flex-grow">
+                        {/* Match Progress Bar */}
                         {pub.matchPercentage !== undefined && (
-                          <div className="mb-3 -mt-2 -mx-5 px-5 py-2 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100">
-                            <div className="flex items-center justify-between">
+                          <div className="mb-4">
+                            <div className="flex items-center justify-between mb-2">
                               <div className="flex items-center gap-2">
-                                <TrendingUp className="w-4 h-4 text-blue-600" />
-                                <span className="text-sm font-bold text-blue-700">
+                                <TrendingUp
+                                  className="w-4 h-4"
+                                  style={{ color: "#2F3C96" }}
+                                />
+                                <span
+                                  className="text-sm font-bold"
+                                  style={{ color: "#2F3C96" }}
+                                >
                                   {pub.matchPercentage}% Match
                                 </span>
                               </div>
-                              {pub.matchExplanation && (
-                                <span className="text-xs text-blue-600 truncate flex-1 ml-2 max-w-[200px] sm:max-w-none">
-                                  {pub.matchExplanation}
-                                </span>
-                              )}
+                            </div>
+                            {/* Progress Bar */}
+                            <div
+                              className="w-full h-2.5 rounded-full overflow-hidden"
+                              style={{
+                                backgroundColor: "rgba(208, 196, 226, 0.3)",
+                              }}
+                            >
+                              <div
+                                className="h-full rounded-full transition-all duration-500"
+                                style={{
+                                  width: `${pub.matchPercentage}%`,
+                                  background:
+                                    "linear-gradient(90deg, #2F3C96, #253075)",
+                                }}
+                              ></div>
                             </div>
                           </div>
                         )}
 
-                        {/* Publication Header */}
-                        <div className="flex items-start justify-between mb-3">
-                          <span className="inline-flex items-center px-2.5 py-1 bg-indigo-100 text-indigo-700 text-xs font-medium rounded-full">
-                            <FileText className="w-3 h-3 mr-1" />
-                            {pub.pmid
-                              ? `PMID: ${pub.pmid}`
-                              : pub.id || "PUB-001"}
-                          </span>
-                          {pub.journal && (
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border bg-slate-50 text-slate-700 border-slate-200">
-                              {pub.journal.length > 20
-                                ? `${pub.journal.substring(0, 20)}...`
-                                : pub.journal}
-                            </span>
-                          )}
+                        {/* Publication Title */}
+                        <div className="mb-4">
+                          <h3
+                            className="text-lg font-bold mb-0 line-clamp-3 leading-snug"
+                            style={{ color: "#2F3C96" }}
+                          >
+                            {pub.title || "Untitled Publication"}
+                          </h3>
                         </div>
 
-                        {/* Publication Title */}
-                        <h3 className="text-base font-bold text-slate-900 mb-3 line-clamp-2 leading-tight">
-                          {pub.title}
-                        </h3>
-
                         {/* Basic Info - Authors and Published Date */}
-                        <div className="space-y-1.5 mb-3">
+                        <div className="space-y-1.5 mb-4">
                           {pub.authors &&
                             Array.isArray(pub.authors) &&
                             pub.authors.length > 0 && (
-                              <div className="flex items-center text-sm text-slate-700">
+                              <div
+                                className="flex items-center text-sm"
+                                style={{ color: "#787878" }}
+                              >
                                 <User className="w-3.5 h-3.5 mr-2 shrink-0" />
                                 <span className="line-clamp-1">
                                   {pub.authors.join(", ")}
@@ -1024,7 +1068,10 @@ export default function Publications() {
                               </div>
                             )}
                           {(pub.year || pub.month) && (
-                            <div className="flex items-center text-sm text-slate-600">
+                            <div
+                              className="flex items-center text-sm"
+                              style={{ color: "#787878" }}
+                            >
                               <Calendar className="w-3.5 h-3.5 mr-2 shrink-0" />
                               <span>
                                 {pub.month && pub.month + " "}
@@ -1032,41 +1079,83 @@ export default function Publications() {
                               </span>
                             </div>
                           )}
-                          {pub.journal && (
-                            <div className="flex items-center text-sm text-slate-600">
-                              <BookOpen className="w-3.5 h-3.5 mr-2 shrink-0" />
-                              <span className="line-clamp-1">
-                                {pub.journal}
-                              </span>
-                            </div>
-                          )}
                         </div>
 
-                        {/* One-line Abstract Description */}
+                        {/* Abstract Preview */}
                         {pub.abstract && (
-                          <div className="mb-3">
+                          <div className="mb-4 flex-grow">
                             <button
                               onClick={() => openDetailsModal(pub)}
-                              className="w-full text-left text-sm text-slate-700 hover:text-indigo-700 font-medium py-2 px-3 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
+                              className="w-full text-left text-sm py-2 px-3 rounded-lg transition-all duration-200 border group"
+                              style={{
+                                backgroundColor: "rgba(208, 196, 226, 0.2)",
+                                borderColor: "rgba(47, 60, 150, 0.2)",
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.backgroundColor =
+                                  "rgba(208, 196, 226, 0.3)";
+                                e.currentTarget.style.borderColor =
+                                  "rgba(47, 60, 150, 0.3)";
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.backgroundColor =
+                                  "rgba(208, 196, 226, 0.2)";
+                                e.currentTarget.style.borderColor =
+                                  "rgba(47, 60, 150, 0.2)";
+                              }}
                             >
                               <div className="flex items-start gap-2">
-                                <Info className="w-4 h-4 mt-0.5 shrink-0" />
-                                <span className="line-clamp-2 flex-1">
-                                  {pub.abstract}
-                                </span>
+                                <Info
+                                  className="w-4 h-4 mt-0.5 shrink-0 transition-colors duration-200"
+                                  style={{ color: "#2F3C96" }}
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <div
+                                    className="transition-colors duration-200"
+                                    style={{ color: "#787878" }}
+                                  >
+                                    <span className="line-clamp-2">
+                                      {pub.abstract}
+                                    </span>
+                                  </div>
+                                  <div
+                                    className="mt-1.5 flex items-center gap-1 font-medium transition-all duration-200"
+                                    style={{ color: "#2F3C96" }}
+                                  >
+                                    <span>View full details</span>
+                                    <span className="inline-block group-hover:translate-x-0.5 transition-transform duration-200">
+                                      →
+                                    </span>
+                                  </div>
+                                </div>
                               </div>
                             </button>
                           </div>
                         )}
 
+                        {/* Spacer for cards without abstract */}
+                        {!pub.abstract && <div className="flex-grow"></div>}
+
                         {/* Action Buttons */}
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 mt-auto">
                           <button
                             onClick={() => generateSummary(pub)}
-                            className="flex-1 flex items-center justify-center gap-2 py-2 bg-gradient-to-r from-slate-600 to-slate-700 text-white rounded-lg text-sm font-semibold hover:from-slate-700 hover:to-slate-800 transition-all shadow-sm"
+                            className="flex-1 flex items-center justify-center gap-2 py-2 text-white rounded-lg text-sm font-semibold transition-all shadow-sm"
+                            style={{
+                              background:
+                                "linear-gradient(135deg, #2F3C96, #253075)",
+                            }}
+                            onMouseEnter={(e) => {
+                              e.target.style.background =
+                                "linear-gradient(135deg, #253075, #1C2454)";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.target.style.background =
+                                "linear-gradient(135deg, #2F3C96, #253075)";
+                            }}
                           >
                             <Sparkles className="w-4 h-4" />
-                            Summarize
+                            Understand this Paper
                           </button>
 
                           <button
@@ -1081,8 +1170,54 @@ export default function Publications() {
                                     fav.item?.pmid === itemId)
                               )
                                 ? "bg-red-50 border-red-200 text-red-500"
-                                : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-red-500"
+                                : ""
                             }`}
+                            style={
+                              !favorites.some(
+                                (fav) =>
+                                  fav.type === "publication" &&
+                                  (fav.item?.id === itemId ||
+                                    fav.item?._id === itemId ||
+                                    fav.item?.pmid === itemId)
+                              )
+                                ? {
+                                    backgroundColor: "rgba(208, 196, 226, 0.2)",
+                                    borderColor: "rgba(208, 196, 226, 0.3)",
+                                    color: "#787878",
+                                  }
+                                : {}
+                            }
+                            onMouseEnter={(e) => {
+                              const isFavorited = favorites.some(
+                                (fav) =>
+                                  fav.type === "publication" &&
+                                  (fav.item?.id === itemId ||
+                                    fav.item?._id === itemId ||
+                                    fav.item?.pmid === itemId)
+                              );
+                              if (
+                                !isFavorited &&
+                                !e.currentTarget.disabled
+                              ) {
+                                e.currentTarget.style.backgroundColor =
+                                  "rgba(208, 196, 226, 0.3)";
+                                e.currentTarget.style.color = "#dc2626";
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              const isFavorited = favorites.some(
+                                (fav) =>
+                                  fav.type === "publication" &&
+                                  (fav.item?.id === itemId ||
+                                    fav.item?._id === itemId ||
+                                    fav.item?.pmid === itemId)
+                              );
+                              if (!isFavorited) {
+                                e.currentTarget.style.backgroundColor =
+                                  "rgba(208, 196, 226, 0.2)";
+                                e.currentTarget.style.color = "#787878";
+                              }
+                            }}
                           >
                             {favoritingItems.has(getFavoriteKey(pub)) ? (
                               <Loader2 className="w-4 h-4 animate-spin" />
@@ -1110,7 +1245,21 @@ export default function Publications() {
                             href={pub.url}
                             target="_blank"
                             rel="noreferrer"
-                            className="flex items-center justify-center gap-2 py-2 text-xs text-indigo-600 hover:text-indigo-700 font-medium bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors mt-3 w-full"
+                            className="flex items-center justify-center gap-2 py-2 text-xs font-medium rounded-lg transition-colors mt-3 w-full"
+                            style={{
+                              color: "#2F3C96",
+                              backgroundColor: "rgba(208, 196, 226, 0.2)",
+                            }}
+                            onMouseEnter={(e) => {
+                              e.target.style.backgroundColor =
+                                "rgba(208, 196, 226, 0.3)";
+                              e.target.style.color = "#253075";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.target.style.backgroundColor =
+                                "rgba(208, 196, 226, 0.2)";
+                              e.target.style.color = "#2F3C96";
+                            }}
                           >
                             <ExternalLink className="w-3.5 h-3.5" />
                             Open Paper
@@ -1203,21 +1352,41 @@ export default function Publications() {
           {detailsModal.publication && (
             <div className="flex flex-col h-full -mx-6 -my-6">
               {/* Scrollable Content */}
-              <div className="flex-1 overflow-y-auto space-y-6 px-6 pt-6 pb-5">
+              <div className="flex-1 overflow-y-auto space-y-6 px-6 pt-6 pb-24">
                 {/* Header */}
-                <div className="pb-4 border-b border-slate-200/60">
-                  <h3 className="text-xl font-bold text-slate-900 mb-3 leading-tight">
+                <div
+                  className="pb-4 border-b"
+                  style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+                >
+                  <h3
+                    className="text-xl font-bold mb-3 leading-tight"
+                    style={{ color: "#2F3C96" }}
+                  >
                     {detailsModal.publication.title}
                   </h3>
                   <div className="flex flex-wrap gap-2">
                     {detailsModal.publication.pmid && (
-                      <span className="inline-flex items-center px-3 py-1 bg-indigo-50 text-indigo-700 text-xs font-medium rounded-md border border-indigo-100">
+                      <span
+                        className="inline-flex items-center px-3 py-1 text-xs font-medium rounded-md border"
+                        style={{
+                          backgroundColor: "rgba(47, 60, 150, 0.15)",
+                          color: "#2F3C96",
+                          borderColor: "rgba(47, 60, 150, 0.3)",
+                        }}
+                      >
                         <FileText className="w-3 h-3 mr-1.5" />
                         PMID: {detailsModal.publication.pmid}
                       </span>
                     )}
                     {detailsModal.publication.journal && (
-                      <span className="inline-flex items-center px-3 py-1 bg-slate-50 text-slate-700 text-xs font-medium rounded-md border border-slate-200">
+                      <span
+                        className="inline-flex items-center px-3 py-1 text-xs font-medium rounded-md border"
+                        style={{
+                          backgroundColor: "rgba(208, 196, 226, 0.2)",
+                          color: "#787878",
+                          borderColor: "rgba(208, 196, 226, 0.3)",
+                        }}
+                      >
                         <BookOpen className="w-3 h-3 mr-1.5" />
                         {detailsModal.publication.journal}
                       </span>
@@ -1228,12 +1397,25 @@ export default function Publications() {
                 {/* Abstract Section - Moved to Top */}
                 {detailsModal.publication.abstract && (
                   <div>
-                    <div className="bg-gradient-to-br from-indigo-50/50 to-blue-50/50 rounded-xl p-5 border border-indigo-100/50">
-                      <h4 className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide text-indigo-700">
+                    <div
+                      className="rounded-xl p-5 border"
+                      style={{
+                        background:
+                          "linear-gradient(135deg, rgba(208, 196, 226, 0.2), rgba(232, 224, 239, 0.2))",
+                        borderColor: "rgba(208, 196, 226, 0.3)",
+                      }}
+                    >
+                      <h4
+                        className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
+                        style={{ color: "#2F3C96" }}
+                      >
                         <Info className="w-4 h-4" />
                         Abstract
                       </h4>
-                      <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+                      <p
+                        className="text-sm leading-relaxed whitespace-pre-wrap"
+                        style={{ color: "#787878" }}
+                      >
                         {detailsModal.publication.abstract}
                       </p>
                     </div>
@@ -1245,16 +1427,28 @@ export default function Publications() {
                   Array.isArray(detailsModal.publication.authors) &&
                   detailsModal.publication.authors.length > 0 && (
                     <div>
-                      <div className="bg-white rounded-xl p-5 border border-slate-200/60 shadow-sm">
-                        <h4 className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide text-slate-600">
+                      <div
+                        className="bg-white rounded-xl p-5 border shadow-sm"
+                        style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+                      >
+                        <h4
+                          className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
+                          style={{ color: "#2F3C96" }}
+                        >
                           <User className="w-4 h-4" />
                           Authors
                         </h4>
-                        <p className="text-sm text-slate-700 leading-relaxed">
+                        <p
+                          className="text-sm leading-relaxed"
+                          style={{ color: "#787878" }}
+                        >
                           {detailsModal.publication.authors.join(", ")}
                         </p>
                         {detailsModal.publication.authors.length > 1 && (
-                          <p className="text-xs text-slate-500 mt-2">
+                          <p
+                            className="text-xs mt-2"
+                            style={{ color: "#787878" }}
+                          >
                             {detailsModal.publication.authors.length} authors
                           </p>
                         )}
@@ -1264,8 +1458,14 @@ export default function Publications() {
 
                 {/* Publication Metadata Cards */}
                 <div>
-                  <div className="bg-white rounded-xl p-5 border border-slate-200/60 shadow-sm">
-                    <h4 className="font-semibold mb-4 flex items-center gap-2 text-sm uppercase tracking-wide text-slate-600">
+                  <div
+                    className="bg-white rounded-xl p-5 border shadow-sm"
+                    style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+                  >
+                    <h4
+                      className="font-semibold mb-4 flex items-center gap-2 text-sm uppercase tracking-wide"
+                      style={{ color: "#2F3C96" }}
+                    >
                       <Calendar className="w-4 h-4" />
                       Publication Information
                     </h4>
@@ -1273,14 +1473,29 @@ export default function Publications() {
                       {/* Publication Date */}
                       {(detailsModal.publication.year ||
                         detailsModal.publication.month) && (
-                        <div className="bg-slate-50/50 rounded-lg p-3 border border-slate-200/50">
+                        <div
+                          className="rounded-lg p-3 border"
+                          style={{
+                            backgroundColor: "rgba(208, 196, 226, 0.1)",
+                            borderColor: "rgba(208, 196, 226, 0.3)",
+                          }}
+                        >
                           <div className="flex items-center gap-2 mb-1.5">
-                            <Calendar className="w-3.5 h-3.5 text-slate-500" />
-                            <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                            <Calendar
+                              className="w-3.5 h-3.5"
+                              style={{ color: "#787878" }}
+                            />
+                            <span
+                              className="text-xs font-medium uppercase tracking-wide"
+                              style={{ color: "#787878" }}
+                            >
                               Published
                             </span>
                           </div>
-                          <p className="text-sm font-semibold text-slate-900">
+                          <p
+                            className="text-sm font-semibold"
+                            style={{ color: "#2F3C96" }}
+                          >
                             {detailsModal.publication.month
                               ? `${detailsModal.publication.month} `
                               : ""}
@@ -1295,14 +1510,29 @@ export default function Publications() {
                       {/* Volume & Issue */}
                       {(detailsModal.publication.volume ||
                         detailsModal.publication.issue) && (
-                        <div className="bg-slate-50/50 rounded-lg p-3 border border-slate-200/50">
+                        <div
+                          className="rounded-lg p-3 border"
+                          style={{
+                            backgroundColor: "rgba(208, 196, 226, 0.1)",
+                            borderColor: "rgba(208, 196, 226, 0.3)",
+                          }}
+                        >
                           <div className="flex items-center gap-2 mb-1.5">
-                            <BookOpen className="w-3.5 h-3.5 text-slate-500" />
-                            <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                            <BookOpen
+                              className="w-3.5 h-3.5"
+                              style={{ color: "#787878" }}
+                            />
+                            <span
+                              className="text-xs font-medium uppercase tracking-wide"
+                              style={{ color: "#787878" }}
+                            >
                               Volume / Issue
                             </span>
                           </div>
-                          <p className="text-sm font-semibold text-slate-900">
+                          <p
+                            className="text-sm font-semibold"
+                            style={{ color: "#2F3C96" }}
+                          >
                             {detailsModal.publication.volume || "N/A"}
                             {detailsModal.publication.issue
                               ? ` (Issue ${detailsModal.publication.issue})`
@@ -1313,14 +1543,29 @@ export default function Publications() {
 
                       {/* Pages */}
                       {detailsModal.publication.Pages && (
-                        <div className="bg-slate-50/50 rounded-lg p-3 border border-slate-200/50">
+                        <div
+                          className="rounded-lg p-3 border"
+                          style={{
+                            backgroundColor: "rgba(208, 196, 226, 0.1)",
+                            borderColor: "rgba(208, 196, 226, 0.3)",
+                          }}
+                        >
                           <div className="flex items-center gap-2 mb-1.5">
-                            <FileText className="w-3.5 h-3.5 text-slate-500" />
-                            <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                            <FileText
+                              className="w-3.5 h-3.5"
+                              style={{ color: "#787878" }}
+                            />
+                            <span
+                              className="text-xs font-medium uppercase tracking-wide"
+                              style={{ color: "#787878" }}
+                            >
                               Pages
                             </span>
                           </div>
-                          <p className="text-sm font-semibold text-slate-900">
+                          <p
+                            className="text-sm font-semibold"
+                            style={{ color: "#2F3C96" }}
+                          >
                             {detailsModal.publication.Pages}
                           </p>
                         </div>
@@ -1328,13 +1573,25 @@ export default function Publications() {
 
                       {/* Language */}
                       {detailsModal.publication.language && (
-                        <div className="bg-slate-50/50 rounded-lg p-3 border border-slate-200/50">
+                        <div
+                          className="rounded-lg p-3 border"
+                          style={{
+                            backgroundColor: "rgba(208, 196, 226, 0.1)",
+                            borderColor: "rgba(208, 196, 226, 0.3)",
+                          }}
+                        >
                           <div className="flex items-center gap-2 mb-1.5">
-                            <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                            <span
+                              className="text-xs font-medium uppercase tracking-wide"
+                              style={{ color: "#787878" }}
+                            >
                               Language
                             </span>
                           </div>
-                          <p className="text-sm font-semibold text-slate-900">
+                          <p
+                            className="text-sm font-semibold"
+                            style={{ color: "#2F3C96" }}
+                          >
                             {detailsModal.publication.language}
                           </p>
                         </div>
@@ -1347,8 +1604,14 @@ export default function Publications() {
                 {detailsModal.publication.keywords &&
                   detailsModal.publication.keywords.length > 0 && (
                     <div>
-                      <div className="bg-white rounded-xl p-5 border border-slate-200/60 shadow-sm">
-                        <h4 className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide text-slate-600">
+                      <div
+                        className="bg-white rounded-xl p-5 border shadow-sm"
+                        style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+                      >
+                        <h4
+                          className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
+                          style={{ color: "#2F3C96" }}
+                        >
                           <TrendingUp className="w-4 h-4" />
                           Keywords
                         </h4>
@@ -1357,7 +1620,12 @@ export default function Publications() {
                             (keyword, idx) => (
                               <span
                                 key={idx}
-                                className="px-3 py-1.5 bg-indigo-50 text-indigo-700 text-xs font-medium rounded-md border border-indigo-100"
+                                className="px-3 py-1.5 text-xs font-medium rounded-md border"
+                                style={{
+                                  backgroundColor: "rgba(47, 60, 150, 0.15)",
+                                  color: "#2F3C96",
+                                  borderColor: "rgba(47, 60, 150, 0.3)",
+                                }}
                               >
                                 {keyword}
                               </span>
@@ -1372,8 +1640,14 @@ export default function Publications() {
                 {detailsModal.publication.meshTerms &&
                   detailsModal.publication.meshTerms.length > 0 && (
                     <div>
-                      <div className="bg-white rounded-xl p-5 border border-slate-200/60 shadow-sm">
-                        <h4 className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide text-slate-600">
+                      <div
+                        className="bg-white rounded-xl p-5 border shadow-sm"
+                        style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+                      >
+                        <h4
+                          className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
+                          style={{ color: "#2F3C96" }}
+                        >
                           <Info className="w-4 h-4" />
                           MeSH Terms
                         </h4>
@@ -1383,14 +1657,23 @@ export default function Publications() {
                             .map((term, idx) => (
                               <span
                                 key={idx}
-                                className="px-3 py-1.5 bg-slate-50 text-slate-700 text-xs font-medium rounded-md border border-slate-200"
+                                className="px-3 py-1.5 text-xs font-medium rounded-md border"
+                                style={{
+                                  backgroundColor: "rgba(208, 196, 226, 0.2)",
+                                  color: "#787878",
+                                  borderColor: "rgba(208, 196, 226, 0.3)",
+                                }}
                               >
                                 {term}
                               </span>
                             ))}
                           {detailsModal.publication.meshTerms.length > 10 && (
-                            <span className="px-3 py-1.5 text-slate-500 text-xs">
-                              +{detailsModal.publication.meshTerms.length - 10}{" "}
+                            <span
+                              className="px-3 py-1.5 text-xs"
+                              style={{ color: "#787878" }}
+                            >
+                              +
+                              {detailsModal.publication.meshTerms.length - 10}{" "}
                               more
                             </span>
                           )}
@@ -1403,12 +1686,21 @@ export default function Publications() {
                 {detailsModal.publication.affiliations &&
                   detailsModal.publication.affiliations.length > 0 && (
                     <div>
-                      <div className="bg-white rounded-xl p-5 border border-slate-200/60 shadow-sm">
-                        <h4 className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide text-slate-600">
+                      <div
+                        className="bg-white rounded-xl p-5 border shadow-sm"
+                        style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+                      >
+                        <h4
+                          className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
+                          style={{ color: "#2F3C96" }}
+                        >
                           <MapPin className="w-4 h-4" />
                           Affiliation
                         </h4>
-                        <p className="text-sm text-slate-700 leading-relaxed">
+                        <p
+                          className="text-sm leading-relaxed"
+                          style={{ color: "#787878" }}
+                        >
                           {detailsModal.publication.affiliations[0]}
                         </p>
                       </div>
@@ -1419,8 +1711,14 @@ export default function Publications() {
                 {detailsModal.publication.publicationTypes &&
                   detailsModal.publication.publicationTypes.length > 0 && (
                     <div>
-                      <div className="bg-white rounded-xl p-5 border border-slate-200/60 shadow-sm">
-                        <h4 className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide text-slate-600">
+                      <div
+                        className="bg-white rounded-xl p-5 border shadow-sm"
+                        style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+                      >
+                        <h4
+                          className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
+                          style={{ color: "#2F3C96" }}
+                        >
                           <FileText className="w-4 h-4" />
                           Publication Type
                         </h4>
@@ -1429,7 +1727,12 @@ export default function Publications() {
                             (type, idx) => (
                               <span
                                 key={idx}
-                                className="px-3 py-1.5 bg-slate-50 text-slate-700 text-xs font-medium rounded-md border border-slate-200"
+                                className="px-3 py-1.5 text-xs font-medium rounded-md border"
+                                style={{
+                                  backgroundColor: "rgba(208, 196, 226, 0.2)",
+                                  color: "#787878",
+                                  borderColor: "rgba(208, 196, 226, 0.3)",
+                                }}
                               >
                                 {type}
                               </span>
@@ -1442,14 +1745,28 @@ export default function Publications() {
               </div>
 
               {/* Sticky Actions Footer */}
-              <div className="sticky bottom-[-100px] px-6 pb-5 borderbackdrop-blur-sm shadow-lg">
+              <div
+                className="bottom-0 px-6 py-4 border-t bg-white/95 backdrop-blur-sm shadow-lg"
+                style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+              >
                 <div className="flex flex-wrap gap-3">
                   {detailsModal.publication.url && (
                     <a
                       href={detailsModal.publication.url}
                       target="_blank"
                       rel="noreferrer"
-                      className="flex-1 px-4 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 shadow-sm hover:shadow-md"
+                      className="flex-1 px-4 py-2.5 text-white rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2 shadow-sm hover:shadow-md"
+                      style={{
+                        background: "linear-gradient(135deg, #2F3C96, #253075)",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.target.style.background =
+                          "linear-gradient(135deg, #253075, #1C2454)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.background =
+                          "linear-gradient(135deg, #2F3C96, #253075)";
+                      }}
                     >
                       <ExternalLink className="w-4 h-4" />
                       View on PubMed
@@ -1460,7 +1777,8 @@ export default function Publications() {
                     disabled={favoritingItems.has(
                       getFavoriteKey(detailsModal.publication)
                     )}
-                    className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 border shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed ${
+                    className="px-4 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 border shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={
                       favorites.some(
                         (fav) =>
                           fav.type === "publication" &&
@@ -1474,9 +1792,59 @@ export default function Publications() {
                               (detailsModal.publication.id ||
                                 detailsModal.publication.pmid))
                       )
-                        ? "bg-red-50 border-red-200 text-red-600 hover:bg-red-100"
-                        : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
-                    }`}
+                        ? {
+                            backgroundColor: "#fee2e2",
+                            borderColor: "#fecaca",
+                            color: "#dc2626",
+                          }
+                        : {
+                            backgroundColor: "rgba(208, 196, 226, 0.2)",
+                            borderColor: "rgba(208, 196, 226, 0.3)",
+                            color: "#787878",
+                          }
+                    }
+                    onMouseEnter={(e) => {
+                      if (
+                        !favorites.some(
+                          (fav) =>
+                            fav.type === "publication" &&
+                            (fav.item?.id ===
+                              (detailsModal.publication.id ||
+                                detailsModal.publication.pmid) ||
+                              fav.item?._id ===
+                                (detailsModal.publication.id ||
+                                  detailsModal.publication.pmid) ||
+                              fav.item?.pmid ===
+                                (detailsModal.publication.id ||
+                                  detailsModal.publication.pmid))
+                        )
+                      ) {
+                        e.currentTarget.style.backgroundColor =
+                          "rgba(208, 196, 226, 0.3)";
+                        e.currentTarget.style.color = "#2F3C96";
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (
+                        !favorites.some(
+                          (fav) =>
+                            fav.type === "publication" &&
+                            (fav.item?.id ===
+                              (detailsModal.publication.id ||
+                                detailsModal.publication.pmid) ||
+                              fav.item?._id ===
+                                (detailsModal.publication.id ||
+                                  detailsModal.publication.pmid) ||
+                              fav.item?.pmid ===
+                                (detailsModal.publication.id ||
+                                  detailsModal.publication.pmid))
+                        )
+                      ) {
+                        e.currentTarget.style.backgroundColor =
+                          "rgba(208, 196, 226, 0.2)";
+                        e.currentTarget.style.color = "#787878";
+                      }
+                    }}
                   >
                     {favoritingItems.has(
                       getFavoriteKey(detailsModal.publication)
@@ -1536,44 +1904,317 @@ export default function Publications() {
             setSummaryModal({
               open: false,
               title: "",
-              text: "",
+              type: "",
               summary: "",
               loading: false,
             })
           }
-          title="AI Publication Summary"
+          title="Key Insights"
         >
           <div className="space-y-4">
-            <div className="pb-4 border-b border-slate-200">
-              <div className="flex items-center gap-3 mb-2">
-                <FileText className="w-5 h-5 text-indigo-600" />
-                <h4 className="font-bold text-slate-900 text-lg">
+            <div
+              className="pb-4 border-b"
+              style={{ borderColor: "rgba(208, 196, 226, 0.5)" }}
+            >
+              <div className="mb-2">
+                <h4 className="font-bold text-lg" style={{ color: "#2F3C96" }}>
                   {summaryModal.title}
                 </h4>
               </div>
-              <span className="inline-block px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-xs font-semibold">
+              <span
+                className="inline-block px-3 py-1 rounded-full text-xs font-semibold"
+                style={{
+                  backgroundColor: "rgba(232, 224, 239, 0.8)",
+                  color: "#2F3C96",
+                }}
+              >
                 Research Publication
               </span>
             </div>
-
             {summaryModal.loading ? (
               <div className="space-y-4 py-4">
-                <div className="flex items-center gap-2 text-indigo-600 mb-4">
+                <div
+                  className="flex items-center gap-2 mb-4"
+                  style={{ color: "#2F3C96" }}
+                >
                   <Sparkles className="w-4 h-4 animate-pulse" />
                   <span className="text-sm font-medium">
-                    Generating AI summary...
+                    Preparing structured insights…
                   </span>
                 </div>
                 <div className="animate-pulse space-y-3">
-                  <div className="h-4 bg-indigo-100 rounded"></div>
-                  <div className="h-4 bg-indigo-100 rounded w-5/6"></div>
-                  <div className="h-4 bg-indigo-100 rounded w-4/6"></div>
+                  <div
+                    className="h-4 rounded"
+                    style={{ backgroundColor: "rgba(232, 224, 239, 0.5)" }}
+                  ></div>
+                  <div
+                    className="h-4 rounded w-5/6"
+                    style={{ backgroundColor: "rgba(232, 224, 239, 0.5)" }}
+                  ></div>
+                  <div
+                    className="h-4 rounded w-4/6"
+                    style={{ backgroundColor: "rgba(232, 224, 239, 0.5)" }}
+                  ></div>
+                  <div
+                    className="h-4 rounded w-full mt-2"
+                    style={{ backgroundColor: "rgba(232, 224, 239, 0.5)" }}
+                  ></div>
+                  <div
+                    className="h-4 rounded w-5/6"
+                    style={{ backgroundColor: "rgba(232, 224, 239, 0.5)" }}
+                  ></div>
+                  <div
+                    className="h-4 rounded w-3/4"
+                    style={{ backgroundColor: "rgba(232, 224, 239, 0.5)" }}
+                  ></div>
                 </div>
               </div>
+            ) : summaryModal.type === "publication" &&
+              summaryModal.summary &&
+              typeof summaryModal.summary === "object" &&
+              summaryModal.summary.structured ? (
+              // Structured Publication Summary with Visual Aids
+              <div className="space-y-5 py-2">
+                {/* Core Message - Most Important First */}
+                {summaryModal.summary.coreMessage && (
+                  <div
+                    className="rounded-xl p-5 border-2 shadow-sm"
+                    style={{
+                      background:
+                        "linear-gradient(135deg, rgba(232, 224, 239, 0.6), rgba(245, 242, 248, 0.8))",
+                      borderColor: "rgba(208, 196, 226, 0.6)",
+                    }}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div
+                        className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 mt-0.5"
+                        style={{ backgroundColor: "#2F3C96" }}
+                      >
+                        <Sparkles className="w-5 h-5 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <h5
+                          className="font-bold text-base mb-2"
+                          style={{ color: "#2F3C96" }}
+                        >
+                          Key Finding
+                        </h5>
+                        <p
+                          className="text-sm leading-relaxed"
+                          style={{ color: "#253075" }}
+                        >
+                          {summaryModal.summary.coreMessage}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* What Section */}
+                {summaryModal.summary.what && (
+                  <div
+                    className="bg-white rounded-lg p-4 border-l-4 shadow-sm hover:shadow-md transition-shadow"
+                    style={{ borderLeftColor: "#2F3C96" }}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div
+                        className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: "rgba(232, 224, 239, 0.6)" }}
+                      >
+                        <FileText
+                          className="w-4 h-4"
+                          style={{ color: "#2F3C96" }}
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <h5
+                          className="font-semibold text-sm mb-2 flex items-center gap-2"
+                          style={{ color: "#2F3C96" }}
+                        >
+                          <span
+                            className="w-6 h-6 text-white rounded-full flex items-center justify-center text-xs font-bold"
+                            style={{ backgroundColor: "#2F3C96" }}
+                          >
+                            1
+                          </span>
+                          What This Study Was About
+                        </h5>
+                        <p
+                          className="text-sm leading-relaxed"
+                          style={{ color: "#787878" }}
+                        >
+                          {summaryModal.summary.what}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Why Section */}
+                {summaryModal.summary.why && (
+                  <div
+                    className="bg-white rounded-lg p-4 border-l-4 shadow-sm hover:shadow-md transition-shadow"
+                    style={{ borderLeftColor: "#D0C4E2" }}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div
+                        className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: "rgba(232, 224, 239, 0.6)" }}
+                      >
+                        <Heart className="w-4 h-4" style={{ color: "#2F3C96" }} />
+                      </div>
+                      <div className="flex-1">
+                        <h5
+                          className="font-semibold text-sm mb-2 flex items-center gap-2"
+                          style={{ color: "#2F3C96" }}
+                        >
+                          <span
+                            className="w-6 h-6 text-white rounded-full flex items-center justify-center text-xs font-bold"
+                            style={{ backgroundColor: "#D0C4E2" }}
+                          >
+                            2
+                          </span>
+                          Why This Research Matters
+                        </h5>
+                        <p
+                          className="text-sm leading-relaxed"
+                          style={{ color: "#787878" }}
+                        >
+                          {summaryModal.summary.why}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* How Section */}
+                {summaryModal.summary.how && (
+                  <div
+                    className="bg-white rounded-lg p-4 border-l-4 shadow-sm hover:shadow-md transition-shadow"
+                    style={{ borderLeftColor: "#253075" }}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div
+                        className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: "rgba(232, 224, 239, 0.6)" }}
+                      >
+                        <ListChecks
+                          className="w-4 h-4"
+                          style={{ color: "#2F3C96" }}
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <h5
+                          className="font-semibold text-sm mb-2 flex items-center gap-2"
+                          style={{ color: "#2F3C96" }}
+                        >
+                          <span
+                            className="w-6 h-6 text-white rounded-full flex items-center justify-center text-xs font-bold"
+                            style={{ backgroundColor: "#253075" }}
+                          >
+                            3
+                          </span>
+                          How They Did The Study
+                        </h5>
+                        <p
+                          className="text-sm leading-relaxed"
+                          style={{ color: "#787878" }}
+                        >
+                          {summaryModal.summary.how}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* So What Section */}
+                {summaryModal.summary.soWhat && (
+                  <div
+                    className="rounded-lg p-4 border-l-4 shadow-sm hover:shadow-md transition-shadow"
+                    style={{
+                      background:
+                        "linear-gradient(135deg, rgba(232, 224, 239, 0.4), rgba(245, 242, 248, 0.6))",
+                      borderLeftColor: "#D0C4E2",
+                    }}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div
+                        className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: "rgba(232, 224, 239, 0.6)" }}
+                      >
+                        <TrendingUp
+                          className="w-4 h-4"
+                          style={{ color: "#2F3C96" }}
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <h5
+                          className="font-semibold text-sm mb-2 flex items-center gap-2"
+                          style={{ color: "#2F3C96" }}
+                        >
+                          <span
+                            className="w-6 h-6 text-white rounded-full flex items-center justify-center text-xs font-bold"
+                            style={{ backgroundColor: "#D0C4E2" }}
+                          >
+                            4
+                          </span>
+                          What This Means For You
+                        </h5>
+                        <p
+                          className="text-sm leading-relaxed"
+                          style={{ color: "#787878" }}
+                        >
+                          {summaryModal.summary.soWhat}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Key Takeaway */}
+                {summaryModal.summary.keyTakeaway && (
+                  <div
+                    className="rounded-xl p-4 border-2 shadow-sm"
+                    style={{
+                      backgroundColor: "rgba(232, 224, 239, 0.3)",
+                      borderColor: "rgba(208, 196, 226, 0.6)",
+                    }}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div
+                        className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: "#2F3C96" }}
+                      >
+                        <AlertCircle className="w-5 h-5 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <h5
+                          className="font-bold text-sm mb-2"
+                          style={{ color: "#2F3C96" }}
+                        >
+                          Remember This
+                        </h5>
+                        <p
+                          className="text-sm leading-relaxed font-medium"
+                          style={{ color: "#253075" }}
+                        >
+                          {summaryModal.summary.keyTakeaway}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             ) : (
+              // Fallback for non-structured summaries (old format)
               <div className="py-2">
-                <p className="text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">
-                  {summaryModal.summary}
+                <p
+                  className="text-sm leading-relaxed whitespace-pre-wrap"
+                  style={{ color: "#787878" }}
+                >
+                  {typeof summaryModal.summary === "object"
+                    ? summaryModal.summary.summary || "Summary unavailable"
+                    : summaryModal.summary || "Summary unavailable"}
                 </p>
               </div>
             )}
