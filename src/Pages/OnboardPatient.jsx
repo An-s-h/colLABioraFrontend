@@ -7,6 +7,7 @@ import Button from "../components/ui/Button.jsx";
 import AnimatedBackgroundDiff from "../components/ui/AnimatedBackgroundDiff.jsx";
 import SmartSearchInput from "../components/SmartSearchInput.jsx";
 import LocationInput from "../components/LocationInput.jsx";
+import EmailVerificationStep from "../components/EmailVerificationStep.jsx";
 import { SMART_SUGGESTION_KEYWORDS } from "../utils/smartSuggestions.js";
 import { useAuth0Social } from "../hooks/useAuth0Social.js";
 import icd11Dataset from "../data/icd11Dataset.json";
@@ -51,6 +52,11 @@ export default function OnboardPatient() {
   const [showTermsDialog, setShowTermsDialog] = useState(false);
   const navigate = useNavigate();
 
+  // Debug: Log step changes
+  useEffect(() => {
+    console.log("OnboardPatient - Current step:", step);
+  }, [step]);
+
   // Auth0 social login
   const {
     loginWithGoogle,
@@ -78,6 +84,20 @@ export default function OnboardPatient() {
       }
     }
   }, [isOAuthFlow]);
+
+  // CRITICAL: Check if user needs email verification on mount
+  useEffect(() => {
+    const userData = JSON.parse(localStorage.getItem("user") || "{}");
+    const token = localStorage.getItem("token");
+    
+    // If user is logged in but email is not verified, ensure we're on step 5
+    if (token && userData && (userData._id || userData.id) && !userData.emailVerified) {
+      if (step !== 5) {
+        console.log("User email not verified, forcing step 5");
+        setStep(5);
+      }
+    }
+  }, [step]);
 
   // Common medical conditions
   const commonConditions = [
@@ -348,7 +368,38 @@ export default function OnboardPatient() {
         }),
       });
 
-      navigate("/dashboard/patient");
+      // Ensure emailVerified is false for OAuth users too
+      const updatedUser = JSON.parse(localStorage.getItem("user") || "{}");
+      updatedUser.emailVerified = false;
+      localStorage.setItem("user", JSON.stringify(updatedUser));
+      // DO NOT dispatch login event until email is verified
+
+      // Send verification email for OAuth users too
+      try {
+        const verifyRes = await fetch(`${base}/api/auth/send-verification-email`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (verifyRes.ok) {
+          const verifyData = await verifyRes.json();
+          // Store OTP expiry if provided
+          const userEmail = updatedUser.email || email;
+          if (verifyData.otpExpiresAt && userEmail) {
+            localStorage.setItem(`otp_expiry_${userEmail}`, verifyData.otpExpiresAt);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to send verification email:", e);
+        // Continue to verification step anyway
+      }
+
+      // Move to verification step instead of dashboard
+      setStep(5);
+      setLoading(false);
     } catch (e) {
       console.error("OAuth profile completion error:", e);
       setError(e.message || "Failed to save profile. Please try again.");
@@ -399,8 +450,14 @@ export default function OnboardPatient() {
 
       const user = registerData.user;
       localStorage.setItem("token", registerData.token);
+      // Explicitly set emailVerified to false - user needs to verify first
+      // Backend should return false, but ensure it's explicitly false
+      if (user.emailVerified !== false) {
+        user.emailVerified = false;
+      }
       localStorage.setItem("user", JSON.stringify(user));
-      window.dispatchEvent(new Event("login"));
+      // DO NOT dispatch login event until email is verified
+      console.log("Registration complete, user emailVerified:", user.emailVerified);
 
       const profile = {
         role: "patient",
@@ -420,7 +477,42 @@ export default function OnboardPatient() {
         body: JSON.stringify(profile),
       });
 
-      navigate("/dashboard/patient");
+      // Send verification email
+      try {
+        const verifyRes = await fetch(`${base}/api/auth/send-verification-email`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${registerData.token}`,
+          },
+        });
+
+        if (verifyRes.ok) {
+          const verifyData = await verifyRes.json();
+          // Store OTP expiry if provided
+          if (verifyData.otpExpiresAt) {
+            localStorage.setItem(`otp_expiry_${email}`, verifyData.otpExpiresAt);
+          }
+          console.log("Verification email sent successfully");
+        } else {
+          const errorData = await verifyRes.json();
+          console.error("Failed to send verification email:", errorData);
+        }
+      } catch (e) {
+        console.error("Failed to send verification email:", e);
+        // Continue to verification step anyway
+      }
+
+      // CRITICAL: Move to verification step instead of dashboard
+      // Ensure emailVerified is false before moving to step 5
+      const updatedUser = JSON.parse(localStorage.getItem("user") || "{}");
+      updatedUser.emailVerified = false;
+      localStorage.setItem("user", JSON.stringify(updatedUser));
+      
+      console.log("Setting step to 5 - Email Verification");
+      setLoading(false);
+      // Set step immediately - don't use setTimeout
+      setStep(5);
     } catch (e) {
       console.error("Registration error:", e);
       setError("Failed to create account. Please try again.");
@@ -433,6 +525,7 @@ export default function OnboardPatient() {
     { id: 2, label: "Conditions", icon: Heart },
     { id: 3, label: "Location", icon: MapPin },
     { id: 4, label: "Account", icon: Mail },
+    { id: 5, label: "Verify Email", icon: CheckCircle },
   ];
 
   const stepVariants = {
@@ -584,6 +677,7 @@ export default function OnboardPatient() {
                       {step === 2 && "Medical Conditions"}
                       {step === 3 && "Your Location"}
                       {step === 4 && "Create Your Account"}
+                      {step === 5 && "Verify Your Email"}
                     </h2>
                     <p className="text-xs" style={{ color: "#787878" }}>
                       {step === 1 &&
@@ -594,6 +688,8 @@ export default function OnboardPatient() {
                         "Help us find relevant clinical trials and experts near you"}
                       {step === 4 &&
                         "Almost there! Set up your account to get started"}
+                      {step === 5 &&
+                        "Just before you get started, verify yourself"}
                     </p>
                   </motion.div>
                 </AnimatePresence>
@@ -1793,6 +1889,39 @@ export default function OnboardPatient() {
                           : "Complete →"}
                       </Button>
                     </div>
+                  </motion.div>
+                )}
+
+                {/* Step 5: Email Verification */}
+                {step === 5 && (
+                  <motion.div
+                    key="step5"
+                    variants={stepVariants}
+                    initial="hidden"
+                    animate="visible"
+                    exit="exit"
+                    transition={{ duration: 0.3 }}
+                    className="space-y-4"
+                  >
+                    <EmailVerificationStep
+                      email={(() => {
+                        // Get email from state or localStorage
+                        if (email) return email;
+                        const userData = JSON.parse(localStorage.getItem("user") || "{}");
+                        const userEmail = userData.email || "";
+                        console.log("EmailVerificationStep - Using email:", userEmail);
+                        return userEmail;
+                      })()}
+                      onVerified={() => {
+                        // After verification, navigate to dashboard
+                        const userData = JSON.parse(localStorage.getItem("user") || "{}");
+                        const userRole = userData?.role || "patient";
+                        navigate(`/dashboard/${userRole}`);
+                      }}
+                      onResend={() => {
+                        // Resend handled by EmailVerificationStep component
+                      }}
+                    />
                   </motion.div>
                 )}
               </AnimatePresence>

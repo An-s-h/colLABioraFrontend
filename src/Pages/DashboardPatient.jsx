@@ -169,6 +169,18 @@ export default function DashboardPatient() {
       return;
     }
 
+    // CRITICAL: Redirect to verification if email is not verified
+    if (userData && !userData.emailVerified) {
+      console.log("User email not verified, redirecting to verification step");
+      const userRole = userData?.role || "patient";
+      if (userRole === "patient") {
+        navigate("/onboard/patient?step=5");
+      } else {
+        navigate("/onboard/researcher?step=6");
+      }
+      return;
+    }
+
     setUser(userData);
     setLoading(true);
 

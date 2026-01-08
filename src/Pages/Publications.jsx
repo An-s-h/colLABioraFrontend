@@ -15,13 +15,17 @@ import {
   Loader2,
   ListChecks,
   AlertCircle,
+  X,
+  Plus,
+  ChevronDown,
 } from "lucide-react";
 import Layout from "../components/Layout.jsx";
 import Input from "../components/ui/Input.jsx";
 import Button from "../components/ui/Button.jsx";
 import Card from "../components/ui/Card.jsx";
 import Modal from "../components/ui/Modal.jsx";
-import AnimatedBackgroundDiff from "../components/ui/AnimatedBackgroundDiff.jsx";
+import CustomSelect from "../components/ui/CustomSelect.jsx";
+import AnimatedBackground from "../components/ui/AnimatedBackground.jsx";
 import { BorderBeam } from "@/components/ui/border-beam";
 import { LinkPreview } from "@/components/ui/link-preview";
 import { AuroraText } from "@/components/ui/aurora-text";
@@ -66,21 +70,210 @@ export default function Publications() {
     publication: null,
   });
 
-  // Quick search categories
-  const quickFilters = [
-    { label: "Oncology", value: "oncology", icon: "🩺" },
-    { label: "Cardiology", value: "cardiology", icon: "❤️" },
-    { label: "Neurology", value: "neurology", icon: "🧠" },
-    { label: "Immunology", value: "immunology", icon: "🦠" },
-    { label: "COVID-19", value: "covid", icon: "🦠" },
-    { label: "AI/ML", value: "machine learning", icon: "🤖" },
+  // Advanced search state
+  const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
+  const [queryTerms, setQueryTerms] = useState([
+    { field: "All Fields", term: "", operator: "AND" },
+  ]);
+  const [addedTerms, setAddedTerms] = useState([]); // Terms that have been added (confirmed)
+  const [constructedQuery, setConstructedQuery] = useState("");
+  const [searchHistory, setSearchHistory] = useState([]);
+
+  // Essential PubMed field options (simplified list)
+  const fieldOptionsList = [
+    "All Fields",
+    "Author",
+    "Title",
+    "Title/Abstract",
+    "Text Word",
+    "Journal",
+    "MeSH Terms",
+    "MeSH Major Topic",
+    "Publication Type",
+    "Date - Publication",
+    "Publisher",
+    "ISBN",
+    "Book",
+    "Language",
+    "Volume",
+    "Pagination",
   ];
 
-  const publicationSuggestionTerms = [
-    ...quickFilters.map((filter) => filter.label),
-    ...quickFilters.map((filter) => filter.value),
-    userMedicalInterest,
-  ].filter(Boolean);
+  // Convert to format for CustomSelect
+  const fieldOptions = fieldOptionsList.map((field) => ({
+    value: field,
+    label: field,
+  }));
+
+  // Operator options for CustomSelect
+  const operatorOptions = [
+    { value: "AND", label: "AND" },
+    { value: "OR", label: "OR" },
+    { value: "NOT", label: "NOT" },
+  ];
+
+  // Field-specific help text and examples
+  const fieldHelpText = {
+    "All Fields": "Search across all fields. Example: 'cancer treatment'",
+    Author:
+      "Format: LastName FirstInitial (e.g., 'Smith J') or LastName FirstName. PubMed searches author names in this format.",
+    Title: "Search in article titles only. Example: 'breast cancer diagnosis'",
+    "Title/Abstract":
+      "Search in both title and abstract. Example: 'diabetes management'",
+    "Text Word":
+      "Search in title, abstract, and other text fields. Example: 'immunotherapy'",
+    Journal:
+      "Journal name abbreviation or full name. Example: 'Nature' or 'JAMA'",
+    "MeSH Terms":
+      "Medical Subject Headings. Example: 'Diabetes Mellitus, Type 2'",
+    "MeSH Major Topic": "Major MeSH terms only. Example: 'Neoplasms'",
+    "Publication Type":
+      "Type of publication. Examples: 'Review', 'Clinical Trial', 'Case Reports', 'Meta-Analysis'",
+    "Date - Publication":
+      "Publication date range. Format: YYYY/MM/DD or YYYY. Example: '2020:2024' or '2023/01/01:2023/12/31'",
+    Publisher: "Publisher name. Example: 'Elsevier' or 'Springer'",
+    ISBN: "International Standard Book Number. Example: '9780123456789'",
+    Book: "Book title or chapter. Example: 'Harrison's Principles of Internal Medicine'",
+    Language:
+      "Language code. Examples: 'English', 'Spanish', 'French', 'German'",
+    Volume: "Journal volume number. Example: '15' or '2023'",
+    Pagination: "Page numbers. Example: '123-145' or '123'",
+  };
+
+  const publicationSuggestionTerms = [userMedicalInterest].filter(Boolean);
+
+  // Advanced search functions
+  const addQueryTerm = () => {
+    // Only add a new term if the current term has content
+    const lastTerm = queryTerms[queryTerms.length - 1];
+    if (lastTerm && lastTerm.term.trim()) {
+      // Add the current term to addedTerms (confirmed terms)
+      setAddedTerms([...addedTerms, { ...lastTerm }]);
+      // Build query with all added terms
+      buildQueryFromAddedTerms([...addedTerms, { ...lastTerm }]);
+      // Reset current term and add new empty term
+      setQueryTerms([{ field: "All Fields", term: "", operator: "AND" }]);
+    }
+  };
+
+  const removeQueryTerm = (index) => {
+    if (queryTerms.length > 1) {
+      setQueryTerms(queryTerms.filter((_, i) => i !== index));
+    }
+  };
+
+  const updateQueryTerm = (index, field, value) => {
+    const updated = [...queryTerms];
+    updated[index] = { ...updated[index], [field]: value };
+    setQueryTerms(updated);
+    // Don't build query automatically - only when ADD is pressed
+  };
+
+  const buildQueryFromAddedTerms = (terms = addedTerms) => {
+    const queryParts = terms
+      .filter((t) => t.term.trim())
+      .map((t) => {
+        if (t.field === "All Fields") {
+          return t.term;
+        }
+        // Map field names to PubMed field tags (simplified essential fields)
+        const fieldMap = {
+          Author: "[AU]",
+          Title: "[TI]",
+          "Title/Abstract": "[TIAB]",
+          "Text Word": "[TW]",
+          Journal: "[TA]",
+          "MeSH Terms": "[MH]",
+          "MeSH Major Topic": "[MAJR]",
+          "Publication Type": "[PT]",
+          "Date - Publication": "[PDAT]",
+          Publisher: "[PU]",
+          ISBN: "[ISBN]",
+          Book: "[BOOK]",
+          Language: "[LA]",
+          Volume: "[VI]",
+          Pagination: "[PG]",
+        };
+        const fieldTag = fieldMap[t.field] || `[${t.field}]`;
+        let termValue = t.term.trim();
+
+        // For Author field, format for better exact matching in PubMed
+        if (t.field === "Author") {
+          // PubMed author search works best with "LastName FirstInitial" or "LastName FirstName"
+          // Wrap in quotes for exact phrase matching
+          // Remove extra spaces and format properly
+          termValue = termValue.replace(/\s+/g, " ").trim();
+          // If it contains quotes already, don't add more
+          if (!termValue.startsWith('"') && !termValue.endsWith('"')) {
+            termValue = `"${termValue}"`;
+          }
+        }
+
+        return `${termValue}${fieldTag}`;
+      });
+
+    if (queryParts.length === 0) {
+      setConstructedQuery("");
+      return;
+    }
+
+    // Combine with operators
+    let query = queryParts[0];
+    for (let i = 1; i < queryParts.length; i++) {
+      const operator = terms[i].operator || "AND";
+      query += ` ${operator} ${queryParts[i]}`;
+    }
+    setConstructedQuery(query);
+  };
+
+  const addToQuery = () => {
+    buildQueryFromAddedTerms();
+    if (constructedQuery) {
+      setQ(constructedQuery);
+      setShowAdvancedSearch(false);
+    }
+  };
+
+  const executeAdvancedSearch = () => {
+    // Check if there are any added terms or if current term should be added first
+    const lastTerm = queryTerms[queryTerms.length - 1];
+    let finalAddedTerms = [...addedTerms];
+
+    // If current term has content, add it first
+    if (lastTerm && lastTerm.term.trim()) {
+      finalAddedTerms = [...addedTerms, { ...lastTerm }];
+      setAddedTerms(finalAddedTerms);
+      setQueryTerms([{ field: "All Fields", term: "", operator: "AND" }]);
+    }
+
+    buildQueryFromAddedTerms(finalAddedTerms);
+
+    // Check if there are any valid terms before searching
+    if (constructedQuery && finalAddedTerms.length > 0) {
+      setQ(constructedQuery);
+      // Add to search history
+      const historyItem = {
+        query: constructedQuery,
+        terms: finalAddedTerms,
+        timestamp: new Date().toISOString(),
+        results: results.length,
+      };
+      setSearchHistory([historyItem, ...searchHistory.slice(0, 9)]);
+      search(constructedQuery);
+      setShowAdvancedSearch(false); // Close modal after search
+    } else {
+      toast.error("Please add at least one search term before searching");
+    }
+  };
+
+  const clearQuery = () => {
+    setQueryTerms([{ field: "All Fields", term: "", operator: "AND" }]);
+    setAddedTerms([]);
+    setConstructedQuery("");
+    setQ("");
+  };
+
+  // Remove auto-build - query only builds when ADD is pressed
 
   async function search(overrideQuery) {
     const userData = JSON.parse(localStorage.getItem("user") || "{}");
@@ -170,12 +363,16 @@ export default function Publications() {
         );
         setLoading(false);
         // Sync with backend to update local storage
-        syncWithBackend().then((result) => {
-          // Update remaining searches indicator with synced value
-          window.dispatchEvent(new CustomEvent("freeSearchUsed", {
-            detail: { remaining: result.remaining }
-          }));
-        }).catch(console.error);
+        syncWithBackend()
+          .then((result) => {
+            // Update remaining searches indicator with synced value
+            window.dispatchEvent(
+              new CustomEvent("freeSearchUsed", {
+                detail: { remaining: result.remaining },
+              })
+            );
+          })
+          .catch(console.error);
         return;
       }
 
@@ -188,7 +385,7 @@ export default function Publications() {
         const remaining = data.remaining;
         const backendCount = MAX_FREE_SEARCHES - remaining;
         setLocalSearchCount(backendCount);
-        
+
         if (remaining === 0) {
           toast(
             "You've used all your free searches! Sign in for unlimited searches.",
@@ -203,9 +400,11 @@ export default function Publications() {
           );
         }
         // Update remaining searches indicator with the actual remaining count from backend
-        window.dispatchEvent(new CustomEvent("freeSearchUsed", {
-          detail: { remaining }
-        }));
+        window.dispatchEvent(
+          new CustomEvent("freeSearchUsed", {
+            detail: { remaining },
+          })
+        );
       }
 
       // Sort by matchPercentage in descending order (highest first)
@@ -316,12 +515,16 @@ export default function Publications() {
             );
             setLoading(false);
             // Sync with backend to update local storage
-            syncWithBackend().then((result) => {
-              // Update remaining searches indicator with synced value
-              window.dispatchEvent(new CustomEvent("freeSearchUsed", {
-                detail: { remaining: result.remaining }
-              }));
-            }).catch(console.error);
+            syncWithBackend()
+              .then((result) => {
+                // Update remaining searches indicator with synced value
+                window.dispatchEvent(
+                  new CustomEvent("freeSearchUsed", {
+                    detail: { remaining: result.remaining },
+                  })
+                );
+              })
+              .catch(console.error);
             return;
           }
           return r.json();
@@ -337,7 +540,7 @@ export default function Publications() {
             const remaining = data.remaining;
             const backendCount = MAX_FREE_SEARCHES - remaining;
             setLocalSearchCount(backendCount);
-            
+
             if (remaining === 0) {
               toast(
                 "You've used all your free searches! Sign in for unlimited searches.",
@@ -352,9 +555,11 @@ export default function Publications() {
               );
             }
             // Update remaining searches indicator with the actual remaining count from backend
-            window.dispatchEvent(new CustomEvent("freeSearchUsed", {
-              detail: { remaining }
-            }));
+            window.dispatchEvent(
+              new CustomEvent("freeSearchUsed", {
+                detail: { remaining },
+              })
+            );
           }
 
           // Sort by matchPercentage in descending order (highest first)
@@ -760,19 +965,16 @@ export default function Publications() {
 
   return (
     <Layout>
-      {/* Free Searches Indicator */}
-      <FreeSearchesIndicator user={user} />
-
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50 to-slate-100 relative overflow-hidden">
-        <AnimatedBackgroundDiff />
+        <AnimatedBackground />
 
         <div className="relative pt-24 px-4 md:px-8 mx-auto max-w-6xl pb-8">
           {/* Compact Header */}
           <div className="text-center mb-6 animate-fade-in">
-            <h1 className="text-3xl md:text-5xl font-bold bg-gradient-to-r from-indigo-700 via-indigo-600 to-blue-700 bg-clip-text text-transparent mb-1">
+            <h1 className="text-3xl md:text-5xl font-bold bg-gradient-to-r from-[#2F3C96] via-[#474F97] to-[#D0C4E2] bg-clip-text text-transparent mb-1">
               <AuroraText
                 speed={2.5}
-                colors={["#38bdf8", "#6366F1", "#818CF8", "#9333EA", "#C084FC"]}
+                colors={["#2F3C96", "#474F97", "#757BB1", "#B8A5D5", "#D0C4E2"]}
               >
                 Explore Publications
               </AuroraText>
@@ -780,22 +982,9 @@ export default function Publications() {
             <p className="text-sm text-slate-600">
               Search through recent research and medical publications
             </p>
-          </div>
-
-          {/* Quick Search Categories */}
-          <div className="mb-4">
-            <div className="flex flex-wrap justify-center gap-2">
-              {quickFilters.map((filter, idx) => (
-                <button
-                  key={filter.value}
-                  onClick={() => quickSearch(filter.value)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 rounded-full hover:border-indigo-400 hover:bg-indigo-50 hover:shadow-lg transition-all duration-300 shadow-sm text-xs font-medium text-slate-700 hover:text-indigo-700 animate-fade-in active:bg-blue-50 active:border-blue-300"
-                  style={{ animationDelay: `${idx * 50}ms` }}
-                >
-                  <span className="text-sm">{filter.icon}</span>
-                  <span>{filter.label}</span>
-                </button>
-              ))}
+            {/* Free Searches Indicator */}
+            <div className="mt-3 flex justify-center items-center w-full">
+              <FreeSearchesIndicator user={user} centered={true} />
             </div>
           </div>
 
@@ -804,13 +993,13 @@ export default function Publications() {
             <BorderBeam
               duration={10}
               size={100}
-              className="from-transparent via-indigo-500 to-transparent"
+              className="from-transparent via-[#2F3C96] to-transparent"
             />
             <BorderBeam
               duration={10}
               size={300}
               borderWidth={3}
-              className="from-transparent via-blue-500 to-transparent"
+              className="from-transparent via-[#D0C4E2] to-transparent"
             />
             <div className="flex flex-col gap-3">
               {/* Medical Interest Toggle */}
@@ -852,12 +1041,20 @@ export default function Publications() {
                   extraTerms={publicationSuggestionTerms}
                   className="flex-1"
                 />
-                <Button
-                  onClick={search}
-                  className="bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white px-5 py-2 rounded-lg shadow-md hover:shadow-lg transition-all text-sm font-semibold"
-                >
-                  Search
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
+                    className="bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded-lg shadow-md hover:shadow-lg transition-all text-sm font-semibold"
+                  >
+                    {showAdvancedSearch ? "Hide" : "Advanced"}
+                  </Button>
+                  <Button
+                    onClick={search}
+                    className="bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white px-5 py-2 rounded-lg shadow-md hover:shadow-lg transition-all text-sm font-semibold"
+                  >
+                    Search
+                  </Button>
+                </div>
               </div>
 
               {/* Location Options */}
@@ -927,6 +1124,185 @@ export default function Publications() {
               </div>
             </div>
           </div>
+
+          {/* Advanced Search Modal */}
+          <Modal
+            isOpen={showAdvancedSearch}
+            onClose={() => setShowAdvancedSearch(false)}
+            title="Advanced Search"
+          >
+            <div className="space-y-4">
+              {/* Display added terms as chips - only show confirmed added terms */}
+              {addedTerms.length > 0 && (
+                <div className="mb-4">
+                  <h3 className="text-xs font-medium text-slate-600 mb-2">
+                    Added Terms:
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {addedTerms.map((term, index) => {
+                      const prevTerm = index > 0 ? addedTerms[index - 1] : null;
+                      return (
+                        <div
+                          key={index}
+                          className="flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-1.5 group hover:bg-indigo-100 transition-colors"
+                        >
+                          {prevTerm && (
+                            <span className="text-xs font-medium text-indigo-700 mr-1">
+                              {term.operator || "AND"}
+                            </span>
+                          )}
+                          <span className="text-xs font-semibold text-indigo-700">
+                            {term.field === "All Fields"
+                              ? ""
+                              : `${term.field} - `}
+                          </span>
+                          <span className="text-xs text-slate-700">
+                            {term.term}
+                          </span>
+                          <button
+                            onClick={() => {
+                              const updated = addedTerms.filter(
+                                (_, i) => i !== index
+                              );
+                              setAddedTerms(updated);
+                              buildQueryFromAddedTerms(updated);
+                            }}
+                            className="ml-1 p-0.5 hover:bg-indigo-200 rounded-full transition-colors"
+                            title="Remove term"
+                          >
+                            <X className="w-3 h-3 text-indigo-600" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Add new term form */}
+              <div>
+                <h3 className="text-sm font-semibold text-slate-800 mb-3">
+                  Add terms to the query box
+                </h3>
+                <div className="space-y-3">
+                  {queryTerms.map((term, index) => (
+                    <div key={index}>
+                      <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
+                        {index > 0 && (
+                          <div className="w-full sm:w-auto">
+                            <CustomSelect
+                              value={term.operator}
+                              onChange={(value) =>
+                                updateQueryTerm(index, "operator", value)
+                              }
+                              options={operatorOptions}
+                              className="w-full sm:w-auto"
+                            />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-[150px]">
+                          <CustomSelect
+                            value={term.field}
+                            onChange={(value) =>
+                              updateQueryTerm(index, "field", value)
+                            }
+                            options={fieldOptions}
+                            placeholder="Select field..."
+                            className="w-full"
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <input
+                            type="text"
+                            value={term.term}
+                            onChange={(e) =>
+                              updateQueryTerm(index, "term", e.target.value)
+                            }
+                            onKeyPress={(e) => {
+                              if (e.key === "Enter" && term.term.trim()) {
+                                e.preventDefault();
+                                addQueryTerm();
+                                // Focus on the new term input if it exists
+                                setTimeout(() => {
+                                  const inputs =
+                                    document.querySelectorAll(
+                                      'input[type="text"]'
+                                    );
+                                  const lastInput = inputs[inputs.length - 1];
+                                  if (lastInput) lastInput.focus();
+                                }, 100);
+                              }
+                            }}
+                            placeholder={
+                              term.field === "Author"
+                                ? "e.g., Smith J or Smith John"
+                                : term.field === "Date - Publication"
+                                ? "e.g., 2020:2024 or 2023/01/01:2023/12/31"
+                                : term.field === "Publication Type"
+                                ? "e.g., Review, Clinical Trial, Case Reports"
+                                : term.field === "Journal"
+                                ? "e.g., Nature, JAMA, New England Journal"
+                                : term.field === "MeSH Terms"
+                                ? "e.g., Diabetes Mellitus, Type 2"
+                                : term.field === "Language"
+                                ? "e.g., English, Spanish, French"
+                                : "Enter a search term"
+                            }
+                            className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full"
+                          />
+                        </div>
+                        <Button
+                          onClick={() => addQueryTerm()}
+                          disabled={!term.term.trim()}
+                          className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-colors"
+                        >
+                          <Plus className="w-4 h-4" />
+                          ADD
+                        </Button>
+                      </div>
+                      {/* Help text below input box only - aligned with first input position */}
+                      {term.field !== "All Fields" && (
+                        <div className="mt-1 mb-2 ">
+                          <p className="text-xs text-slate-500 leading-relaxed">
+                            {fieldHelpText[term.field]}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="border-t border-slate-200 pt-4">
+                <h3 className="text-sm font-semibold text-slate-800 mb-2">
+                  Query box
+                </h3>
+                <textarea
+                  value={constructedQuery}
+                  onChange={(e) => {
+                    setConstructedQuery(e.target.value);
+                    setQ(e.target.value);
+                  }}
+                  placeholder="Enter / edit your search query here"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 min-h-[100px] resize-y"
+                />
+                <div className="flex gap-2 mt-3">
+                  <Button
+                    onClick={executeAdvancedSearch}
+                    className="bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white px-6 py-2 rounded-lg text-sm font-medium flex-1"
+                  >
+                    Search
+                  </Button>
+                  <Button
+                    onClick={clearQuery}
+                    className="bg-slate-500 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-medium"
+                  >
+                    Clear
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </Modal>
 
           {/* Skeleton Loaders */}
           {loading && (
@@ -1195,10 +1571,7 @@ export default function Publications() {
                                     fav.item?._id === itemId ||
                                     fav.item?.pmid === itemId)
                               );
-                              if (
-                                !isFavorited &&
-                                !e.currentTarget.disabled
-                              ) {
+                              if (!isFavorited && !e.currentTarget.disabled) {
                                 e.currentTarget.style.backgroundColor =
                                   "rgba(208, 196, 226, 0.3)";
                                 e.currentTarget.style.color = "#dc2626";
@@ -1672,8 +2045,7 @@ export default function Publications() {
                               className="px-3 py-1.5 text-xs"
                               style={{ color: "#787878" }}
                             >
-                              +
-                              {detailsModal.publication.meshTerms.length - 10}{" "}
+                              +{detailsModal.publication.meshTerms.length - 10}{" "}
                               more
                             </span>
                           )}
@@ -2061,7 +2433,10 @@ export default function Publications() {
                         className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
                         style={{ backgroundColor: "rgba(232, 224, 239, 0.6)" }}
                       >
-                        <Heart className="w-4 h-4" style={{ color: "#2F3C96" }} />
+                        <Heart
+                          className="w-4 h-4"
+                          style={{ color: "#2F3C96" }}
+                        />
                       </div>
                       <div className="flex-1">
                         <h5

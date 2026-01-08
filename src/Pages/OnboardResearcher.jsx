@@ -9,6 +9,7 @@ import SmartSearchInput from "../components/SmartSearchInput.jsx";
 import LocationInput from "../components/LocationInput.jsx";
 import SpecialtyInput from "../components/SpecialtyInput.jsx";
 import ResearchInterestInput from "../components/ResearchInterestInput.jsx";
+import EmailVerificationStep from "../components/EmailVerificationStep.jsx";
 import { useAuth0Social } from "../hooks/useAuth0Social.js";
 import {
   User,
@@ -301,7 +302,38 @@ export default function OnboardResearcher() {
         body: JSON.stringify(profile),
       });
 
-      navigate("/dashboard/researcher");
+      // Ensure emailVerified is false for OAuth users too
+      const updatedUser = JSON.parse(localStorage.getItem("user") || "{}");
+      updatedUser.emailVerified = false;
+      localStorage.setItem("user", JSON.stringify(updatedUser));
+      // DO NOT dispatch login event until email is verified
+
+      // Send verification email for OAuth users too
+      try {
+        const verifyRes = await fetch(`${base}/api/auth/send-verification-email`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (verifyRes.ok) {
+          const verifyData = await verifyRes.json();
+          // Store OTP expiry if provided
+          const userEmail = updatedUser.email || email;
+          if (verifyData.otpExpiresAt && userEmail) {
+            localStorage.setItem(`otp_expiry_${userEmail}`, verifyData.otpExpiresAt);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to send verification email:", e);
+        // Continue to verification step anyway
+      }
+
+      // Move to verification step instead of dashboard
+      setStep(6);
+      setLoading(false);
     } catch (e) {
       console.error("OAuth profile completion error:", e);
       setError(e.message || "Failed to save profile. Please try again.");
@@ -364,8 +396,10 @@ export default function OnboardResearcher() {
 
       const user = registerData.user;
       localStorage.setItem("token", registerData.token);
+      // Don't set emailVerified to true - user needs to verify first
+      user.emailVerified = false;
       localStorage.setItem("user", JSON.stringify(user));
-      window.dispatchEvent(new Event("login"));
+      // DO NOT dispatch login event until email is verified
 
       // Create profile
       const profile = {
@@ -393,7 +427,31 @@ export default function OnboardResearcher() {
         body: JSON.stringify(profile),
       });
 
-      navigate("/dashboard/researcher");
+      // Send verification email
+      try {
+        const verifyRes = await fetch(`${base}/api/auth/send-verification-email`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${registerData.token}`,
+          },
+        });
+
+        if (verifyRes.ok) {
+          const verifyData = await verifyRes.json();
+          // Store OTP expiry if provided
+          if (verifyData.otpExpiresAt) {
+            localStorage.setItem(`otp_expiry_${email}`, verifyData.otpExpiresAt);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to send verification email:", e);
+        // Continue to verification step anyway
+      }
+
+      // Move to verification step instead of dashboard
+      setStep(6);
+      setLoading(false);
     } catch (e) {
       console.error("Registration error:", e);
       setError("Failed to create account. Please try again.");
@@ -407,6 +465,7 @@ export default function OnboardResearcher() {
     { id: 3, label: "Background", icon: GraduationCap },
     { id: 4, label: "Preferences", icon: MessageSquare },
     { id: 5, label: "Account", icon: Mail },
+    { id: 6, label: "Verify Email", icon: CheckCircle },
   ];
 
   const stepVariants = {
@@ -605,6 +664,7 @@ export default function OnboardResearcher() {
                       {step === 3 && "Background & Skills"}
                       {step === 4 && "Preferences & Availability"}
                       {step === 5 && "Create Your Account"}
+                      {step === 6 && "Verify Your Email"}
                     </h2>
                     <p className="text-xs" style={{ color: "#787878" }}>
                       {step === 1 &&
@@ -616,6 +676,8 @@ export default function OnboardResearcher() {
                         "Let us know your availability and meeting preferences"}
                       {step === 5 &&
                         "Almost there! Set up your account to get started"}
+                      {step === 6 &&
+                        "Just before you get started, verify yourself"}
                     </p>
                   </motion.div>
                 </AnimatePresence>
@@ -1798,6 +1860,36 @@ export default function OnboardResearcher() {
                         {loading ? "Creating..." : "Complete →"}
                       </Button>
                     </div>
+                  </motion.div>
+                )}
+
+                {/* Step 6: Email Verification */}
+                {step === 6 && (
+                  <motion.div
+                    key="step6"
+                    variants={stepVariants}
+                    initial="hidden"
+                    animate="visible"
+                    exit="exit"
+                    transition={{ duration: 0.3 }}
+                    className="space-y-4"
+                  >
+                    <EmailVerificationStep
+                      email={(() => {
+                        if (email) return email;
+                        const userData = JSON.parse(localStorage.getItem("user") || "{}");
+                        return userData.email || "";
+                      })()}
+                      onVerified={() => {
+                        // After verification, navigate to dashboard
+                        const userData = JSON.parse(localStorage.getItem("user") || "{}");
+                        const userRole = userData?.role || "researcher";
+                        navigate(`/dashboard/${userRole}`);
+                      }}
+                      onResend={() => {
+                        // Resend handled by EmailVerificationStep component
+                      }}
+                    />
                   </motion.div>
                 )}
               </AnimatePresence>

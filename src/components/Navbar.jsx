@@ -57,6 +57,11 @@ export default function Navbar() {
   useEffect(() => {
     const updateUser = () => {
       const userData = JSON.parse(localStorage.getItem("user") || "null");
+      // Only show user as logged in if email is verified
+      if (userData && !userData.emailVerified) {
+        setUser(null);
+        return;
+      }
       setUser(userData);
 
       // Fetch profile data if user exists

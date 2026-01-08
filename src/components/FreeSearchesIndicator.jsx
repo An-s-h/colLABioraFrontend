@@ -16,7 +16,7 @@ import apiFetch from "../utils/api.js";
 
 const FREE_SEARCHES_POPUP_KEY = "free_searches_popup_shown";
 
-export default function FreeSearchesIndicator({ user, onSearch }) {
+export default function FreeSearchesIndicator({ user, onSearch, centered = false }) {
   const navigate = useNavigate();
   // Initialize with local storage value for instant display
   const localRemaining = getLocalRemainingSearches();
@@ -180,7 +180,7 @@ export default function FreeSearchesIndicator({ user, onSearch }) {
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="fixed top-24 right-4 z-40 sm:right-6"
+        className={centered ? "relative z-40" : "fixed top-24 right-4 z-40 sm:right-6"}
       >
         <div
           className="inline-flex items-center gap-2 px-4 py-2 rounded-full border-2 shadow-lg backdrop-blur-sm"

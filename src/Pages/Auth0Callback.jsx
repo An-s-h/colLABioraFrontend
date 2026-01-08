@@ -110,9 +110,17 @@ export default function Auth0Callback() {
           localStorage.setItem("token", data.token);
         }
         if (data.user) {
-          localStorage.setItem("user", JSON.stringify(data.user));
-          // Dispatch login event to update navbar
-          window.dispatchEvent(new Event("login"));
+          // Ensure emailVerified is false if not verified
+          const userData = { ...data.user };
+          if (!userData.emailVerified) {
+            userData.emailVerified = false;
+          }
+          localStorage.setItem("user", JSON.stringify(userData));
+          // DO NOT dispatch login event until email is verified
+          // Only dispatch if email is already verified
+          if (userData.emailVerified) {
+            window.dispatchEvent(new Event("login"));
+          }
         }
 
         // Check if this is a new user who needs onboarding (sign-up flow)
@@ -123,7 +131,38 @@ export default function Auth0Callback() {
           return;
         }
 
-        // Redirect to appropriate dashboard
+        // Check if email is verified (for both new and existing users)
+        if (data.user && !data.user.emailVerified) {
+          // User needs to verify email - send verification email and redirect to verification step
+          const userRole = data.user?.role || "patient";
+          try {
+            const verifyRes = await fetch(`${base}/api/auth/send-verification-email`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${data.token}`,
+              },
+            });
+            if (verifyRes.ok) {
+              const verifyData = await verifyRes.json();
+              if (verifyData.otpExpiresAt) {
+                localStorage.setItem(`otp_expiry_${data.user.email}`, verifyData.otpExpiresAt);
+              }
+            }
+          } catch (e) {
+            console.error("Failed to send verification email:", e);
+          }
+          
+          // Redirect to verification step
+          if (userRole === "patient") {
+            navigate("/onboard/patient?step=5&oauth=true");
+          } else {
+            navigate("/onboard/researcher?step=6&oauth=true");
+          }
+          return;
+        }
+
+        // Redirect to appropriate dashboard (only if verified)
         const userRole = data.user?.role || "patient";
         navigate(`/dashboard/${userRole}`);
       } catch (e) {
