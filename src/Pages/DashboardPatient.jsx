@@ -1559,23 +1559,10 @@ export default function DashboardPatient() {
     }
   }, [selectedCategory, forumsCategories, base]);
 
-  // Update filter modal title based on selected category
-  const getFilterModalTitle = () => {
-    return selectedCategory === "trials"
-      ? "Filter Trials"
-      : "Sort Publications";
-  };
 
   // Note: Removed lazy loading for globalExperts - they are now loaded on initial page load
   // from the recommendations endpoint, improving load times when switching categories
 
-  // Effect to fetch filtered trials when filter changes
-  useEffect(() => {
-    // Fetch filtered trials when trials category is selected (defaults to RECRUITING)
-    if (selectedCategory === "trials" && trialFilter && user?._id) {
-      fetchFilteredTrials();
-    }
-  }, [trialFilter, selectedCategory, user?._id]);
 
   // Loading states for multi-step loader (only shown on first load)
   const loadingStates = [
@@ -2498,64 +2485,8 @@ export default function DashboardPatient() {
                 );
               })}
 
-              {/* Filter/Sort Button - Desktop */}
-              {(selectedCategory === "trials" ||
-                selectedCategory === "publications") && (
-                <button
-                  onClick={() => setFilterModalOpen(true)}
-                  className="ml-auto hidden sm:flex items-center gap-2 px-4 py-2 rounded-lg border transition-all duration-200 whitespace-nowrap"
-                  style={{
-                    backgroundColor: "rgba(47, 60, 150, 0.15)",
-                    color: "#2F3C96",
-                    borderColor: "rgba(47, 60, 150, 0.3)",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.target.style.backgroundColor = "rgba(47, 60, 150, 0.25)";
-                    e.target.style.borderColor = "rgba(47, 60, 150, 0.4)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.target.style.backgroundColor = "rgba(47, 60, 150, 0.15)";
-                    e.target.style.borderColor = "rgba(47, 60, 150, 0.3)";
-                  }}
-                >
-                  <Filter className="w-4 h-4 shrink-0" />
-                  <span className="text-sm font-semibold">
-                    {selectedCategory === "trials" ? "Filter" : "Sort"}
-                  </span>
-                  {(trialFilter || publicationSort !== "relevance") && (
-                    <span
-                      className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: "#2F3C96" }}
-                    ></span>
-                  )}
-                </button>
-              )}
             </div>
 
-            {/* Filter/Sort Button - Mobile (Full Width Below Grid) */}
-            {(selectedCategory === "trials" ||
-              selectedCategory === "publications") && (
-              <button
-                onClick={() => setFilterModalOpen(true)}
-                className="sm:hidden w-full mt-2 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border transition-all duration-200"
-                style={{
-                  backgroundColor: "rgba(47, 60, 150, 0.15)",
-                  color: "#2F3C96",
-                  borderColor: "rgba(47, 60, 150, 0.3)",
-                }}
-              >
-                <Filter className="w-4 h-4 shrink-0" />
-                <span className="text-sm font-semibold">
-                  {selectedCategory === "trials" ? "Filter" : "Sort"}
-                </span>
-                {(trialFilter || publicationSort !== "relevance") && (
-                  <span
-                    className="w-2 h-2 rounded-full"
-                    style={{ backgroundColor: "#2F3C96" }}
-                  ></span>
-                )}
-              </button>
-            )}
           </div>
 
           {/* Main Recommendations Section */}
@@ -2608,25 +2539,7 @@ export default function DashboardPatient() {
             {/* Grid of Items - Larger Cards - Full Width with 3 columns */}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
               {selectedCategory === "trials" &&
-                (loadingFiltered ? (
-                  <div className="col-span-full text-center py-16">
-                    <div
-                      className="inline-flex items-center justify-center gap-2"
-                      style={{ color: "#2F3C96" }}
-                    >
-                      <div
-                        className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin"
-                        style={{
-                          borderColor: "#2F3C96",
-                          borderTopColor: "transparent",
-                        }}
-                      ></div>
-                      <span className="text-sm font-medium">
-                        Loading filtered trials...
-                      </span>
-                    </div>
-                  </div>
-                ) : data.trials.length > 0 ? (
+                (data.trials.length > 0 ? (
                   sortByMatchPercentage(data.trials).map((t, idx) => (
                     <div
                       key={idx}
@@ -2926,9 +2839,8 @@ export default function DashboardPatient() {
                 ))}
 
               {selectedCategory === "publications" &&
-                (sortPublications(data.publications, publicationSort).length >
-                0 ? (
-                  sortPublications(data.publications, publicationSort).map(
+                (data.publications.length > 0 ? (
+                  data.publications.map(
                     (p, idx) => {
                       const itemId = p.id || p.pmid;
                       const isFavorited = favorites.some(
@@ -7768,96 +7680,6 @@ export default function DashboardPatient() {
         </div>
       </Modal>
 
-      {/* Filter/Sort Modal */}
-      <Modal
-        isOpen={filterModalOpen}
-        onClose={() => setFilterModalOpen(false)}
-        title={
-          selectedCategory === "trials" ? "Filter Trials" : "Sort Publications"
-        }
-      >
-        <div className="space-y-6">
-          {selectedCategory === "trials" ? (
-            <>
-              <div>
-                <label className="block text-sm font-semibold text-slate-800 mb-3">
-                  Filter by Status
-                </label>
-                <div className="space-y-2">
-                  <button
-                    onClick={() => {
-                      setTrialFilter("");
-                      setFilterModalOpen(false);
-                    }}
-                    className={`w-full text-left px-4 py-2 rounded-lg border transition-all ${
-                      !trialFilter || trialFilter === ""
-                        ? "bg-indigo-50 border-indigo-300 text-indigo-700 font-medium"
-                        : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
-                    }`}
-                  >
-                    All Statuses
-                  </button>
-                  {statusOptions.map((status) => (
-                    <button
-                      key={status}
-                      onClick={() => {
-                        setTrialFilter(status);
-                        setFilterModalOpen(false);
-                      }}
-                      className={`w-full text-left px-4 py-2 rounded-lg border transition-all ${
-                        trialFilter === status
-                          ? "bg-indigo-50 border-indigo-300 text-indigo-700 font-medium"
-                          : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
-                      }`}
-                    >
-                      {status.replace(/_/g, " ")}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              {trialFilter && (
-                <div className="pt-4 border-t border-slate-200">
-                  <button
-                    onClick={() => {
-                      setTrialFilter("");
-                      setFilterModalOpen(false);
-                    }}
-                    className="w-full px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium transition-colors"
-                  >
-                    Clear Filter
-                  </button>
-                </div>
-              )}
-            </>
-          ) : (
-            <>
-              <div>
-                <label className="block text-sm font-semibold text-slate-800 mb-3">
-                  Sort By
-                </label>
-                <div className="space-y-2">
-                  {sortOptions.map((option) => (
-                    <button
-                      key={option.value}
-                      onClick={() => {
-                        setPublicationSort(option.value);
-                        setFilterModalOpen(false);
-                      }}
-                      className={`w-full text-left px-4 py-2 rounded-lg border transition-all ${
-                        publicationSort === option.value
-                          ? "bg-blue-50 border-blue-300 text-blue-700 font-medium"
-                          : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
-                      }`}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      </Modal>
 
       {/* Global Expert Details Modal */}
       <Modal

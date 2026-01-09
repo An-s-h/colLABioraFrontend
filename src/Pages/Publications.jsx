@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
@@ -78,8 +78,18 @@ export default function Publications() {
   const [addedTerms, setAddedTerms] = useState([]); // Terms that have been added (confirmed)
   const [constructedQuery, setConstructedQuery] = useState("");
   const [searchHistory, setSearchHistory] = useState([]);
+  
+  // Date filter state
+  const [dateRange, setDateRange] = useState({ start: "", end: "" });
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [lastSearchQuery, setLastSearchQuery] = useState(""); // Track last search query for pagination
 
-  // Essential PubMed field options (simplified list)
+  // Essential PubMed field options (simplified list - removed MeSH, ISBN, publisher, book, volume, pagination, language)
   const fieldOptionsList = [
     "All Fields",
     "Author",
@@ -87,16 +97,7 @@ export default function Publications() {
     "Title/Abstract",
     "Text Word",
     "Journal",
-    "MeSH Terms",
-    "MeSH Major Topic",
     "Publication Type",
-    "Date - Publication",
-    "Publisher",
-    "ISBN",
-    "Book",
-    "Language",
-    "Volume",
-    "Pagination",
   ];
 
   // Convert to format for CustomSelect
@@ -112,7 +113,7 @@ export default function Publications() {
     { value: "NOT", label: "NOT" },
   ];
 
-  // Field-specific help text and examples
+  // Field-specific help text and examples (removed MeSH, ISBN, publisher, book, volume, pagination, language)
   const fieldHelpText = {
     "All Fields": "Search across all fields. Example: 'cancer treatment'",
     Author:
@@ -124,20 +125,8 @@ export default function Publications() {
       "Search in title, abstract, and other text fields. Example: 'immunotherapy'",
     Journal:
       "Journal name abbreviation or full name. Example: 'Nature' or 'JAMA'",
-    "MeSH Terms":
-      "Medical Subject Headings. Example: 'Diabetes Mellitus, Type 2'",
-    "MeSH Major Topic": "Major MeSH terms only. Example: 'Neoplasms'",
     "Publication Type":
       "Type of publication. Examples: 'Review', 'Clinical Trial', 'Case Reports', 'Meta-Analysis'",
-    "Date - Publication":
-      "Publication date range. Format: YYYY/MM/DD or YYYY. Example: '2020:2024' or '2023/01/01:2023/12/31'",
-    Publisher: "Publisher name. Example: 'Elsevier' or 'Springer'",
-    ISBN: "International Standard Book Number. Example: '9780123456789'",
-    Book: "Book title or chapter. Example: 'Harrison's Principles of Internal Medicine'",
-    Language:
-      "Language code. Examples: 'English', 'Spanish', 'French', 'German'",
-    Volume: "Journal volume number. Example: '15' or '2023'",
-    Pagination: "Page numbers. Example: '123-145' or '123'",
   };
 
   const publicationSuggestionTerms = [userMedicalInterest].filter(Boolean);
@@ -183,16 +172,7 @@ export default function Publications() {
           "Title/Abstract": "[TIAB]",
           "Text Word": "[TW]",
           Journal: "[TA]",
-          "MeSH Terms": "[MH]",
-          "MeSH Major Topic": "[MAJR]",
           "Publication Type": "[PT]",
-          "Date - Publication": "[PDAT]",
-          Publisher: "[PU]",
-          ISBN: "[ISBN]",
-          Book: "[BOOK]",
-          Language: "[LA]",
-          Volume: "[VI]",
-          Pagination: "[PG]",
         };
         const fieldTag = fieldMap[t.field] || `[${t.field}]`;
         let termValue = t.term.trim();
@@ -248,21 +228,30 @@ export default function Publications() {
 
     buildQueryFromAddedTerms(finalAddedTerms);
 
-    // Check if there are any valid terms before searching
-    if (constructedQuery && finalAddedTerms.length > 0) {
-      setQ(constructedQuery);
-      // Add to search history
-      const historyItem = {
-        query: constructedQuery,
-        terms: finalAddedTerms,
-        timestamp: new Date().toISOString(),
-        results: results.length,
-      };
-      setSearchHistory([historyItem, ...searchHistory.slice(0, 9)]);
-      search(constructedQuery);
+    // Check if there are any valid terms OR date filters before searching
+    const hasSearchTerms = constructedQuery && finalAddedTerms.length > 0;
+    const hasDateFilter = dateRange.start || dateRange.end;
+    
+    if (hasSearchTerms || hasDateFilter) {
+      // Use constructed query if available, otherwise use empty string (date filter will be applied)
+      const searchQuery = constructedQuery || "";
+      setQ(searchQuery);
+      
+      // Add to search history only if there are search terms
+      if (hasSearchTerms) {
+        const historyItem = {
+          query: searchQuery,
+          terms: finalAddedTerms,
+          timestamp: new Date().toISOString(),
+          results: results.length,
+        };
+        setSearchHistory([historyItem, ...searchHistory.slice(0, 9)]);
+      }
+      
+      search(searchQuery);
       setShowAdvancedSearch(false); // Close modal after search
     } else {
-      toast.error("Please add at least one search term before searching");
+      toast.error("Please add at least one search term or select a date range before searching");
     }
   };
 
@@ -314,6 +303,20 @@ export default function Publications() {
     }
 
     if (searchQuery) params.set("q", searchQuery);
+    
+    // Add date range parameters if set (format: YYYY/MM)
+    if (dateRange.start) {
+      params.set("mindate", dateRange.start.replace(/-/g, '/'));
+    }
+    if (dateRange.end) {
+      params.set("maxdate", dateRange.end.replace(/-/g, '/'));
+    }
+    
+    // Reset pagination for new searches
+    params.set("page", "1");
+    params.set("pageSize", "9");
+    setCurrentPage(1);
+    setLastSearchQuery(searchQuery);
 
     // Add location parameter (use only country for publications)
     if (locationMode === "current" && userLocation) {
@@ -378,6 +381,10 @@ export default function Publications() {
 
       const data = await response.json();
       const searchResults = data.results || [];
+      
+      // Set pagination data
+      setTotalCount(data.totalCount || 0);
+      setHasMore(data.hasMore || false);
 
       // Handle remaining searches from server response
       if (!isUserSignedIn && data.remaining !== undefined) {
@@ -437,6 +444,69 @@ export default function Publications() {
     }
   }
 
+  // Load more results for pagination
+  async function loadMoreResults() {
+    if (loadingMore || !hasMore) return;
+    
+    setLoadingMore(true);
+    const nextPage = currentPage + 1;
+    const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
+    const params = new URLSearchParams();
+    
+    if (lastSearchQuery) params.set("q", lastSearchQuery);
+    
+    // Add date range parameters if set (format: YYYY/MM)
+    if (dateRange.start) {
+      params.set("mindate", dateRange.start.replace(/-/g, '/'));
+    }
+    if (dateRange.end) {
+      params.set("maxdate", dateRange.end.replace(/-/g, '/'));
+    }
+    
+    params.set("page", String(nextPage));
+    params.set("pageSize", "9");
+    
+    // Add location parameter
+    if (locationMode === "current" && userLocation) {
+      if (userLocation.country) {
+        params.set("location", userLocation.country);
+      }
+    } else if (locationMode === "custom" && location.trim()) {
+      params.set("location", location.trim());
+    }
+    
+    // Add user profile data for matching
+    const userData = JSON.parse(localStorage.getItem("user") || "{}");
+    if (userData?._id || userData?.id) {
+      params.set("userId", userData._id || userData.id);
+    }
+    
+    try {
+      const response = await apiFetch(
+        `/api/search/publications?${params.toString()}`
+      );
+      
+      if (!response) {
+        setLoadingMore(false);
+        return;
+      }
+      
+      const data = await response.json();
+      const newResults = data.results || [];
+      
+      // Append new results to existing results
+      setResults(prev => [...prev, ...newResults]);
+      setCurrentPage(nextPage);
+      setHasMore(data.hasMore || false);
+      setTotalCount(data.totalCount || 0);
+    } catch (error) {
+      console.error("Load more error:", error);
+      toast.error("Failed to load more results");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
   async function quickSearch(filterValue) {
     const userData = JSON.parse(localStorage.getItem("user") || "{}");
     const token = localStorage.getItem("token");
@@ -469,6 +539,20 @@ export default function Publications() {
       }
 
       params.set("q", searchQuery);
+      
+      // Add date range parameters if set (format: YYYY/MM)
+      if (dateRange.start) {
+        params.set("mindate", dateRange.start.replace(/-/g, '/'));
+      }
+      if (dateRange.end) {
+        params.set("maxdate", dateRange.end.replace(/-/g, '/'));
+      }
+      
+      // Reset pagination for new searches
+      params.set("page", "1");
+      params.set("pageSize", "9");
+      setCurrentPage(1);
+      setLastSearchQuery(searchQuery);
 
       // Add location parameter (use only country for publications)
       if (locationMode === "current" && userLocation) {
@@ -533,6 +617,10 @@ export default function Publications() {
           if (!data) return; // Skip if rate limited
 
           const searchResults = data.results || [];
+          
+          // Set pagination data
+          setTotalCount(data.totalCount || 0);
+          setHasMore(data.hasMore || false);
 
           // Handle remaining searches from server response
           if (!isUserSignedIn && data.remaining !== undefined) {
@@ -1044,9 +1132,15 @@ export default function Publications() {
                 <div className="flex gap-2">
                   <Button
                     onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
-                    className="bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded-lg shadow-md hover:shadow-lg transition-all text-sm font-semibold"
+                    className={`${dateRange.start || dateRange.end ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-slate-600 hover:bg-slate-700'} text-white px-4 py-2 rounded-lg shadow-md hover:shadow-lg transition-all text-sm font-semibold flex items-center gap-1.5`}
                   >
+                    {(dateRange.start || dateRange.end) && <Calendar className="w-3.5 h-3.5" />}
                     {showAdvancedSearch ? "Hide" : "Advanced"}
+                    {(dateRange.start || dateRange.end) && (
+                      <span className="bg-white/20 px-1.5 py-0.5 rounded text-xs">
+                        Date
+                      </span>
+                    )}
                   </Button>
                   <Button
                     onClick={search}
@@ -1236,16 +1330,10 @@ export default function Publications() {
                             placeholder={
                               term.field === "Author"
                                 ? "e.g., Smith J or Smith John"
-                                : term.field === "Date - Publication"
-                                ? "e.g., 2020:2024 or 2023/01/01:2023/12/31"
                                 : term.field === "Publication Type"
                                 ? "e.g., Review, Clinical Trial, Case Reports"
                                 : term.field === "Journal"
                                 ? "e.g., Nature, JAMA, New England Journal"
-                                : term.field === "MeSH Terms"
-                                ? "e.g., Diabetes Mellitus, Type 2"
-                                : term.field === "Language"
-                                ? "e.g., English, Spanish, French"
                                 : "Enter a search term"
                             }
                             className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full"
@@ -1270,6 +1358,222 @@ export default function Publications() {
                       )}
                     </div>
                   ))}
+                </div>
+              </div>
+
+              {/* Date Range Filter */}
+              <div className="border-t border-slate-200 pt-4">
+                <h3 className="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-indigo-600" />
+                  Publication Date Range
+                </h3>
+                <div className="bg-gradient-to-br from-indigo-50 to-slate-50 rounded-lg p-4 border border-indigo-100">
+                  {/* Date Inputs */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                    {/* From Date */}
+                    <div className="space-y-2">
+                      <label className="text-xs font-semibold text-slate-700 flex items-center gap-1">
+                        <span>From</span>
+                      </label>
+                      <div className="flex gap-2">
+                        <select
+                          value={dateRange.start ? dateRange.start.split('-')[1] || '' : ''}
+                          onChange={(e) => {
+                            const year = dateRange.start ? dateRange.start.split('-')[0] : new Date().getFullYear();
+                            const newMonth = e.target.value;
+                            if (newMonth && year) {
+                              setDateRange(prev => ({ ...prev, start: `${year}-${newMonth}` }));
+                            } else if (!newMonth && year) {
+                              setDateRange(prev => ({ ...prev, start: '' }));
+                            }
+                          }}
+                          className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-slate-700 transition-all"
+                        >
+                          <option value="">Select Month</option>
+                          <option value="01">January</option>
+                          <option value="02">February</option>
+                          <option value="03">March</option>
+                          <option value="04">April</option>
+                          <option value="05">May</option>
+                          <option value="06">June</option>
+                          <option value="07">July</option>
+                          <option value="08">August</option>
+                          <option value="09">September</option>
+                          <option value="10">October</option>
+                          <option value="11">November</option>
+                          <option value="12">December</option>
+                        </select>
+                        <select
+                          value={dateRange.start ? dateRange.start.split('-')[0] || '' : ''}
+                          onChange={(e) => {
+                            const month = dateRange.start ? dateRange.start.split('-')[1] : '';
+                            const newYear = e.target.value;
+                            if (newYear && month) {
+                              setDateRange(prev => ({ ...prev, start: `${newYear}-${month}` }));
+                            } else if (newYear && !month) {
+                              setDateRange(prev => ({ ...prev, start: `${newYear}-01` }));
+                            } else {
+                              setDateRange(prev => ({ ...prev, start: '' }));
+                            }
+                          }}
+                          className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-slate-700 transition-all"
+                        >
+                          <option value="">Select Year</option>
+                          {Array.from({ length: 50 }, (_, i) => {
+                            const year = new Date().getFullYear() - i;
+                            return <option key={year} value={year}>{year}</option>;
+                          })}
+                        </select>
+                      </div>
+                    </div>
+                    
+                    {/* To Date */}
+                    <div className="space-y-2">
+                      <label className="text-xs font-semibold text-slate-700 flex items-center gap-1">
+                        <span>To</span>
+                      </label>
+                      <div className="flex gap-2">
+                        <select
+                          value={dateRange.end ? dateRange.end.split('-')[1] || '' : ''}
+                          onChange={(e) => {
+                            const year = dateRange.end ? dateRange.end.split('-')[0] : new Date().getFullYear();
+                            const newMonth = e.target.value;
+                            if (newMonth && year) {
+                              setDateRange(prev => ({ ...prev, end: `${year}-${newMonth}` }));
+                            } else if (!newMonth && year) {
+                              setDateRange(prev => ({ ...prev, end: '' }));
+                            }
+                          }}
+                          className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-slate-700 transition-all"
+                        >
+                          <option value="">Select Month</option>
+                          <option value="01">January</option>
+                          <option value="02">February</option>
+                          <option value="03">March</option>
+                          <option value="04">April</option>
+                          <option value="05">May</option>
+                          <option value="06">June</option>
+                          <option value="07">July</option>
+                          <option value="08">August</option>
+                          <option value="09">September</option>
+                          <option value="10">October</option>
+                          <option value="11">November</option>
+                          <option value="12">December</option>
+                        </select>
+                        <select
+                          value={dateRange.end ? dateRange.end.split('-')[0] || '' : ''}
+                          onChange={(e) => {
+                            const month = dateRange.end ? dateRange.end.split('-')[1] : '';
+                            const newYear = e.target.value;
+                            if (newYear && month) {
+                              setDateRange(prev => ({ ...prev, end: `${newYear}-${month}` }));
+                            } else if (newYear && !month) {
+                              setDateRange(prev => ({ ...prev, end: `${newYear}-12` }));
+                            } else {
+                              setDateRange(prev => ({ ...prev, end: '' }));
+                            }
+                          }}
+                          className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-slate-700 transition-all"
+                        >
+                          <option value="">Select Year</option>
+                          {Array.from({ length: 50 }, (_, i) => {
+                            const year = new Date().getFullYear() - i;
+                            return <option key={year} value={year}>{year}</option>;
+                          })}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Quick Presets */}
+                  <div className="flex flex-wrap items-center gap-2 mb-3">
+                    <span className="text-xs font-medium text-slate-500">Quick select:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const now = new Date();
+                        setDateRange({
+                          start: `${now.getFullYear()}-01`,
+                          end: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+                        });
+                      }}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-white border border-slate-300 text-slate-600 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-700 shadow-sm hover:shadow"
+                    >
+                      This Year
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const now = new Date();
+                        setDateRange({
+                          start: `${now.getFullYear() - 1}-${String(now.getMonth() + 1).padStart(2, '0')}`,
+                          end: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+                        });
+                      }}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-white border border-slate-300 text-slate-600 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-700 shadow-sm hover:shadow"
+                    >
+                      Last Year
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const now = new Date();
+                        setDateRange({
+                          start: `${now.getFullYear() - 5}-${String(now.getMonth() + 1).padStart(2, '0')}`,
+                          end: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+                        });
+                      }}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-white border border-slate-300 text-slate-600 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-700 shadow-sm hover:shadow"
+                    >
+                      Last 5 Years
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const now = new Date();
+                        setDateRange({
+                          start: `${now.getFullYear() - 10}-${String(now.getMonth() + 1).padStart(2, '0')}`,
+                          end: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+                        });
+                      }}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-white border border-slate-300 text-slate-600 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-700 shadow-sm hover:shadow"
+                    >
+                      Last 10 Years
+                    </button>
+                    {(dateRange.start || dateRange.end) && (
+                      <button
+                        type="button"
+                        onClick={() => setDateRange({ start: "", end: "" })}
+                        className="ml-auto px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-slate-100 border border-slate-300 text-slate-600 hover:bg-slate-200 hover:border-slate-400 flex items-center gap-1.5"
+                      >
+                        <X className="w-3 h-3" />
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  
+                  {/* Active Filter Display */}
+                  {(dateRange.start || dateRange.end) && (
+                    <div className="pt-3 border-t border-slate-200">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-indigo-500"></div>
+                        <p className="text-xs text-indigo-700 font-medium">
+                          <span className="text-slate-500">Active filter:</span>{" "}
+                          {dateRange.start ? (
+                            new Date(dateRange.start + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+                          ) : (
+                            <span className="text-slate-400">Any</span>
+                          )}
+                          {" → "}
+                          {dateRange.end ? (
+                            new Date(dateRange.end + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+                          ) : (
+                            <span className="text-slate-400">Present</span>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1644,6 +1948,54 @@ export default function Publications() {
                 })}
             </div>
           )}
+          
+          {/* Results Count and Load More Button */}
+          {!loading && results.length > 0 && isSignedIn && (
+            <div className="mt-6 flex flex-col items-center gap-4">
+              {/* Results Count */}
+              <div className="text-sm text-slate-600">
+                Showing <span className="font-semibold text-indigo-700">{results.length}</span> of{" "}
+                <span className="font-semibold text-indigo-700">{totalCount.toLocaleString()}</span> results
+                {(dateRange.start || dateRange.end) && (
+                  <span className="text-slate-500">
+                    {" "}• Filtered by date
+                    {dateRange.start && dateRange.end && `: ${dateRange.start} to ${dateRange.end}`}
+                    {dateRange.start && !dateRange.end && `: from ${dateRange.start}`}
+                    {!dateRange.start && dateRange.end && `: until ${dateRange.end}`}
+                  </span>
+                )}
+              </div>
+              
+              {/* Load More Button */}
+              {hasMore && (
+                <button
+                  onClick={loadMoreResults}
+                  disabled={loadingMore}
+                  className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white rounded-lg font-semibold shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loadingMore ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Loading more...
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="w-4 h-4" />
+                      Load More Results
+                    </>
+                  )}
+                </button>
+              )}
+              
+              {/* End of Results Message */}
+              {!hasMore && totalCount > 0 && results.length >= totalCount && (
+                <div className="text-sm text-slate-500 flex items-center gap-2">
+                  <ListChecks className="w-4 h-4" />
+                  You've seen all {totalCount.toLocaleString()} results
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Sign Up Message for More Results */}
           {!loading &&
@@ -1880,95 +2232,6 @@ export default function Publications() {
                         </div>
                       )}
 
-                      {/* Volume & Issue */}
-                      {(detailsModal.publication.volume ||
-                        detailsModal.publication.issue) && (
-                        <div
-                          className="rounded-lg p-3 border"
-                          style={{
-                            backgroundColor: "rgba(208, 196, 226, 0.1)",
-                            borderColor: "rgba(208, 196, 226, 0.3)",
-                          }}
-                        >
-                          <div className="flex items-center gap-2 mb-1.5">
-                            <BookOpen
-                              className="w-3.5 h-3.5"
-                              style={{ color: "#787878" }}
-                            />
-                            <span
-                              className="text-xs font-medium uppercase tracking-wide"
-                              style={{ color: "#787878" }}
-                            >
-                              Volume / Issue
-                            </span>
-                          </div>
-                          <p
-                            className="text-sm font-semibold"
-                            style={{ color: "#2F3C96" }}
-                          >
-                            {detailsModal.publication.volume || "N/A"}
-                            {detailsModal.publication.issue
-                              ? ` (Issue ${detailsModal.publication.issue})`
-                              : ""}
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Pages */}
-                      {detailsModal.publication.Pages && (
-                        <div
-                          className="rounded-lg p-3 border"
-                          style={{
-                            backgroundColor: "rgba(208, 196, 226, 0.1)",
-                            borderColor: "rgba(208, 196, 226, 0.3)",
-                          }}
-                        >
-                          <div className="flex items-center gap-2 mb-1.5">
-                            <FileText
-                              className="w-3.5 h-3.5"
-                              style={{ color: "#787878" }}
-                            />
-                            <span
-                              className="text-xs font-medium uppercase tracking-wide"
-                              style={{ color: "#787878" }}
-                            >
-                              Pages
-                            </span>
-                          </div>
-                          <p
-                            className="text-sm font-semibold"
-                            style={{ color: "#2F3C96" }}
-                          >
-                            {detailsModal.publication.Pages}
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Language */}
-                      {detailsModal.publication.language && (
-                        <div
-                          className="rounded-lg p-3 border"
-                          style={{
-                            backgroundColor: "rgba(208, 196, 226, 0.1)",
-                            borderColor: "rgba(208, 196, 226, 0.3)",
-                          }}
-                        >
-                          <div className="flex items-center gap-2 mb-1.5">
-                            <span
-                              className="text-xs font-medium uppercase tracking-wide"
-                              style={{ color: "#787878" }}
-                            >
-                              Language
-                            </span>
-                          </div>
-                          <p
-                            className="text-sm font-semibold"
-                            style={{ color: "#2F3C96" }}
-                          >
-                            {detailsModal.publication.language}
-                          </p>
-                        </div>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -2003,51 +2266,6 @@ export default function Publications() {
                                 {keyword}
                               </span>
                             )
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                {/* MeSH Terms Section */}
-                {detailsModal.publication.meshTerms &&
-                  detailsModal.publication.meshTerms.length > 0 && (
-                    <div>
-                      <div
-                        className="bg-white rounded-xl p-5 border shadow-sm"
-                        style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
-                      >
-                        <h4
-                          className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
-                          style={{ color: "#2F3C96" }}
-                        >
-                          <Info className="w-4 h-4" />
-                          MeSH Terms
-                        </h4>
-                        <div className="flex flex-wrap gap-2">
-                          {detailsModal.publication.meshTerms
-                            .slice(0, 10)
-                            .map((term, idx) => (
-                              <span
-                                key={idx}
-                                className="px-3 py-1.5 text-xs font-medium rounded-md border"
-                                style={{
-                                  backgroundColor: "rgba(208, 196, 226, 0.2)",
-                                  color: "#787878",
-                                  borderColor: "rgba(208, 196, 226, 0.3)",
-                                }}
-                              >
-                                {term}
-                              </span>
-                            ))}
-                          {detailsModal.publication.meshTerms.length > 10 && (
-                            <span
-                              className="px-3 py-1.5 text-xs"
-                              style={{ color: "#787878" }}
-                            >
-                              +{detailsModal.publication.meshTerms.length - 10}{" "}
-                              more
-                            </span>
                           )}
                         </div>
                       </div>

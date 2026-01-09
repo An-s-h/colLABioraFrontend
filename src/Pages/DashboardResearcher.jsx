@@ -505,6 +505,7 @@ export default function DashboardResearcher() {
                     userData._id || userData.id
                   );
                 }
+
               }
             }
           } catch (error) {
@@ -8629,3 +8630,4 @@ export default function DashboardResearcher() {
     </div>
   );
 }
+
