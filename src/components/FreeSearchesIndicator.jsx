@@ -86,7 +86,7 @@ export default function FreeSearchesIndicator({ user, onSearch, centered = false
       localStorage.setItem(FREE_SEARCHES_POPUP_KEY, "true");
     }
 
-    // Listen for custom event for same-tab updates
+    // Listen for custom event for same-tab updates (only update when search is made)
     const handleFreeSearchUsed = (event) => {
       // If event has detail with remaining count, use it directly (immediate update)
       if (event.detail && event.detail.remaining !== undefined) {
@@ -95,28 +95,16 @@ export default function FreeSearchesIndicator({ user, onSearch, centered = false
         // Update local storage to match backend
         const backendCount = MAX_FREE_SEARCHES - event.detail.remaining;
         setLocalSearchCount(backendCount);
-        // Verify with API after a brief delay (backend should already be updated)
-        setTimeout(() => {
-          fetchRemainingSearches(true);
-        }, 300);
       } else {
-        // Update from local storage immediately
+        // Fallback: update from local storage if event doesn't have detail
         updateFromLocal();
-        // Fetch from API immediately to get latest from backend
-        fetchRemainingSearches(true);
       }
     };
 
     window.addEventListener("freeSearchUsed", handleFreeSearchUsed);
 
-    // Periodic fetch from API (every 5 seconds)
-    const syncInterval = setInterval(() => {
-      fetchRemainingSearches();
-    }, 5000);
-
     return () => {
       window.removeEventListener("freeSearchUsed", handleFreeSearchUsed);
-      clearInterval(syncInterval);
     };
   }, [user]);
 
@@ -353,32 +341,18 @@ export function useFreeSearches() {
     }
 
     const updateFreeSearches = async (event) => {
-      // If event has detail with remaining count, use it directly
+      // If event has detail with remaining count, use it directly (from search response)
       if (event && event.detail && event.detail.remaining !== undefined) {
         setFreeSearches(event.detail.remaining);
         return;
       }
 
-      // Update from local storage immediately
+      // Initial load: update from local storage only (no polling)
       const localRemaining = getLocalRemainingSearches();
       setFreeSearches(localRemaining);
-
-      // Sync with backend if needed
-      if (shouldSyncWithBackend()) {
-        try {
-          const result = await syncWithBackend();
-          if (result.unlimited) {
-            setFreeSearches(null);
-          } else {
-            setFreeSearches(result.remaining);
-          }
-        } catch (error) {
-          console.error("Error syncing with backend:", error);
-          // Keep local value on error
-        }
-      }
     };
 
+    // Initial load from local storage
     updateFreeSearches();
 
     // Listen for updates
@@ -426,15 +400,8 @@ export function useFreeSearches() {
       return null;
     }
 
-    // Return local value immediately, sync in background
-    const localRemaining = getLocalRemainingSearches();
-
-    // Sync with backend if needed
-    if (shouldSyncWithBackend()) {
-      syncWithBackend().catch(console.error);
-    }
-
-    return localRemaining;
+    // Return local value only (no background sync/polling)
+    return getLocalRemainingSearches();
   };
 
   return { freeSearches, checkAndUseSearch, getRemainingSearches };

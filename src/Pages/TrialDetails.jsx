@@ -17,6 +17,9 @@ import {
   ArrowLeft,
   Building2,
   Loader2,
+  Info,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 
 export default function TrialDetails() {
@@ -24,6 +27,7 @@ export default function TrialDetails() {
   const navigate = useNavigate();
   const [trial, setTrial] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showAllLocations, setShowAllLocations] = useState(false);
 
   useEffect(() => {
     async function fetchTrialDetails() {
@@ -36,6 +40,8 @@ export default function TrialDetails() {
       setLoading(true);
       try {
         const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
+        
+        // Fetch original trial details (not simplified)
         const response = await fetch(`${base}/api/search/trial/${nctId}`);
 
         if (!response.ok) {
@@ -147,14 +153,14 @@ export default function TrialDetails() {
         {/* Header */}
         <div className="mb-6">
           <button
-            onClick={() => navigate("/dashboard/patient")}
+            onClick={() => navigate(-1)}
             className="flex items-center gap-2 text-sm font-medium mb-4 transition-colors"
             style={{ color: "#2F3C96" }}
             onMouseEnter={(e) => (e.currentTarget.style.color = "#253075")}
             onMouseLeave={(e) => (e.currentTarget.style.color = "#2F3C96")}
           >
             <ArrowLeft className="w-4 h-4" />
-            Back to Dashboard
+            Back
           </button>
 
           <div
@@ -216,7 +222,7 @@ export default function TrialDetails() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Study Purpose */}
+            {/* Study Purpose / Description */}
             {trial.description && (
               <div
                 className="bg-white rounded-xl p-6 border shadow-sm"
@@ -227,7 +233,7 @@ export default function TrialDetails() {
                   style={{ color: "#2F3C96" }}
                 >
                   <FileText className="w-5 h-5" />
-                  Study Purpose
+                  Study Description
                 </h2>
                 <p
                   className="text-sm leading-relaxed whitespace-pre-line"
@@ -270,7 +276,7 @@ export default function TrialDetails() {
                       className="text-sm font-bold"
                       style={{ color: "#2F3C96" }}
                     >
-                      {trial.eligibility.gender || "All"}
+                      {trial.eligibility?.gender || "All"}
                     </p>
                   </div>
 
@@ -294,13 +300,13 @@ export default function TrialDetails() {
                       className="text-sm font-bold"
                       style={{ color: "#2F3C96" }}
                     >
-                      {trial.eligibility.minimumAge !== "Not specified" &&
-                      trial.eligibility.minimumAge
+                      {trial.eligibility?.minimumAge !== "Not specified" &&
+                      trial.eligibility?.minimumAge
                         ? trial.eligibility.minimumAge
-                        : "N/A"}
-                      {" - "}
-                      {trial.eligibility.maximumAge !== "Not specified" &&
-                      trial.eligibility.maximumAge
+                        : "N/A"}{" "}
+                      -{" "}
+                      {trial.eligibility?.maximumAge !== "Not specified" &&
+                      trial.eligibility?.maximumAge
                         ? trial.eligibility.maximumAge
                         : "N/A"}
                     </p>
@@ -326,19 +332,42 @@ export default function TrialDetails() {
                       className="text-sm font-bold"
                       style={{ color: "#2F3C96" }}
                     >
-                      {trial.eligibility.healthyVolunteers || "Unknown"}
+                      {trial.eligibility?.healthyVolunteers || "Unknown"}
                     </p>
                   </div>
                 </div>
 
-                {trial.eligibility.criteria &&
+                {/* Study Population Description */}
+                {trial.eligibility?.population && (
+                  <div className="mt-4">
+                    <h3
+                      className="font-semibold mb-2 text-sm flex items-center gap-2"
+                      style={{ color: "#2F3C96" }}
+                    >
+                      <Users className="w-4 h-4" />
+                      Study Population
+                    </h3>
+                    <div
+                      className="bg-gray-50 rounded-lg p-4 border text-sm whitespace-pre-line"
+                      style={{
+                        color: "#787878",
+                        borderColor: "rgba(232, 224, 239, 1)",
+                      }}
+                    >
+                      {trial.eligibility.population}
+                    </div>
+                  </div>
+                )}
+
+                {trial.eligibility?.criteria &&
                   trial.eligibility.criteria !== "Not specified" && (
                     <div className="mt-4">
                       <h3
-                        className="font-semibold mb-2 text-sm"
+                        className="font-semibold mb-2 text-sm flex items-center gap-2"
                         style={{ color: "#2F3C96" }}
                       >
-                        Detailed Criteria
+                        <ListChecks className="w-4 h-4" />
+                        Detailed Eligibility Criteria
                       </h3>
                       <div
                         className="bg-gray-50 rounded-lg p-4 border text-sm whitespace-pre-line"
@@ -475,10 +504,11 @@ export default function TrialDetails() {
                   style={{ color: "#2F3C96" }}
                 >
                   <MapPin className="w-5 h-5" />
-                  Trial Locations
+                  Trial Locations ({trial.locations.length})
                 </h2>
                 <div className="space-y-4">
-                  {trial.locations.map((location, i) => (
+                  {/* Show first 5 locations in full detail */}
+                  {trial.locations.slice(0, 5).map((location, i) => (
                     <div
                       key={i}
                       className="bg-gray-50 rounded-lg p-4 border"
@@ -566,132 +596,169 @@ export default function TrialDetails() {
                       )}
                     </div>
                   ))}
+
+                  {/* Show remaining locations in compressed list */}
+                  {trial.locations.length > 5 && (
+                    <>
+                      {showAllLocations && (
+                        <div className="space-y-2">
+                          {trial.locations.slice(5).map((location, i) => (
+                            <div
+                              key={i + 5}
+                              className="bg-gray-50 rounded-lg p-3 border"
+                              style={{ borderColor: "rgba(232, 232, 232, 1)" }}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  {location.facility && (
+                                    <div
+                                      className="font-semibold mb-1 text-sm flex items-center gap-1.5"
+                                      style={{ color: "#2F3C96" }}
+                                    >
+                                      <Building2 className="w-3.5 h-3.5 flex-shrink-0" />
+                                      <span className="truncate">{location.facility}</span>
+                                    </div>
+                                  )}
+                                  <div
+                                    className="text-xs mb-1 truncate"
+                                    style={{ color: "#787878" }}
+                                  >
+                                    {location.fullAddress || location.address}
+                                  </div>
+                                  {location.status && (
+                                    <div
+                                      className="text-xs font-medium"
+                                      style={{ color: "#2F3C96" }}
+                                    >
+                                      {location.status}
+                                    </div>
+                                  )}
+                                </div>
+                                {getGoogleMapsUrl(location) && (
+                                  <a
+                                    href={getGoogleMapsUrl(location)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex-shrink-0 inline-flex items-center gap-1 text-xs font-medium transition-colors ml-2"
+                                    style={{ color: "#2F3C96" }}
+                                    onMouseEnter={(e) =>
+                                      (e.currentTarget.style.color = "#253075")
+                                    }
+                                    onMouseLeave={(e) =>
+                                      (e.currentTarget.style.color = "#2F3C96")
+                                    }
+                                  >
+                                    <MapPin className="w-3 h-3" />
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <button
+                        onClick={() => setShowAllLocations(!showAllLocations)}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 px-4 text-sm font-medium rounded-lg transition-colors border"
+                        style={{
+                          color: "#2F3C96",
+                          backgroundColor: "rgba(208, 196, 226, 0.1)",
+                          borderColor: "rgba(208, 196, 226, 0.3)",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor =
+                            "rgba(208, 196, 226, 0.2)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor =
+                            "rgba(208, 196, 226, 0.1)";
+                        }}
+                      >
+                        {showAllLocations ? (
+                          <>
+                            <ChevronUp className="w-4 h-4" />
+                            Show Less ({trial.locations.length - 5} hidden)
+                          </>
+                        ) : (
+                          <>
+                            <ChevronDown className="w-4 h-4" />
+                            Show {trial.locations.length - 5} More Location
+                            {trial.locations.length - 5 !== 1 ? "s" : ""}
+                          </>
+                        )}
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             )}
 
-            {/* External Link */}
-            {trial.clinicalTrialsGovUrl && (
-              <a
-                href={trial.clinicalTrialsGovUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 py-3 px-4 text-white rounded-lg transition-colors text-sm font-semibold shadow-md hover:shadow-lg w-full"
-                style={{ backgroundColor: "#2F3C96" }}
-                onMouseEnter={(e) =>
-                  (e.currentTarget.style.backgroundColor = "#253075")
-                }
-                onMouseLeave={(e) =>
-                  (e.currentTarget.style.backgroundColor = "#2F3C96")
-                }
-              >
-                <ExternalLink className="w-4 h-4" />
-                View on ClinicalTrials.gov
-              </a>
-            )}
-          </div>
-        </div>
-
-        {/* Map View for All Locations */}
-        {trial.locations && trial.locations.length > 0 && (
-          <div
-            className="mt-6 bg-white rounded-xl p-6 border shadow-sm"
-            style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
-          >
-            <h2
-              className="font-bold mb-4 flex items-center gap-2 text-lg"
-              style={{ color: "#2F3C96" }}
+            {/* Additional Trial Information */}
+            <div
+              className="bg-white rounded-xl p-6 border shadow-sm"
+              style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
             >
-              <MapPin className="w-5 h-5" />
-              Trial Locations Map
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {trial.locations.map((location, i) => {
-                const mapUrl = getGoogleMapsUrl(location);
-                return (
-                  <div key={i} className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div
-                        className="text-sm font-medium"
-                        style={{ color: "#2F3C96" }}
-                      >
-                        {location.facility || `Location ${i + 1}`}
-                      </div>
-                      {mapUrl && (
-                        <a
-                          href={mapUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs font-medium transition-colors flex items-center gap-1"
-                          style={{ color: "#2F3C96" }}
-                          onMouseEnter={(e) =>
-                            (e.currentTarget.style.color = "#253075")
-                          }
-                          onMouseLeave={(e) =>
-                            (e.currentTarget.style.color = "#2F3C96")
-                          }
-                        >
-                          <MapPin className="w-3 h-3" />
-                          View Map
-                        </a>
-                      )}
-                    </div>
-                    <div
-                      className="bg-gray-50 rounded-lg p-4 border min-h-[200px] flex items-center justify-center"
-                      style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+              <h2
+                className="font-bold mb-4 flex items-center gap-2 text-lg"
+                style={{ color: "#2F3C96" }}
+              >
+                <Info className="w-5 h-5" />
+                Trial Information
+              </h2>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center py-2 border-b" style={{ borderColor: "rgba(232, 224, 239, 1)" }}>
+                  <span className="text-sm font-medium" style={{ color: "#787878" }}>
+                    Trial ID:
+                  </span>
+                  <span className="text-sm font-semibold" style={{ color: "#2F3C96" }}>
+                    {trial.id || trial._id || "N/A"}
+                  </span>
+                </div>
+                {trial.status && (
+                  <div className="flex justify-between items-center py-2 border-b" style={{ borderColor: "rgba(232, 224, 239, 1)" }}>
+                    <span className="text-sm font-medium" style={{ color: "#787878" }}>
+                      Status:
+                    </span>
+                    <span
+                      className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(
+                        trial.status
+                      )}`}
                     >
-                      {mapUrl ? (
-                        <a
-                          href={mapUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-center"
-                        >
-                          <div className="mb-2">
-                            <MapPin
-                              className="w-12 h-12 mx-auto"
-                              style={{ color: "#2F3C96" }}
-                            />
-                          </div>
-                          <div
-                            className="text-sm font-medium"
-                            style={{ color: "#2F3C96" }}
-                          >
-                            Click to view on Google Maps
-                          </div>
-                          <div
-                            className="text-xs mt-1"
-                            style={{ color: "#787878" }}
-                          >
-                            {location.fullAddress || location.address}
-                          </div>
-                        </a>
-                      ) : (
-                        <div className="text-center">
-                          <MapPin
-                            className="w-12 h-12 mx-auto mb-2"
-                            style={{ color: "#787878" }}
-                          />
-                          <div className="text-sm" style={{ color: "#787878" }}>
-                            {location.fullAddress || location.address}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    {location.status && (
-                      <div
-                        className="text-xs font-medium"
-                        style={{ color: "#2F3C96" }}
-                      >
-                        Status: {location.status}
-                      </div>
-                    )}
+                      {trial.status.replace(/_/g, " ")}
+                    </span>
                   </div>
-                );
-              })}
+                )}
+                {trial.phase && (
+                  <div className="flex justify-between items-center py-2 border-b" style={{ borderColor: "rgba(232, 224, 239, 1)" }}>
+                    <span className="text-sm font-medium" style={{ color: "#787878" }}>
+                      Phase:
+                    </span>
+                    <span className="text-sm font-semibold" style={{ color: "#2F3C96" }}>
+                      {trial.phase}
+                    </span>
+                  </div>
+                )}
+                {trial.conditions && trial.conditions.length > 0 && (
+                  <div className="py-2">
+                    <span className="text-sm font-medium block mb-2" style={{ color: "#787878" }}>
+                      Conditions:
+                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      {trial.conditions.map((condition, idx) => (
+                        <span
+                          key={idx}
+                          className="px-2.5 py-1 bg-gray-50 text-xs font-medium rounded-lg border"
+                          style={{ color: "#2F3C96", borderColor: "#D0C4E2" }}
+                        >
+                          {condition}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

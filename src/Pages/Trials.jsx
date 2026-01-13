@@ -162,6 +162,13 @@ export default function Trials() {
     copied: false,
   });
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [lastSearchQuery, setLastSearchQuery] = useState(""); // Track last search query for pagination
+  const [lastSearchParams, setLastSearchParams] = useState({}); // Store all search parameters for pagination
+
   // Advanced search state
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
   const [eligibilitySex, setEligibilitySex] = useState("All"); // "All", "Female", "Male"
@@ -289,6 +296,28 @@ export default function Trials() {
       }
     }
 
+    // Reset pagination for new searches
+    params.set("page", "1");
+    params.set("pageSize", "6");
+    setCurrentPage(1);
+    setLastSearchQuery(finalQuery);
+
+    // Store search parameters for pagination
+    setLastSearchParams({
+      finalQuery,
+      status,
+      phase,
+      eligibilitySex,
+      eligibilityAge,
+      ageRange,
+      locationMode,
+      location,
+      userLocation,
+      useMedicalInterest,
+      userMedicalInterest,
+      user,
+    });
+
     // Add location parameter (use only country)
     if (locationMode === "current" && userLocation) {
       // Use only country for location filtering
@@ -355,6 +384,20 @@ export default function Trials() {
       const data = await response.json();
       const searchResults = data.results || [];
 
+      // Set pagination data
+      setTotalCount(data.totalCount || 0);
+      const calculatedTotalPages = Math.ceil((data.totalCount || 0) / 6);
+      setTotalPages(calculatedTotalPages);
+
+      // Sort by matchPercentage in descending order (highest first)
+      const sortedResults = [...searchResults].sort((a, b) => {
+        const aMatch = a.matchPercentage ?? -1;
+        const bMatch = b.matchPercentage ?? -1;
+        return bMatch - aMatch; // Descending order
+      });
+      setResults(sortedResults);
+
+      // Only count search after results are successfully loaded and processed
       // Handle remaining searches from server response
       if (!isUserSignedIn && data.remaining !== undefined) {
         // Update local storage to match backend (backend is source of truth)
@@ -383,15 +426,7 @@ export default function Trials() {
         );
       }
 
-      // Sort by matchPercentage in descending order (highest first)
-      const sortedResults = [...searchResults].sort((a, b) => {
-        const aMatch = a.matchPercentage ?? -1;
-        const bMatch = b.matchPercentage ?? -1;
-        return bMatch - aMatch; // Descending order
-      });
-      setResults(sortedResults);
-
-      // Save search state to sessionStorage
+      // Save search state to sessionStorage (including pagination)
       const searchState = {
         q: appliedQuery,
         status,
@@ -400,6 +435,23 @@ export default function Trials() {
         useMedicalInterest,
         userMedicalInterest,
         results: sortedResults,
+        currentPage: 1,
+        totalPages: calculatedTotalPages,
+        totalCount: data.totalCount || 0,
+        lastSearchParams: {
+          finalQuery,
+          status,
+          phase,
+          eligibilitySex,
+          eligibilityAge,
+          ageRange,
+          locationMode,
+          location,
+          userLocation,
+          useMedicalInterest,
+          userMedicalInterest,
+          user,
+        },
         isInitialLoad: false,
       };
       sessionStorage.setItem(
@@ -409,6 +461,186 @@ export default function Trials() {
     } catch (error) {
       console.error("Search error:", error);
       setResults([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Navigate to specific page (server-side pagination)
+  async function goToPage(page) {
+    if (page < 1 || page > totalPages || page === currentPage || loading)
+      return;
+
+    setLoading(true);
+    setCurrentPage(page);
+
+    const params = new URLSearchParams();
+    const {
+      finalQuery: savedQuery,
+      status: savedStatus,
+      phase: savedPhase,
+      eligibilitySex: savedEligibilitySex,
+      eligibilityAge: savedEligibilityAge,
+      ageRange: savedAgeRange,
+      locationMode: savedLocationMode,
+      location: savedLocation,
+      userLocation: savedUserLocation,
+      useMedicalInterest: savedUseMedicalInterest,
+      userMedicalInterest: savedUserMedicalInterest,
+      user: savedUser,
+    } = lastSearchParams;
+
+    // Use saved query or last search query
+    const queryToUse = savedQuery || lastSearchQuery || "";
+
+    if (queryToUse) params.set("q", queryToUse);
+    if (savedStatus || status) params.set("status", savedStatus || status);
+
+    // Add phase filter
+    if (savedPhase || phase) {
+      params.set("phase", savedPhase || phase);
+    }
+
+    // Add advanced eligibility filters
+    const currentEligibilitySex = savedEligibilitySex || eligibilitySex;
+    if (currentEligibilitySex && currentEligibilitySex !== "All") {
+      params.set("eligibilitySex", currentEligibilitySex);
+    }
+
+    const currentEligibilityAge = savedEligibilityAge || eligibilityAge;
+    const currentAgeRange = savedAgeRange || ageRange;
+    if (currentEligibilityAge) {
+      if (currentEligibilityAge === "Child") {
+        params.set("eligibilityAgeMin", "0");
+        params.set("eligibilityAgeMax", "17");
+      } else if (currentEligibilityAge === "Adult") {
+        params.set("eligibilityAgeMin", "18");
+        params.set("eligibilityAgeMax", "64");
+      } else if (currentEligibilityAge === "Older adult") {
+        params.set("eligibilityAgeMin", "65");
+      } else if (currentEligibilityAge === "custom") {
+        if (currentAgeRange?.min)
+          params.set("eligibilityAgeMin", currentAgeRange.min);
+        if (currentAgeRange?.max)
+          params.set("eligibilityAgeMax", currentAgeRange.max);
+      }
+    }
+
+    params.set("page", String(page));
+    params.set("pageSize", "6");
+
+    // Add location parameter
+    const currentLocationMode = savedLocationMode || locationMode;
+    const currentUserLocation = savedUserLocation || userLocation;
+    const currentLocation = savedLocation || location;
+    if (currentLocationMode === "current" && currentUserLocation) {
+      if (currentUserLocation.country) {
+        params.set("location", currentUserLocation.country);
+      }
+    } else if (currentLocationMode === "custom" && currentLocation?.trim()) {
+      params.set("location", currentLocation.trim());
+    }
+
+    // Add user profile data for matching
+    const currentUser = savedUser || user;
+    if (currentUser?._id || currentUser?.id) {
+      params.set("userId", currentUser._id || currentUser.id);
+    } else if (
+      (savedUseMedicalInterest || useMedicalInterest) &&
+      (savedUserMedicalInterest || userMedicalInterest)
+    ) {
+      params.set("conditions", savedUserMedicalInterest || userMedicalInterest);
+      if (currentLocationMode === "current" && currentUserLocation) {
+        params.set("userLocation", JSON.stringify(currentUserLocation));
+      } else if (currentLocationMode === "custom" && currentLocation?.trim()) {
+        params.set(
+          "userLocation",
+          JSON.stringify({ country: currentLocation.trim() })
+        );
+      }
+    }
+
+    try {
+      const response = await apiFetch(
+        `/api/search/trials?${params.toString()}`
+      );
+
+      if (!response) {
+        setLoading(false);
+        return;
+      }
+
+      if (response.status === 429) {
+        const errorData = await response.json();
+        toast.error(
+          errorData.error ||
+            "You've used all your free searches! Sign in to continue searching.",
+          { duration: 4000 }
+        );
+        setLoading(false);
+        return;
+      }
+
+      const data = await response.json();
+      const searchResults = data.results || [];
+
+      // Set pagination data
+      setTotalCount(data.totalCount || 0);
+      const calculatedTotalPages = Math.ceil((data.totalCount || 0) / 6);
+      setTotalPages(calculatedTotalPages);
+
+      // Sort by matchPercentage in descending order (highest first)
+      const sortedResults = [...searchResults].sort((a, b) => {
+        const aMatch = a.matchPercentage ?? -1;
+        const bMatch = b.matchPercentage ?? -1;
+        return bMatch - aMatch; // Descending order
+      });
+      setResults(sortedResults);
+
+      // Save updated state to sessionStorage
+      const searchState = {
+        q: lastSearchQuery || "",
+        status: savedStatus || status || "",
+        location: currentLocation || "",
+        locationMode: currentLocationMode || "global",
+        useMedicalInterest:
+          savedUseMedicalInterest || useMedicalInterest || false,
+        userMedicalInterest:
+          savedUserMedicalInterest || userMedicalInterest || "",
+        results: sortedResults,
+        currentPage: page,
+        totalPages: calculatedTotalPages,
+        totalCount: data.totalCount || 0,
+        phase: savedPhase || phase,
+        eligibilitySex: currentEligibilitySex,
+        eligibilityAge: currentEligibilityAge,
+        ageRange: currentAgeRange,
+        lastSearchParams: {
+          finalQuery: queryToUse,
+          status: savedStatus || status,
+          phase: savedPhase || phase,
+          eligibilitySex: currentEligibilitySex,
+          eligibilityAge: currentEligibilityAge,
+          ageRange: currentAgeRange,
+          locationMode: currentLocationMode,
+          location: currentLocation,
+          userLocation: currentUserLocation,
+          useMedicalInterest: savedUseMedicalInterest || useMedicalInterest,
+          userMedicalInterest: savedUserMedicalInterest || userMedicalInterest,
+          user: currentUser,
+        },
+        isInitialLoad: false,
+      };
+      sessionStorage.setItem(
+        "trials_search_state",
+        JSON.stringify(searchState)
+      );
+
+      // Scroll to top of results
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (error) {
+      console.error("Page navigation error:", error);
+      toast.error("Failed to load page");
     } finally {
       setLoading(false);
     }
@@ -446,6 +678,28 @@ export default function Trials() {
       }
 
       params.set("q", searchQuery);
+
+      // Reset pagination for new searches
+      params.set("page", "1");
+      params.set("pageSize", "6");
+      setCurrentPage(1);
+      setLastSearchQuery(searchQuery);
+
+      // Store search parameters for pagination
+      setLastSearchParams({
+        finalQuery: searchQuery,
+        status,
+        phase,
+        eligibilitySex,
+        eligibilityAge,
+        ageRange,
+        locationMode,
+        location,
+        userLocation,
+        useMedicalInterest,
+        userMedicalInterest,
+        user,
+      });
 
       // Add location parameter (use only country)
       if (locationMode === "current" && userLocation) {
@@ -510,6 +764,11 @@ export default function Trials() {
 
           const searchResults = data.results || [];
 
+          // Set pagination data
+          setTotalCount(data.totalCount || 0);
+          const calculatedTotalPages = Math.ceil((data.totalCount || 0) / 6);
+          setTotalPages(calculatedTotalPages);
+
           // Handle remaining searches from server response
           if (!isUserSignedIn && data.remaining !== undefined) {
             // Update local storage to match backend (backend is source of truth)
@@ -546,7 +805,7 @@ export default function Trials() {
           });
           setResults(sortedResults);
 
-          // Save search state to sessionStorage
+          // Save search state to sessionStorage (including pagination)
           const searchState = {
             q: filterValue,
             status: "",
@@ -555,6 +814,23 @@ export default function Trials() {
             useMedicalInterest,
             userMedicalInterest,
             results: sortedResults,
+            currentPage: 1,
+            totalPages: calculatedTotalPages,
+            totalCount: data.totalCount || 0,
+            lastSearchParams: {
+              finalQuery: searchQuery,
+              status: "",
+              phase,
+              eligibilitySex,
+              eligibilityAge,
+              ageRange,
+              locationMode,
+              location,
+              userLocation,
+              useMedicalInterest,
+              userMedicalInterest,
+              user: userData,
+            },
             isInitialLoad: false,
           };
           sessionStorage.setItem(
@@ -754,7 +1030,42 @@ export default function Trials() {
     }
   }
 
+  // Mark trial as read
+  async function markTrialAsRead(trial) {
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
+    if (!user?._id && !user?.id) return; // Only for signed-in users
+
+    try {
+      const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
+      const itemId = trial.id || trial._id;
+      if (!itemId) return;
+
+      await fetch(`${base}/api/read/${user._id || user.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "trial",
+          itemId: itemId,
+        }),
+      });
+
+      // Update the trial in results to mark as read
+      setResults((prevResults) =>
+        prevResults.map((t) =>
+          (t.id || t._id) === itemId ? { ...t, isRead: true } : t
+        )
+      );
+    } catch (error) {
+      console.error("Error marking trial as read:", error);
+    }
+  }
+
   async function openDetailsModal(trial) {
+    // Mark as read when modal opens
+    if (isSignedIn) {
+      markTrialAsRead(trial);
+    }
+
     setDetailsModal({
       open: true,
       trial: trial, // Show basic info immediately
@@ -764,20 +1075,60 @@ export default function Trials() {
       copied: false,
     });
 
-    // Fetch detailed trial information from backend
+    // Fetch detailed trial information with simplified details from backend
     if (trial.id || trial._id) {
       try {
         const nctId = trial.id || trial._id;
         const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
-        const response = await fetch(`${base}/api/search/trial/${nctId}`);
+
+        // Fetch simplified trial details
+        const response = await fetch(
+          `${base}/api/search/trial/${nctId}/simplified`
+        );
 
         if (response.ok) {
           const data = await response.json();
           if (data.trial) {
             // Merge detailed info with existing trial data
+            // Preserve simplifiedTitle from card if it exists, otherwise use simplifiedDetails.title
+            const mergedTrial = {
+              ...trial,
+              ...data.trial,
+              // Keep the card's simplifiedTitle if it exists, otherwise use the one from simplifiedDetails
+              simplifiedTitle:
+                trial.simplifiedTitle ||
+                data.trial.simplifiedDetails?.title ||
+                data.trial.simplifiedTitle,
+            };
             setDetailsModal({
               open: true,
-              trial: { ...trial, ...data.trial },
+              trial: mergedTrial,
+              loading: false,
+              generatedMessage: "",
+              generating: false,
+              copied: false,
+            });
+            return;
+          }
+        }
+
+        // Fallback: try regular endpoint if simplified fails
+        const fallbackResponse = await fetch(
+          `${base}/api/search/trial/${nctId}`
+        );
+        if (fallbackResponse.ok) {
+          const fallbackData = await fallbackResponse.json();
+          if (fallbackData.trial) {
+            // Preserve simplifiedTitle from card if it exists
+            const mergedTrial = {
+              ...trial,
+              ...fallbackData.trial,
+              simplifiedTitle:
+                trial.simplifiedTitle || fallbackData.trial.simplifiedTitle,
+            };
+            setDetailsModal({
+              open: true,
+              trial: mergedTrial,
               loading: false,
               generatedMessage: "",
               generating: false,
@@ -1189,6 +1540,15 @@ export default function Trials() {
         );
         setUserMedicalInterest(state.userMedicalInterest || "");
         setResults(state.results || []);
+        // Restore pagination state
+        if (state.currentPage) setCurrentPage(state.currentPage);
+        if (state.totalPages) setTotalPages(state.totalPages);
+        if (state.totalCount) setTotalCount(state.totalCount);
+        if (state.lastSearchParams) setLastSearchParams(state.lastSearchParams);
+        if (state.phase) setPhase(state.phase);
+        if (state.eligibilitySex) setEligibilitySex(state.eligibilitySex);
+        if (state.eligibilityAge) setEligibilityAge(state.eligibilityAge);
+        if (state.ageRange) setAgeRange(state.ageRange);
         setIsInitialLoad(
           state.isInitialLoad !== undefined ? state.isInitialLoad : false
         );
@@ -1278,15 +1638,7 @@ export default function Trials() {
           setUseMedicalInterest(false);
         }
         setIsSignedIn(false);
-
-        // Auto-search with RECRUITING status if no saved state
-        const savedState = sessionStorage.getItem("trials_search_state");
-        if (!savedState) {
-          setIsInitialLoad(false);
-          setTimeout(() => {
-            search();
-          }, 100);
-        }
+        // Don't auto-search - user must manually trigger search
         return;
       }
 
@@ -1325,29 +1677,10 @@ export default function Trials() {
         ) {
           const medicalInterest = userData.medicalInterests[0]; // Use first medical interest
           setUserMedicalInterest(medicalInterest);
-
-          // Only auto-search if no saved state exists
-          const savedState = sessionStorage.getItem("trials_search_state");
-          if (!savedState) {
-            setUseMedicalInterest(true);
-            // Auto-trigger search with medical interest
-            setIsInitialLoad(false);
-            setQ(""); // Clear search query, will use medical interest only
-            // Trigger search after state updates
-            setTimeout(() => {
-              search();
-            }, 100);
-          }
+          // Don't auto-search - user must manually trigger search
         } else {
           setUseMedicalInterest(false);
-          // Auto-search with RECRUITING status if no saved state
-          const savedState = sessionStorage.getItem("trials_search_state");
-          if (!savedState) {
-            setIsInitialLoad(false);
-            setTimeout(() => {
-              search();
-            }, 100);
-          }
+          // Don't auto-search - user must manually trigger search
         }
       } catch (error) {
         console.error("Error fetching user data:", error);
@@ -1732,7 +2065,7 @@ export default function Trials() {
           {/* Skeleton Loaders */}
           {loading && (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {[...Array(9)].map((_, idx) => (
+              {[...Array(6)].map((_, idx) => (
                 <div
                   key={idx}
                   className="bg-white rounded-lg shadow-md border border-slate-200 animate-pulse"
@@ -1790,20 +2123,24 @@ export default function Trials() {
                       key={itemId}
                       className="bg-white rounded-xl shadow-sm border transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden flex flex-col h-full animate-fade-in"
                       style={{
-                        borderColor: "rgba(208, 196, 226, 0.3)",
+                        borderColor: trial.isRead
+                          ? "rgba(147, 51, 234, 0.4)" // Purple for read
+                          : "rgba(59, 130, 246, 0.4)", // Blue for unread
                         animationDelay: `${cardIdx * 50}ms`,
                       }}
                       onMouseEnter={(e) => {
                         e.currentTarget.style.boxShadow =
                           "0 10px 15px -3px rgba(47, 60, 150, 0.1), 0 4px 6px -2px rgba(47, 60, 150, 0.05)";
-                        e.currentTarget.style.borderColor =
-                          "rgba(47, 60, 150, 0.4)";
+                        e.currentTarget.style.borderColor = trial.isRead
+                          ? "rgba(147, 51, 234, 0.6)" // Darker purple on hover
+                          : "rgba(59, 130, 246, 0.6)"; // Darker blue on hover
                       }}
                       onMouseLeave={(e) => {
                         e.currentTarget.style.boxShadow =
                           "0 1px 2px 0 rgba(0, 0, 0, 0.05)";
-                        e.currentTarget.style.borderColor =
-                          "rgba(208, 196, 226, 0.3)";
+                        e.currentTarget.style.borderColor = trial.isRead
+                          ? "rgba(147, 51, 234, 0.4)" // Purple for read
+                          : "rgba(59, 130, 246, 0.4)"; // Blue for unread
                       }}
                     >
                       <div className="p-5 flex flex-col flex-grow">
@@ -1855,10 +2192,24 @@ export default function Trials() {
                         {/* Trial Title */}
                         <div className="mb-4">
                           <h3
-                            className="text-lg font-bold mb-0 line-clamp-3 leading-snug"
-                            style={{ color: "#2F3C96" }}
+                            className="text-lg font-bold mb-0 line-clamp-3 leading-snug flex items-start gap-2"
+                            style={{
+                              color: trial.isRead
+                                ? "#D0C4E2" // Light purple for read
+                                : "#2F3C96", // Default blue for unread
+                            }}
                           >
-                            {trial.title || "Untitled Trial"}
+                            {trial.isRead && (
+                              <CheckCircle
+                                className="w-4 h-4 mt-1 shrink-0"
+                                style={{ color: "#D0C4E2" }}
+                              />
+                            )}
+                            <span className="flex-1">
+                              {trial.simplifiedTitle ||
+                                trial.title ||
+                                "Untitled Trial"}
+                            </span>
                           </h3>
                         </div>
 
@@ -2050,6 +2401,87 @@ export default function Trials() {
                     </div>
                   );
                 })}
+            </div>
+          )}
+
+          {/* Results Count and Pagination */}
+          {!loading && results.length > 0 && isSignedIn && (
+            <div className="mt-6 flex flex-col items-center gap-4">
+              {/* Results Count */}
+              <div className="text-sm text-slate-600">
+                Page{" "}
+                <span className="font-semibold text-indigo-700">
+                  {currentPage}
+                </span>{" "}
+                of{" "}
+                <span className="font-semibold text-indigo-700">
+                  {totalPages.toLocaleString()}
+                </span>{" "}
+                ({totalCount.toLocaleString()} total results)
+              </div>
+
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-2 flex-wrap">
+                  <button
+                    onClick={() => goToPage(currentPage - 1)}
+                    disabled={currentPage === 1 || loading}
+                    className="px-4 py-2 bg-white border-2 border-indigo-200 text-indigo-700 rounded-lg font-semibold hover:bg-indigo-50 hover:border-indigo-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Previous
+                  </button>
+
+                  {/* Page Numbers */}
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let pageNum;
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      pageNum = currentPage - 2 + i;
+                    }
+
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => goToPage(pageNum)}
+                        disabled={loading}
+                        className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+                          currentPage === pageNum
+                            ? "bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-md"
+                            : "bg-white border-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:border-indigo-300"
+                        } disabled:opacity-50 disabled:cursor-not-allowed`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+
+                  {totalPages > 5 && currentPage < totalPages - 2 && (
+                    <>
+                      <span className="px-2 text-indigo-700">...</span>
+                      <button
+                        onClick={() => goToPage(totalPages)}
+                        disabled={loading}
+                        className="px-4 py-2 bg-white border-2 border-indigo-200 text-indigo-700 rounded-lg font-semibold hover:bg-indigo-50 hover:border-indigo-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {totalPages}
+                      </button>
+                    </>
+                  )}
+
+                  <button
+                    onClick={() => goToPage(currentPage + 1)}
+                    disabled={currentPage === totalPages || loading}
+                    className="px-4 py-2 bg-white border-2 border-indigo-200 text-indigo-700 rounded-lg font-semibold hover:bg-indigo-50 hover:border-indigo-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -2371,7 +2803,9 @@ export default function Trials() {
                       className="font-bold text-lg"
                       style={{ color: "#2F3C96" }}
                     >
-                      {detailsModal.trial.title}
+                      {detailsModal.trial.simplifiedTitle ||
+                        detailsModal.trial.simplifiedDetails?.title ||
+                        detailsModal.trial.title}
                     </h4>
                   </div>
                   <div className="flex flex-wrap gap-2 mt-2">
@@ -2410,7 +2844,8 @@ export default function Trials() {
                 </div>
 
                 {/* 1. Study Purpose */}
-                {(detailsModal.trial.description ||
+                {(detailsModal.trial.simplifiedDetails?.studyPurpose ||
+                  detailsModal.trial.description ||
                   detailsModal.trial.conditionDescription) && (
                   <div
                     className="bg-gradient-to-br rounded-xl p-5 mt-10 border shadow-sm"
@@ -2434,14 +2869,16 @@ export default function Trials() {
                       className="text-sm leading-relaxed whitespace-pre-line"
                       style={{ color: "#787878" }}
                     >
-                      {detailsModal.trial.description ||
+                      {detailsModal.trial.simplifiedDetails?.studyPurpose ||
+                        detailsModal.trial.description ||
                         detailsModal.trial.conditionDescription}
                     </p>
                   </div>
                 )}
 
                 {/* 2. Who Can Join (Eligibility) */}
-                {detailsModal.trial.eligibility && (
+                {(detailsModal.trial.simplifiedDetails?.eligibilityCriteria ||
+                  detailsModal.trial.eligibility) && (
                   <div
                     className="bg-gradient-to-br rounded-xl p-5 border shadow-sm"
                     style={{
@@ -2460,6 +2897,25 @@ export default function Trials() {
                       />
                       Who Can Join (Eligibility)
                     </h4>
+
+                    {/* Show simplified summary if available */}
+                    {detailsModal.trial.simplifiedDetails?.eligibilityCriteria
+                      ?.summary && (
+                      <div
+                        className="bg-white rounded-lg p-4 border mb-4"
+                        style={{ borderColor: "rgba(232, 224, 239, 1)" }}
+                      >
+                        <p
+                          className="text-sm leading-relaxed"
+                          style={{ color: "#787878" }}
+                        >
+                          {
+                            detailsModal.trial.simplifiedDetails
+                              .eligibilityCriteria.summary
+                          }
+                        </p>
+                      </div>
+                    )}
 
                     {/* Quick Eligibility Info Cards */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
@@ -2484,7 +2940,10 @@ export default function Trials() {
                           className="text-sm font-bold"
                           style={{ color: "#2F3C96" }}
                         >
-                          {detailsModal.trial.eligibility.gender || "All"}
+                          {detailsModal.trial.simplifiedDetails
+                            ?.eligibilityCriteria?.gender ||
+                            detailsModal.trial.eligibility?.gender ||
+                            "All"}
                         </p>
                       </div>
 
@@ -2509,17 +2968,19 @@ export default function Trials() {
                           className="text-sm font-bold"
                           style={{ color: "#2F3C96" }}
                         >
-                          {detailsModal.trial.eligibility.minimumAge !==
-                            "Not specified" &&
-                          detailsModal.trial.eligibility.minimumAge
-                            ? detailsModal.trial.eligibility.minimumAge
-                            : "N/A"}
-                          {" - "}
-                          {detailsModal.trial.eligibility.maximumAge !==
-                            "Not specified" &&
-                          detailsModal.trial.eligibility.maximumAge
-                            ? detailsModal.trial.eligibility.maximumAge
-                            : "N/A"}
+                          {detailsModal.trial.simplifiedDetails
+                            ?.eligibilityCriteria?.ageRange ||
+                            (detailsModal.trial.eligibility?.minimumAge !==
+                              "Not specified" &&
+                            detailsModal.trial.eligibility?.minimumAge
+                              ? detailsModal.trial.eligibility.minimumAge
+                              : "N/A") +
+                              " - " +
+                              (detailsModal.trial.eligibility?.maximumAge !==
+                                "Not specified" &&
+                              detailsModal.trial.eligibility?.maximumAge
+                                ? detailsModal.trial.eligibility.maximumAge
+                                : "N/A")}
                         </p>
                       </div>
 
@@ -2544,46 +3005,52 @@ export default function Trials() {
                           className="text-sm font-bold"
                           style={{ color: "#2F3C96" }}
                         >
-                          {detailsModal.trial.eligibility.healthyVolunteers ||
+                          {detailsModal.trial.simplifiedDetails
+                            ?.eligibilityCriteria?.volunteers ||
+                            detailsModal.trial.eligibility?.healthyVolunteers ||
                             "Unknown"}
                         </p>
                       </div>
                     </div>
 
-                    {/* Detailed Eligibility Criteria */}
-                    {detailsModal.trial.eligibility.criteria &&
-                      detailsModal.trial.eligibility.criteria !==
-                        "Not specified" && (
-                        <div
-                          className="mt-4 pt-4 border-t"
-                          style={{ borderColor: "#D0C4E2" }}
+                    {/* Detailed Eligibility Criteria - Show simplified if available */}
+                    {(detailsModal.trial.simplifiedDetails?.eligibilityCriteria
+                      ?.detailedCriteria ||
+                      (detailsModal.trial.eligibility?.criteria &&
+                        detailsModal.trial.eligibility.criteria !==
+                          "Not specified")) && (
+                      <div
+                        className="mt-4 pt-4 border-t"
+                        style={{ borderColor: "#D0C4E2" }}
+                      >
+                        <h5
+                          className="font-semibold mb-3 flex items-center gap-2 text-sm"
+                          style={{ color: "#2F3C96" }}
                         >
-                          <h5
-                            className="font-semibold mb-3 flex items-center gap-2 text-sm"
+                          <Info
+                            className="w-4 h-4"
                             style={{ color: "#2F3C96" }}
+                          />
+                          Detailed Eligibility Criteria
+                        </h5>
+                        <div
+                          className="bg-white rounded-lg p-4 border"
+                          style={{ borderColor: "rgba(232, 224, 239, 1)" }}
+                        >
+                          <p
+                            className="text-sm leading-relaxed whitespace-pre-line"
+                            style={{ color: "#787878" }}
                           >
-                            <Info
-                              className="w-4 h-4"
-                              style={{ color: "#2F3C96" }}
-                            />
-                            Detailed Eligibility Criteria
-                          </h5>
-                          <div
-                            className="bg-white rounded-lg p-4 border"
-                            style={{ borderColor: "rgba(232, 224, 239, 1)" }}
-                          >
-                            <p
-                              className="text-sm leading-relaxed whitespace-pre-line"
-                              style={{ color: "#787878" }}
-                            >
-                              {detailsModal.trial.eligibility.criteria}
-                            </p>
-                          </div>
+                            {detailsModal.trial.simplifiedDetails
+                              ?.eligibilityCriteria?.detailedCriteria ||
+                              detailsModal.trial.eligibility.criteria}
+                          </p>
                         </div>
-                      )}
+                      </div>
+                    )}
 
                     {/* Study Population Description */}
-                    {detailsModal.trial.eligibility.population && (
+                    {detailsModal.trial.eligibility?.population && (
                       <div
                         className="mt-4 pt-4 border-t"
                         style={{ borderColor: "#D0C4E2" }}
@@ -2611,6 +3078,77 @@ export default function Trials() {
                         </div>
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* Conditions Studied - Show simplified if available */}
+                {(detailsModal.trial.simplifiedDetails?.conditionsStudied ||
+                  (detailsModal.trial.conditions &&
+                    detailsModal.trial.conditions.length > 0)) && (
+                  <div
+                    className="bg-gradient-to-br rounded-xl p-5 border shadow-sm"
+                    style={{
+                      background:
+                        "linear-gradient(135deg, rgba(232, 233, 242, 1), rgba(245, 242, 248, 1))",
+                      borderColor: "rgba(163, 167, 203, 1)",
+                    }}
+                  >
+                    <h4
+                      className="font-bold mb-3 flex items-center gap-2 text-base"
+                      style={{ color: "#2F3C96" }}
+                    >
+                      <Activity
+                        className="w-5 h-5"
+                        style={{ color: "#2F3C96" }}
+                      />
+                      Conditions Studied
+                    </h4>
+                    {detailsModal.trial.simplifiedDetails?.conditionsStudied ? (
+                      <p
+                        className="text-sm leading-relaxed"
+                        style={{ color: "#787878" }}
+                      >
+                        {detailsModal.trial.simplifiedDetails.conditionsStudied}
+                      </p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {detailsModal.trial.conditions.map((condition, idx) => (
+                          <span
+                            key={idx}
+                            className="px-3 py-1.5 bg-white text-sm font-medium rounded-lg border"
+                            style={{ color: "#2F3C96", borderColor: "#D0C4E2" }}
+                          >
+                            {condition}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* What to Expect - Show if simplified details available */}
+                {detailsModal.trial.simplifiedDetails?.whatToExpect && (
+                  <div
+                    className="bg-gradient-to-br rounded-xl p-5 border shadow-sm"
+                    style={{
+                      background:
+                        "linear-gradient(135deg, rgba(245, 242, 248, 1), rgba(232, 224, 239, 1))",
+                      borderColor: "#D0C4E2",
+                    }}
+                  >
+                    <h4
+                      className="font-bold mb-3 flex items-center gap-2 text-base"
+                      style={{ color: "#2F3C96" }}
+                    >
+                      <Info className="w-5 h-5" style={{ color: "#2F3C96" }} />
+                      What to Expect
+                    </h4>
+                    <p
+                      className="text-sm leading-relaxed"
+                      style={{ color: "#787878" }}
+                    >
+                      {detailsModal.trial.simplifiedDetails.whatToExpect}
+                    </p>
                   </div>
                 )}
 
@@ -2870,7 +3408,30 @@ export default function Trials() {
                 style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
               >
                 <div className="flex flex-col gap-2">
-                  {/* Footer content can be added here if needed */}
+                  <button
+                    onClick={() => {
+                      const nctId =
+                        detailsModal.trial?.id || detailsModal.trial?._id;
+                      if (nctId) {
+                        closeDetailsModal();
+                        navigate(`/trial/${nctId}`);
+                      }
+                    }}
+                    className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-xl transition-all w-full"
+                    style={{
+                      color: "#FFFFFF",
+                      backgroundColor: "#2F3C96",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = "#253075";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = "#2F3C96";
+                    }}
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    View Full Trial
+                  </button>
                 </div>
               </div>
             </div>

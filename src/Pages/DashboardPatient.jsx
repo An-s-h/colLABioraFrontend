@@ -637,12 +637,14 @@ export default function DashboardPatient() {
       copied: false,
     });
 
-    // Fetch detailed trial information from backend
+    // Fetch detailed trial information with simplified details from backend
     if (trial.id || trial._id) {
       try {
         const nctId = trial.id || trial._id;
         const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
-        const response = await fetch(`${base}/api/search/trial/${nctId}`);
+        
+        // Fetch simplified trial details
+        const response = await fetch(`${base}/api/search/trial/${nctId}/simplified`);
 
         if (response.ok) {
           const data = await response.json();
@@ -651,6 +653,23 @@ export default function DashboardPatient() {
             setTrialDetailsModal({
               open: true,
               trial: { ...trial, ...data.trial },
+              loading: false,
+              generatedMessage: "",
+              generating: false,
+              copied: false,
+            });
+            return;
+          }
+        }
+        
+        // Fallback: try regular endpoint if simplified fails
+        const fallbackResponse = await fetch(`${base}/api/search/trial/${nctId}`);
+        if (fallbackResponse.ok) {
+          const fallbackData = await fallbackResponse.json();
+          if (fallbackData.trial) {
+            setTrialDetailsModal({
+              open: true,
+              trial: { ...trial, ...fallbackData.trial },
               loading: false,
               generatedMessage: "",
               generating: false,
@@ -5697,7 +5716,8 @@ export default function DashboardPatient() {
               </div>
 
               {/* 1. Study Purpose */}
-              {(trialDetailsModal.trial.description ||
+              {(trialDetailsModal.trial.simplifiedDetails?.studyPurpose ||
+                trialDetailsModal.trial.description ||
                 trialDetailsModal.trial.conditionDescription) && (
                 <div
                   className="bg-gradient-to-br rounded-xl p-5 mt-10 border shadow-sm"
@@ -5716,19 +5736,32 @@ export default function DashboardPatient() {
                       style={{ color: "#2F3C96" }}
                     />
                     Study Purpose
+                    {trialDetailsModal.trial.simplifiedDetails?.studyPurpose && (
+                      <span
+                        className="text-xs font-normal px-2 py-0.5 rounded-full"
+                        style={{
+                          backgroundColor: "rgba(47, 59, 150, 0.1)",
+                          color: "#2F3C96",
+                        }}
+                      >
+                        Simplified
+                      </span>
+                    )}
                   </h4>
                   <p
                     className="text-sm leading-relaxed whitespace-pre-line"
                     style={{ color: "#787878" }}
                   >
-                    {trialDetailsModal.trial.description ||
+                    {trialDetailsModal.trial.simplifiedDetails?.studyPurpose ||
+                      trialDetailsModal.trial.description ||
                       trialDetailsModal.trial.conditionDescription}
                   </p>
                 </div>
               )}
 
               {/* 2. Who Can Join (Eligibility) */}
-              {trialDetailsModal.trial.eligibility && (
+              {(trialDetailsModal.trial.simplifiedDetails?.eligibilityCriteria ||
+                trialDetailsModal.trial.eligibility) && (
                 <div
                   className="bg-gradient-to-br rounded-xl p-5 border shadow-sm"
                   style={{
@@ -5746,7 +5779,33 @@ export default function DashboardPatient() {
                       style={{ color: "#2F3C96" }}
                     />
                     Who Can Join (Eligibility)
+                    {trialDetailsModal.trial.simplifiedDetails?.eligibilityCriteria && (
+                      <span
+                        className="text-xs font-normal px-2 py-0.5 rounded-full"
+                        style={{
+                          backgroundColor: "rgba(47, 59, 150, 0.1)",
+                          color: "#2F3C96",
+                        }}
+                      >
+                        Simplified
+                      </span>
+                    )}
                   </h4>
+
+                  {/* Show simplified summary if available */}
+                  {trialDetailsModal.trial.simplifiedDetails?.eligibilityCriteria?.summary && (
+                    <div
+                      className="bg-white rounded-lg p-4 border mb-4"
+                      style={{ borderColor: "rgba(232, 224, 239, 1)" }}
+                    >
+                      <p
+                        className="text-sm leading-relaxed"
+                        style={{ color: "#787878" }}
+                      >
+                        {trialDetailsModal.trial.simplifiedDetails.eligibilityCriteria.summary}
+                      </p>
+                    </div>
+                  )}
 
                   {/* Quick Eligibility Info Cards */}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
@@ -5771,7 +5830,8 @@ export default function DashboardPatient() {
                         className="text-sm font-bold"
                         style={{ color: "#2F3C96" }}
                       >
-                        {trialDetailsModal.trial.eligibility.gender || "All"}
+                        {trialDetailsModal.trial.simplifiedDetails?.eligibilityCriteria?.gender ||
+                          trialDetailsModal.trial.eligibility?.gender || "All"}
                       </p>
                     </div>
 
@@ -5796,17 +5856,18 @@ export default function DashboardPatient() {
                         className="text-sm font-bold"
                         style={{ color: "#2F3C96" }}
                       >
-                        {trialDetailsModal.trial.eligibility.minimumAge !==
-                          "Not specified" &&
-                        trialDetailsModal.trial.eligibility.minimumAge
-                          ? trialDetailsModal.trial.eligibility.minimumAge
-                          : "N/A"}
-                        {" - "}
-                        {trialDetailsModal.trial.eligibility.maximumAge !==
-                          "Not specified" &&
-                        trialDetailsModal.trial.eligibility.maximumAge
-                          ? trialDetailsModal.trial.eligibility.maximumAge
-                          : "N/A"}
+                        {trialDetailsModal.trial.simplifiedDetails?.eligibilityCriteria?.ageRange ||
+                          (trialDetailsModal.trial.eligibility?.minimumAge !==
+                            "Not specified" &&
+                          trialDetailsModal.trial.eligibility?.minimumAge
+                            ? trialDetailsModal.trial.eligibility.minimumAge
+                            : "N/A") +
+                            " - " +
+                            (trialDetailsModal.trial.eligibility?.maximumAge !==
+                              "Not specified" &&
+                            trialDetailsModal.trial.eligibility?.maximumAge
+                              ? trialDetailsModal.trial.eligibility.maximumAge
+                              : "N/A")}
                       </p>
                     </div>
 
@@ -5831,16 +5892,16 @@ export default function DashboardPatient() {
                         className="text-sm font-bold"
                         style={{ color: "#2F3C96" }}
                       >
-                        {trialDetailsModal.trial.eligibility
-                          .healthyVolunteers || "Unknown"}
+                        {trialDetailsModal.trial.simplifiedDetails?.eligibilityCriteria?.volunteers ||
+                          trialDetailsModal.trial.eligibility?.healthyVolunteers || "Unknown"}
                       </p>
                     </div>
                   </div>
 
-                  {/* Detailed Eligibility Criteria */}
-                  {trialDetailsModal.trial.eligibility.criteria &&
-                    trialDetailsModal.trial.eligibility.criteria !==
-                      "Not specified" && (
+                  {/* Detailed Eligibility Criteria - Show simplified if available */}
+                  {(trialDetailsModal.trial.simplifiedDetails?.eligibilityCriteria?.detailedCriteria ||
+                    (trialDetailsModal.trial.eligibility?.criteria &&
+                      trialDetailsModal.trial.eligibility.criteria !== "Not specified")) && (
                       <div
                         className="mt-4 pt-4 border-t"
                         style={{ borderColor: "#D0C4E2" }}
@@ -5863,14 +5924,15 @@ export default function DashboardPatient() {
                             className="text-sm leading-relaxed whitespace-pre-line"
                             style={{ color: "#787878" }}
                           >
-                            {trialDetailsModal.trial.eligibility.criteria}
+                            {trialDetailsModal.trial.simplifiedDetails?.eligibilityCriteria?.detailedCriteria ||
+                              trialDetailsModal.trial.eligibility.criteria}
                           </p>
                         </div>
                       </div>
                     )}
 
                   {/* Study Population Description */}
-                  {trialDetailsModal.trial.eligibility.population && (
+                  {trialDetailsModal.trial.eligibility?.population && (
                     <div
                       className="mt-4 pt-4 border-t"
                       style={{ borderColor: "#D0C4E2" }}
@@ -5901,8 +5963,102 @@ export default function DashboardPatient() {
                 </div>
               )}
 
+              {/* Conditions Studied - Show simplified if available */}
+              {(trialDetailsModal.trial.simplifiedDetails?.conditionsStudied ||
+                (trialDetailsModal.trial.conditions && trialDetailsModal.trial.conditions.length > 0)) && (
+                <div
+                  className="bg-gradient-to-br rounded-xl p-5 border shadow-sm"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, rgba(232, 233, 242, 1), rgba(245, 242, 248, 1))",
+                    borderColor: "rgba(163, 167, 203, 1)",
+                  }}
+                >
+                  <h4
+                    className="font-bold mb-3 flex items-center gap-2 text-base"
+                    style={{ color: "#2F3C96" }}
+                  >
+                    <Activity
+                      className="w-5 h-5"
+                      style={{ color: "#2F3C96" }}
+                    />
+                    Conditions Studied
+                    {trialDetailsModal.trial.simplifiedDetails?.conditionsStudied && (
+                      <span
+                        className="text-xs font-normal px-2 py-0.5 rounded-full"
+                        style={{
+                          backgroundColor: "rgba(47, 59, 150, 0.1)",
+                          color: "#2F3C96",
+                        }}
+                      >
+                        Simplified
+                      </span>
+                    )}
+                  </h4>
+                  {trialDetailsModal.trial.simplifiedDetails?.conditionsStudied ? (
+                    <p
+                      className="text-sm leading-relaxed"
+                      style={{ color: "#787878" }}
+                    >
+                      {trialDetailsModal.trial.simplifiedDetails.conditionsStudied}
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {trialDetailsModal.trial.conditions.map((condition, idx) => (
+                        <span
+                          key={idx}
+                          className="px-3 py-1.5 bg-white text-sm font-medium rounded-lg border"
+                          style={{ color: "#2F3C96", borderColor: "#D0C4E2" }}
+                        >
+                          {condition}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* What to Expect - Show if simplified details available */}
+              {trialDetailsModal.trial.simplifiedDetails?.whatToExpect && (
+                <div
+                  className="bg-gradient-to-br rounded-xl p-5 border shadow-sm"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, rgba(245, 242, 248, 1), rgba(232, 224, 239, 1))",
+                    borderColor: "#D0C4E2",
+                  }}
+                >
+                  <h4
+                    className="font-bold mb-3 flex items-center gap-2 text-base"
+                    style={{ color: "#2F3C96" }}
+                  >
+                    <Info
+                      className="w-5 h-5"
+                      style={{ color: "#2F3C96" }}
+                    />
+                    What to Expect
+                    <span
+                      className="text-xs font-normal px-2 py-0.5 rounded-full"
+                      style={{
+                        backgroundColor: "rgba(47, 59, 150, 0.1)",
+                        color: "#2F3C96",
+                      }}
+                    >
+                      Simplified
+                    </span>
+                  </h4>
+                  <p
+                    className="text-sm leading-relaxed"
+                    style={{ color: "#787878" }}
+                  >
+                    {trialDetailsModal.trial.simplifiedDetails.whatToExpect}
+                  </p>
+                </div>
+              )}
+
               {/* 3. Contact Information */}
-              {trialDetailsModal.trial.contacts?.length > 0 && (
+              {(trialDetailsModal.trial.simplifiedDetails?.contactInformation ||
+                trialDetailsModal.trial.contacts?.length > 0) && (
                 <div
                   className="bg-gradient-to-br rounded-xl p-5 border shadow-sm"
                   style={{
@@ -5916,7 +6072,33 @@ export default function DashboardPatient() {
                   >
                     <Mail className="w-5 h-5" style={{ color: "#787878" }} />
                     Contact Information
+                    {trialDetailsModal.trial.simplifiedDetails?.contactInformation && (
+                      <span
+                        className="text-xs font-normal px-2 py-0.5 rounded-full"
+                        style={{
+                          backgroundColor: "rgba(47, 59, 150, 0.1)",
+                          color: "#2F3C96",
+                        }}
+                      >
+                        Simplified
+                      </span>
+                    )}
                   </h4>
+                  
+                  {/* Show simplified contact information if available */}
+                  {trialDetailsModal.trial.simplifiedDetails?.contactInformation && (
+                    <div
+                      className="bg-white rounded-lg p-4 border mb-4"
+                      style={{ borderColor: "rgba(232, 232, 232, 1)" }}
+                    >
+                      <p
+                        className="text-sm leading-relaxed"
+                        style={{ color: "#787878" }}
+                      >
+                        {trialDetailsModal.trial.simplifiedDetails.contactInformation}
+                      </p>
+                    </div>
+                  )}
                   <div className="space-y-3">
                     {trialDetailsModal.trial.contacts.map((contact, i) => (
                       <div

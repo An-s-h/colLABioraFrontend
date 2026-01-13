@@ -15,6 +15,7 @@ import {
   Loader2,
   ListChecks,
   AlertCircle,
+  CheckCircle,
   X,
   Plus,
   ChevronDown,
@@ -68,6 +69,7 @@ export default function Publications() {
   const [detailsModal, setDetailsModal] = useState({
     open: false,
     publication: null,
+    loading: false,
   });
 
   // Advanced search state
@@ -84,10 +86,10 @@ export default function Publications() {
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
-  const [hasMore, setHasMore] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [lastSearchQuery, setLastSearchQuery] = useState(""); // Track last search query for pagination
+  const [lastSearchParams, setLastSearchParams] = useState({}); // Store all search parameters for pagination
 
   // Essential PubMed field options (simplified list - removed MeSH, ISBN, publisher, book, volume, pagination, language)
   const fieldOptionsList = [
@@ -314,9 +316,21 @@ export default function Publications() {
     
     // Reset pagination for new searches
     params.set("page", "1");
-    params.set("pageSize", "9");
+    params.set("pageSize", "6");
     setCurrentPage(1);
     setLastSearchQuery(searchQuery);
+    
+    // Store search parameters for pagination
+    setLastSearchParams({
+      searchQuery,
+      dateRange,
+      locationMode,
+      location,
+      userLocation,
+      useMedicalInterest,
+      userMedicalInterest,
+      userData,
+    });
 
     // Add location parameter (use only country for publications)
     if (locationMode === "current" && userLocation) {
@@ -384,8 +398,33 @@ export default function Publications() {
       
       // Set pagination data
       setTotalCount(data.totalCount || 0);
-      setHasMore(data.hasMore || false);
+      const calculatedTotalPages = Math.ceil((data.totalCount || 0) / 6);
+      setTotalPages(calculatedTotalPages);
+      
+      // Store search parameters for pagination
+      setLastSearchParams({
+        searchQuery,
+        dateRange,
+        locationMode,
+        location,
+        userLocation,
+        useMedicalInterest,
+        userMedicalInterest,
+        userData,
+      });
 
+      // Sort by matchPercentage in descending order (highest first)
+      const sortedResults = [...searchResults].sort((a, b) => {
+        const aMatch = a.matchPercentage ?? -1;
+        const bMatch = b.matchPercentage ?? -1;
+        return bMatch - aMatch; // Descending order
+      });
+      setResults(sortedResults);
+      
+      // Calculate total pages for server-side pagination
+      const totalPages = Math.ceil((data.totalCount || 0) / 6);
+
+      // Only count search after results are successfully loaded and processed
       // Handle remaining searches from server response
       if (!isUserSignedIn && data.remaining !== undefined) {
         // Update local storage to match backend (backend is source of truth)
@@ -414,15 +453,7 @@ export default function Publications() {
         );
       }
 
-      // Sort by matchPercentage in descending order (highest first)
-      const sortedResults = [...searchResults].sort((a, b) => {
-        const aMatch = a.matchPercentage ?? -1;
-        const bMatch = b.matchPercentage ?? -1;
-        return bMatch - aMatch; // Descending order
-      });
-      setResults(sortedResults);
-
-      // Save search state to sessionStorage
+      // Save search state to sessionStorage (including pagination)
       const searchState = {
         q: appliedQuery,
         location,
@@ -430,6 +461,19 @@ export default function Publications() {
         useMedicalInterest,
         userMedicalInterest,
         results: sortedResults,
+        currentPage: 1,
+        totalPages: calculatedTotalPages,
+        totalCount: data.totalCount || 0,
+        lastSearchParams: {
+          searchQuery,
+          dateRange,
+          locationMode,
+          location,
+          userLocation,
+          useMedicalInterest,
+          userMedicalInterest,
+          userData,
+        },
         isInitialLoad: false,
       };
       sessionStorage.setItem(
@@ -444,41 +488,58 @@ export default function Publications() {
     }
   }
 
-  // Load more results for pagination
-  async function loadMoreResults() {
-    if (loadingMore || !hasMore) return;
+  // Navigate to specific page (server-side pagination)
+  async function goToPage(page) {
+    if (page < 1 || page > totalPages || page === currentPage || loading) return;
     
-    setLoadingMore(true);
-    const nextPage = currentPage + 1;
-    const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
+    setLoading(true);
+    setCurrentPage(page);
+    
     const params = new URLSearchParams();
+    const { searchQuery: savedQuery, dateRange: savedDateRange, locationMode: savedLocationMode, 
+            location: savedLocation, userLocation: savedUserLocation, useMedicalInterest: savedUseMedicalInterest,
+            userMedicalInterest: savedUserMedicalInterest, userData: savedUserData } = lastSearchParams;
     
-    if (lastSearchQuery) params.set("q", lastSearchQuery);
+    // Build search query
+    let queryToUse = savedQuery || "";
+    if (savedUseMedicalInterest && savedUserMedicalInterest && queryToUse) {
+      queryToUse = `${savedUserMedicalInterest} ${queryToUse}`;
+    } else if (savedUseMedicalInterest && savedUserMedicalInterest && !queryToUse) {
+      queryToUse = savedUserMedicalInterest;
+    }
+    
+    if (queryToUse) params.set("q", queryToUse);
     
     // Add date range parameters if set (format: YYYY/MM)
-    if (dateRange.start) {
-      params.set("mindate", dateRange.start.replace(/-/g, '/'));
+    if (savedDateRange?.start) {
+      params.set("mindate", savedDateRange.start.replace(/-/g, '/'));
     }
-    if (dateRange.end) {
-      params.set("maxdate", dateRange.end.replace(/-/g, '/'));
+    if (savedDateRange?.end) {
+      params.set("maxdate", savedDateRange.end.replace(/-/g, '/'));
     }
     
-    params.set("page", String(nextPage));
-    params.set("pageSize", "9");
+    params.set("page", String(page));
+    params.set("pageSize", "6");
     
     // Add location parameter
-    if (locationMode === "current" && userLocation) {
-      if (userLocation.country) {
-        params.set("location", userLocation.country);
+    if (savedLocationMode === "current" && savedUserLocation) {
+      if (savedUserLocation.country) {
+        params.set("location", savedUserLocation.country);
       }
-    } else if (locationMode === "custom" && location.trim()) {
-      params.set("location", location.trim());
+    } else if (savedLocationMode === "custom" && savedLocation?.trim()) {
+      params.set("location", savedLocation.trim());
     }
     
     // Add user profile data for matching
-    const userData = JSON.parse(localStorage.getItem("user") || "{}");
-    if (userData?._id || userData?.id) {
-      params.set("userId", userData._id || userData.id);
+    if (savedUserData?._id || savedUserData?.id) {
+      params.set("userId", savedUserData._id || savedUserData.id);
+    } else if (savedUseMedicalInterest && savedUserMedicalInterest) {
+      params.set("conditions", savedUserMedicalInterest);
+      if (savedLocationMode === "current" && savedUserLocation) {
+        params.set("userLocation", JSON.stringify(savedUserLocation));
+      } else if (savedLocationMode === "custom" && savedLocation?.trim()) {
+        params.set("userLocation", JSON.stringify({ country: savedLocation.trim() }));
+      }
     }
     
     try {
@@ -487,23 +548,65 @@ export default function Publications() {
       );
       
       if (!response) {
-        setLoadingMore(false);
+        setLoading(false);
+        return;
+      }
+      
+      if (response.status === 429) {
+        const errorData = await response.json();
+        toast.error(
+          errorData.error ||
+            "You've used all your free searches! Sign in to continue searching.",
+          { duration: 4000 }
+        );
+        setLoading(false);
         return;
       }
       
       const data = await response.json();
-      const newResults = data.results || [];
+      const searchResults = data.results || [];
       
-      // Append new results to existing results
-      setResults(prev => [...prev, ...newResults]);
-      setCurrentPage(nextPage);
-      setHasMore(data.hasMore || false);
+      // Set pagination data
       setTotalCount(data.totalCount || 0);
+      const calculatedTotalPages = Math.ceil((data.totalCount || 0) / 6);
+      setTotalPages(calculatedTotalPages);
+      
+      // Sort by matchPercentage in descending order (highest first)
+      const sortedResults = [...searchResults].sort((a, b) => {
+        const aMatch = a.matchPercentage ?? -1;
+        const bMatch = b.matchPercentage ?? -1;
+        return bMatch - aMatch; // Descending order
+      });
+      setResults(sortedResults);
+      
+      // Save updated state to sessionStorage
+      const searchState = {
+        q: lastSearchQuery || "",
+        location: lastSearchParams.location || "",
+        locationMode: lastSearchParams.locationMode || "global",
+        useMedicalInterest: lastSearchParams.useMedicalInterest || false,
+        userMedicalInterest: lastSearchParams.userMedicalInterest || "",
+        results: sortedResults,
+        currentPage: page,
+        totalPages: calculatedTotalPages,
+        totalCount: data.totalCount || 0,
+        dateRange: lastSearchParams.dateRange || { start: "", end: "" },
+        lastSearchParams,
+        isInitialLoad: false,
+      };
+      sessionStorage.setItem(
+        "publications_search_state",
+        JSON.stringify(searchState)
+      );
+      
+      // Scroll to top of results
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error) {
-      console.error("Load more error:", error);
-      toast.error("Failed to load more results");
+      console.error("Page navigation error:", error);
+      toast.error("Failed to load page");
+      setLoading(false);
     } finally {
-      setLoadingMore(false);
+      setLoading(false);
     }
   }
 
@@ -550,9 +653,21 @@ export default function Publications() {
       
       // Reset pagination for new searches
       params.set("page", "1");
-      params.set("pageSize", "9");
+      params.set("pageSize", "6");
       setCurrentPage(1);
       setLastSearchQuery(searchQuery);
+      
+      // Store search parameters for pagination
+      setLastSearchParams({
+        searchQuery,
+        dateRange,
+        locationMode,
+        location,
+        userLocation,
+        useMedicalInterest,
+        userMedicalInterest,
+        userData,
+      });
 
       // Add location parameter (use only country for publications)
       if (locationMode === "current" && userLocation) {
@@ -620,7 +735,8 @@ export default function Publications() {
           
           // Set pagination data
           setTotalCount(data.totalCount || 0);
-          setHasMore(data.hasMore || false);
+          const calculatedTotalPages = Math.ceil((data.totalCount || 0) / 6);
+          setTotalPages(calculatedTotalPages);
 
           // Handle remaining searches from server response
           if (!isUserSignedIn && data.remaining !== undefined) {
@@ -658,20 +774,34 @@ export default function Publications() {
           });
           setResults(sortedResults);
 
-          // Save search state to sessionStorage
-          const searchState = {
-            q: filterValue,
-            location,
-            locationMode,
-            useMedicalInterest,
-            userMedicalInterest,
-            results: sortedResults,
-            isInitialLoad: false,
-          };
-          sessionStorage.setItem(
-            "publications_search_state",
-            JSON.stringify(searchState)
-          );
+      // Save search state to sessionStorage (including pagination)
+      const searchState = {
+        q: filterValue,
+        location,
+        locationMode,
+        useMedicalInterest,
+        userMedicalInterest,
+        results: sortedResults,
+        currentPage: 1,
+        totalPages: calculatedTotalPages,
+        totalCount: data.totalCount || 0,
+        dateRange,
+        lastSearchParams: {
+          searchQuery: filterValue,
+          dateRange,
+          locationMode,
+          location,
+          userLocation,
+          useMedicalInterest,
+          userMedicalInterest,
+          userData,
+        },
+        isInitialLoad: false,
+      };
+      sessionStorage.setItem(
+        "publications_search_state",
+        JSON.stringify(searchState)
+      );
 
           setLoading(false);
         })
@@ -809,10 +939,93 @@ export default function Publications() {
     }
   }, []);
 
-  function openDetailsModal(pub) {
+  // Mark publication as read
+  async function markPublicationAsRead(pub) {
+    const user = JSON.parse(localStorage.getItem("user") || "{}");
+    if (!user?._id && !user?.id) return; // Only for signed-in users
+
+    try {
+      const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
+      const itemId = pub.pmid || pub.id || pub._id;
+      if (!itemId) return;
+
+      await fetch(`${base}/api/read/${user._id || user.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "publication",
+          itemId: String(itemId),
+        }),
+      });
+
+      // Update the publication in results to mark as read
+      setResults((prevResults) =>
+        prevResults.map((p) =>
+          (p.pmid || p.id || p._id) === itemId ? { ...p, isRead: true } : p
+        )
+      );
+    } catch (error) {
+      console.error("Error marking publication as read:", error);
+    }
+  }
+
+  async function openDetailsModal(pub) {
+    // Mark as read when modal opens
+    if (isSignedIn) {
+      markPublicationAsRead(pub);
+    }
+
+    setDetailsModal({
+      open: true,
+      publication: pub, // Show basic info immediately
+      loading: true,
+    });
+
+    // Fetch detailed publication information with simplified details from backend
+    if (pub.pmid || pub.id || pub._id) {
+      try {
+        const pmid = pub.pmid || pub.id || pub._id;
+        const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
+        
+        // Fetch simplified publication details
+        const response = await fetch(`${base}/api/search/publication/${pmid}/simplified`);
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.publication) {
+            // Merge detailed info with existing publication data
+            setDetailsModal({
+              open: true,
+              publication: { ...pub, ...data.publication },
+              loading: false,
+            });
+            return;
+          }
+        }
+        
+        // Fallback: try regular endpoint if simplified fails
+        const fallbackResponse = await fetch(`${base}/api/search/publication/${pmid}`);
+        if (fallbackResponse.ok) {
+          const fallbackData = await fallbackResponse.json();
+          if (fallbackData.publication) {
+            setDetailsModal({
+              open: true,
+              publication: { ...pub, ...fallbackData.publication },
+              loading: false,
+            });
+            return;
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching detailed publication info:", error);
+      }
+    }
+
+    // If fetch fails or no PMID, just use the publication we have
     setDetailsModal({
       open: true,
       publication: pub,
+      loading: false,
     });
   }
 
@@ -820,6 +1033,7 @@ export default function Publications() {
     setDetailsModal({
       open: false,
       publication: null,
+      loading: false,
     });
   }
 
@@ -898,6 +1112,12 @@ export default function Publications() {
         );
         setUserMedicalInterest(state.userMedicalInterest || "");
         setResults(state.results || []);
+        // Restore pagination state
+        if (state.currentPage) setCurrentPage(state.currentPage);
+        if (state.totalPages) setTotalPages(state.totalPages);
+        if (state.totalCount) setTotalCount(state.totalCount);
+        if (state.lastSearchParams) setLastSearchParams(state.lastSearchParams);
+        if (state.dateRange) setDateRange(state.dateRange);
         setIsInitialLoad(
           state.isInitialLoad !== undefined ? state.isInitialLoad : false
         );
@@ -1007,21 +1227,7 @@ export default function Publications() {
         ) {
           const medicalInterest = userData.medicalInterests[0]; // Use first medical interest
           setUserMedicalInterest(medicalInterest);
-
-          // Only auto-search if no saved state exists
-          const savedState = sessionStorage.getItem(
-            "publications_search_state"
-          );
-          if (!savedState) {
-            setUseMedicalInterest(true);
-            // Auto-trigger search with medical interest
-            setIsInitialLoad(false);
-            setQ(""); // Clear search query, will use medical interest only
-            // Trigger search after state updates
-            setTimeout(() => {
-              search();
-            }, 100);
-          }
+          // Don't auto-search - user must manually trigger search
         } else {
           setUseMedicalInterest(false);
         }
@@ -1611,7 +1817,7 @@ export default function Publications() {
           {/* Skeleton Loaders */}
           {loading && (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {[...Array(9)].map((_, idx) => (
+              {[...Array(6)].map((_, idx) => (
                 <div
                   key={idx}
                   className="bg-white rounded-lg shadow-md border border-slate-200 animate-pulse"
@@ -1669,20 +1875,24 @@ export default function Publications() {
                       key={itemId}
                       className="bg-white rounded-xl shadow-sm border transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden flex flex-col h-full animate-fade-in"
                       style={{
-                        borderColor: "rgba(208, 196, 226, 0.3)",
+                        borderColor: pub.isRead
+                          ? "rgba(147, 51, 234, 0.4)" // Purple for read
+                          : "rgba(59, 130, 246, 0.4)", // Blue for unread
                         animationDelay: `${cardIdx * 50}ms`,
                       }}
                       onMouseEnter={(e) => {
                         e.currentTarget.style.boxShadow =
                           "0 10px 15px -3px rgba(47, 60, 150, 0.1), 0 4px 6px -2px rgba(47, 60, 150, 0.05)";
-                        e.currentTarget.style.borderColor =
-                          "rgba(47, 60, 150, 0.4)";
+                        e.currentTarget.style.borderColor = pub.isRead
+                          ? "rgba(147, 51, 234, 0.6)" // Darker purple on hover
+                          : "rgba(59, 130, 246, 0.6)"; // Darker blue on hover
                       }}
                       onMouseLeave={(e) => {
                         e.currentTarget.style.boxShadow =
                           "0 1px 2px 0 rgba(0, 0, 0, 0.05)";
-                        e.currentTarget.style.borderColor =
-                          "rgba(208, 196, 226, 0.3)";
+                        e.currentTarget.style.borderColor = pub.isRead
+                          ? "rgba(147, 51, 234, 0.4)" // Purple for read
+                          : "rgba(59, 130, 246, 0.4)"; // Blue for unread
                       }}
                     >
                       <div className="p-5 flex flex-col flex-grow">
@@ -1725,10 +1935,22 @@ export default function Publications() {
                         {/* Publication Title */}
                         <div className="mb-4">
                           <h3
-                            className="text-lg font-bold mb-0 line-clamp-3 leading-snug"
-                            style={{ color: "#2F3C96" }}
+                            className="text-lg font-bold mb-0 line-clamp-3 leading-snug flex items-start gap-2"
+                            style={{
+                              color: pub.isRead
+                                ? "#D0C4E2" // Light purple for read
+                                : "#2F3C96", // Default blue for unread
+                            }}
                           >
-                            {pub.title || "Untitled Publication"}
+                            {pub.isRead && (
+                              <CheckCircle
+                                className="w-4 h-4 mt-1 shrink-0"
+                                style={{ color: "#D0C4E2" }}
+                              />
+                            )}
+                            <span className="flex-1">
+                              {pub.simplifiedTitle || pub.title || "Untitled Publication"}
+                            </span>
                           </h3>
                         </div>
 
@@ -1949,13 +2171,14 @@ export default function Publications() {
             </div>
           )}
           
-          {/* Results Count and Load More Button */}
+          {/* Results Count and Pagination */}
           {!loading && results.length > 0 && isSignedIn && (
             <div className="mt-6 flex flex-col items-center gap-4">
               {/* Results Count */}
               <div className="text-sm text-slate-600">
-                Showing <span className="font-semibold text-indigo-700">{results.length}</span> of{" "}
-                <span className="font-semibold text-indigo-700">{totalCount.toLocaleString()}</span> results
+                Page <span className="font-semibold text-indigo-700">{currentPage}</span> of{" "}
+                <span className="font-semibold text-indigo-700">{totalPages.toLocaleString()}</span>
+                {" "}({totalCount.toLocaleString()} total results)
                 {(dateRange.start || dateRange.end) && (
                   <span className="text-slate-500">
                     {" "}• Filtered by date
@@ -1966,32 +2189,66 @@ export default function Publications() {
                 )}
               </div>
               
-              {/* Load More Button */}
-              {hasMore && (
-                <button
-                  onClick={loadMoreResults}
-                  disabled={loadingMore}
-                  className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white rounded-lg font-semibold shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {loadingMore ? (
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-2 flex-wrap">
+                  <button
+                    onClick={() => goToPage(currentPage - 1)}
+                    disabled={currentPage === 1 || loading}
+                    className="px-4 py-2 bg-white border-2 border-indigo-200 text-indigo-700 rounded-lg font-semibold hover:bg-indigo-50 hover:border-indigo-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Previous
+                  </button>
+                  
+                  {/* Page Numbers */}
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let pageNum;
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      pageNum = currentPage - 2 + i;
+                    }
+                    
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => goToPage(pageNum)}
+                        disabled={loading}
+                        className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+                          currentPage === pageNum
+                            ? "bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-md"
+                            : "bg-white border-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:border-indigo-300"
+                        } disabled:opacity-50 disabled:cursor-not-allowed`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                  
+                  {totalPages > 5 && currentPage < totalPages - 2 && (
                     <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Loading more...
-                    </>
-                  ) : (
-                    <>
-                      <ChevronDown className="w-4 h-4" />
-                      Load More Results
+                      <span className="px-2 text-indigo-700">...</span>
+                      <button
+                        onClick={() => goToPage(totalPages)}
+                        disabled={loading}
+                        className="px-4 py-2 bg-white border-2 border-indigo-200 text-indigo-700 rounded-lg font-semibold hover:bg-indigo-50 hover:border-indigo-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {totalPages}
+                      </button>
                     </>
                   )}
-                </button>
-              )}
-              
-              {/* End of Results Message */}
-              {!hasMore && totalCount > 0 && results.length >= totalCount && (
-                <div className="text-sm text-slate-500 flex items-center gap-2">
-                  <ListChecks className="w-4 h-4" />
-                  You've seen all {totalCount.toLocaleString()} results
+                  
+                  <button
+                    onClick={() => goToPage(currentPage + 1)}
+                    disabled={currentPage === totalPages || loading}
+                    className="px-4 py-2 bg-white border-2 border-indigo-200 text-indigo-700 rounded-lg font-semibold hover:bg-indigo-50 hover:border-indigo-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Next
+                  </button>
                 </div>
               )}
             </div>
@@ -2074,7 +2331,17 @@ export default function Publications() {
           onClose={closeDetailsModal}
           title="Publication Details"
         >
-          {detailsModal.publication && (
+          {detailsModal.loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2
+                className="w-8 h-8 animate-spin"
+                style={{ color: "#2F3C96" }}
+              />
+              <span className="ml-3 text-sm" style={{ color: "#787878" }}>
+                Loading detailed publication information...
+              </span>
+            </div>
+          ) : detailsModal.publication && (
             <div className="flex flex-col h-full -mx-6 -my-6">
               {/* Scrollable Content */}
               <div className="flex-1 overflow-y-auto space-y-6 px-6 pt-6 pb-24">
@@ -2087,7 +2354,9 @@ export default function Publications() {
                     className="text-xl font-bold mb-3 leading-tight"
                     style={{ color: "#2F3C96" }}
                   >
-                    {detailsModal.publication.title}
+                    {detailsModal.publication.simplifiedDetails?.title ||
+                      detailsModal.publication.simplifiedTitle ||
+                      detailsModal.publication.title}
                   </h3>
                   <div className="flex flex-wrap gap-2">
                     {detailsModal.publication.pmid && (
@@ -2119,8 +2388,9 @@ export default function Publications() {
                   </div>
                 </div>
 
-                {/* Abstract Section - Moved to Top */}
-                {detailsModal.publication.abstract && (
+                {/* Abstract Section - Show simplified if available */}
+                {(detailsModal.publication.simplifiedDetails?.abstract ||
+                  detailsModal.publication.abstract) && (
                   <div>
                     <div
                       className="rounded-xl p-5 border"
@@ -2141,7 +2411,148 @@ export default function Publications() {
                         className="text-sm leading-relaxed whitespace-pre-wrap"
                         style={{ color: "#787878" }}
                       >
-                        {detailsModal.publication.abstract}
+                        {detailsModal.publication.simplifiedDetails?.abstract ||
+                          detailsModal.publication.abstract}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Methods Section - Show simplified if available */}
+                {detailsModal.publication.simplifiedDetails?.methods && (
+                  <div>
+                    <div
+                      className="bg-white rounded-xl p-5 border shadow-sm"
+                      style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+                    >
+                      <h4
+                        className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        <ListChecks className="w-4 h-4" />
+                        Methods
+                      </h4>
+                      <p
+                        className="text-sm leading-relaxed"
+                        style={{ color: "#787878" }}
+                      >
+                        {detailsModal.publication.simplifiedDetails.methods}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Results Section - Show simplified if available */}
+                {detailsModal.publication.simplifiedDetails?.results && (
+                  <div>
+                    <div
+                      className="bg-white rounded-xl p-5 border shadow-sm"
+                      style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+                    >
+                      <h4
+                        className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        <TrendingUp className="w-4 h-4" />
+                        Results
+                      </h4>
+                      <p
+                        className="text-sm leading-relaxed"
+                        style={{ color: "#787878" }}
+                      >
+                        {detailsModal.publication.simplifiedDetails.results}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Conclusion Section - Show simplified if available */}
+                {detailsModal.publication.simplifiedDetails?.conclusion && (
+                  <div>
+                    <div
+                      className="bg-white rounded-xl p-5 border shadow-sm"
+                      style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+                    >
+                      <h4
+                        className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        <CheckCircle className="w-4 h-4" />
+                        Conclusion
+                      </h4>
+                      <p
+                        className="text-sm leading-relaxed"
+                        style={{ color: "#787878" }}
+                      >
+                        {detailsModal.publication.simplifiedDetails.conclusion}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Key Takeaways Section - Show simplified if available */}
+                {detailsModal.publication.simplifiedDetails?.keyTakeaways &&
+                  detailsModal.publication.simplifiedDetails.keyTakeaways.length > 0 && (
+                  <div>
+                    <div
+                      className="bg-gradient-to-br rounded-xl p-5 border shadow-sm"
+                      style={{
+                        background:
+                          "linear-gradient(135deg, rgba(232, 224, 239, 0.4), rgba(245, 242, 248, 0.6))",
+                        borderColor: "rgba(208, 196, 226, 0.3)",
+                      }}
+                    >
+                      <h4
+                        className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        <AlertCircle className="w-4 h-4" />
+                        Key Takeaways
+                      </h4>
+                      <ul className="space-y-2">
+                        {detailsModal.publication.simplifiedDetails.keyTakeaways.map(
+                          (takeaway, idx) => (
+                            <li
+                              key={idx}
+                              className="flex items-start gap-2 text-sm"
+                              style={{ color: "#787878" }}
+                            >
+                              <span
+                                className="mt-1.5 shrink-0 w-1.5 h-1.5 rounded-full"
+                                style={{ backgroundColor: "#2F3C96" }}
+                              ></span>
+                              <span>{takeaway}</span>
+                            </li>
+                          )
+                        )}
+                      </ul>
+                    </div>
+                  </div>
+                )}
+
+                {/* What This Means For You Section - Show simplified if available */}
+                {detailsModal.publication.simplifiedDetails?.whatThisMeansForYou && (
+                  <div>
+                    <div
+                      className="bg-gradient-to-br rounded-xl p-5 border shadow-sm"
+                      style={{
+                        background:
+                          "linear-gradient(135deg, rgba(232, 233, 242, 1), rgba(245, 242, 248, 1))",
+                        borderColor: "rgba(163, 167, 203, 1)",
+                      }}
+                    >
+                      <h4
+                        className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        <Heart className="w-4 h-4" />
+                        What This Means For You
+                      </h4>
+                      <p
+                        className="text-sm leading-relaxed"
+                        style={{ color: "#787878" }}
+                      >
+                        {detailsModal.publication.simplifiedDetails.whatThisMeansForYou}
                       </p>
                     </div>
                   </div>

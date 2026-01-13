@@ -29,51 +29,25 @@ import SmartSearchInput from "../components/SmartSearchInput";
 import Modal from "../components/ui/Modal";
 import Button from "../components/ui/Button";
 import apiFetch from "../utils/api.js";
+import {
+  getLocalRemainingSearches,
+  setLocalSearchCount,
+  MAX_FREE_SEARCHES,
+} from "../utils/searchLimit.js";
 
 const FREE_SEARCHES_TOTAL = 6;
 const GUEST_INFO_KEY = "guest_user_info"; // Store guest condition/location
 const COOKIE_CONSENT_KEY = "cookie_consent_accepted";
-const FREE_SEARCHES_CACHE_KEY = "free_searches_cache";
-const CACHE_TTL = 30000; // 30 seconds cache
-
-// Helper to get cached searches
-function getCachedSearches() {
-  try {
-    const cached = localStorage.getItem(FREE_SEARCHES_CACHE_KEY);
-    if (!cached) return null;
-    const { value, timestamp } = JSON.parse(cached);
-    const now = Date.now();
-    if (now - timestamp < CACHE_TTL) {
-      return value;
-    }
-    localStorage.removeItem(FREE_SEARCHES_CACHE_KEY);
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-// Helper to cache searches
-function setCachedSearches(value) {
-  try {
-    localStorage.setItem(
-      FREE_SEARCHES_CACHE_KEY,
-      JSON.stringify({ value, timestamp: Date.now() })
-    );
-  } catch {
-    // Ignore storage errors
-  }
-}
 
 export default function Explore() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
-  // Initialize with cached value for instant display
-  const cachedValue = getCachedSearches();
+  // Initialize with local storage value for instant display (consistent with FreeSearchesIndicator)
+  const localRemaining = getLocalRemainingSearches();
   const [freeSearches, setFreeSearches] = useState(
-    cachedValue !== null ? cachedValue : FREE_SEARCHES_TOTAL
+    localRemaining !== null ? localRemaining : FREE_SEARCHES_TOTAL
   );
-  const [loadingSearches, setLoadingSearches] = useState(cachedValue === null);
+  const [loadingSearches, setLoadingSearches] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchCategory, setSearchCategory] = useState("trials"); // "trials", "publications", "experts"
@@ -90,25 +64,13 @@ export default function Explore() {
     const token = localStorage.getItem("token");
     setUser(userData && token ? userData : null);
 
-    // Load free searches from server for anonymous users with caching
-    const updateFreeSearches = async (forceRefresh = false) => {
+    // Load free searches from server for anonymous users (initial load only)
+    const fetchRemainingSearches = async () => {
       if (userData && token) {
         // Signed-in users have unlimited searches
         setFreeSearches(null);
         setLoadingSearches(false);
         return;
-      }
-
-      // Check cache first (unless forcing refresh)
-      if (!forceRefresh) {
-        const cached = getCachedSearches();
-        if (cached !== null) {
-          setFreeSearches(cached);
-          setLoadingSearches(false);
-          // Still fetch in background to update cache
-          updateFreeSearches(true);
-          return;
-        }
       }
 
       setLoadingSearches(true);
@@ -118,25 +80,30 @@ export default function Explore() {
           const data = await response.json();
           const newValue = data.unlimited
             ? null
-            : data.remaining ?? FREE_SEARCHES_TOTAL;
+            : data.remaining ?? MAX_FREE_SEARCHES;
           setFreeSearches(newValue);
-          setCachedSearches(newValue);
+          // Update local storage to match backend
+          if (!data.unlimited && data.remaining !== undefined) {
+            const backendCount = MAX_FREE_SEARCHES - data.remaining;
+            setLocalSearchCount(backendCount);
+          }
         } else {
-          // Fallback to cached or default if API fails
-          const cached = getCachedSearches();
-          setFreeSearches(cached !== null ? cached : FREE_SEARCHES_TOTAL);
+          // Fallback to local storage value if API fails
+          const localRemaining = getLocalRemainingSearches();
+          setFreeSearches(localRemaining !== null ? localRemaining : FREE_SEARCHES_TOTAL);
         }
       } catch (error) {
         console.error("Error fetching remaining searches:", error);
-        // Use cached value on error
-        const cached = getCachedSearches();
-        setFreeSearches(cached !== null ? cached : FREE_SEARCHES_TOTAL);
+        // Use local storage value on error
+        const localRemaining = getLocalRemainingSearches();
+        setFreeSearches(localRemaining !== null ? localRemaining : FREE_SEARCHES_TOTAL);
       } finally {
         setLoadingSearches(false);
       }
     };
 
-    updateFreeSearches();
+    // Initial fetch on mount
+    fetchRemainingSearches();
 
     // Check cookie consent
     const cookieConsent = localStorage.getItem(COOKIE_CONSENT_KEY);
@@ -173,51 +140,44 @@ export default function Explore() {
     checkMobile();
     window.addEventListener("resize", checkMobile);
 
-    // Listen for free search updates
-    window.addEventListener("freeSearchUsed", updateFreeSearches);
+    // Listen for free search updates (only update when search is made)
+    const handleFreeSearchUsed = (event) => {
+      // If event has detail with remaining count, use it directly (from search response)
+      if (event.detail && event.detail.remaining !== undefined) {
+        // Update immediately with the value from backend response
+        setFreeSearches(event.detail.remaining);
+        // Update local storage to match backend
+        const backendCount = MAX_FREE_SEARCHES - event.detail.remaining;
+        setLocalSearchCount(backendCount);
+      } else {
+        // Fallback: update from local storage if event doesn't have detail
+        const localRemaining = getLocalRemainingSearches();
+        setFreeSearches(localRemaining !== null ? localRemaining : FREE_SEARCHES_TOTAL);
+      }
+    };
+
+    window.addEventListener("freeSearchUsed", handleFreeSearchUsed);
 
     return () => {
       window.removeEventListener("resize", checkMobile);
-      window.removeEventListener("freeSearchUsed", updateFreeSearches);
+      window.removeEventListener("freeSearchUsed", handleFreeSearchUsed);
     };
   }, []);
 
   // Listen for login events
   useEffect(() => {
-    const handleLogin = () => {
+    const handleLogin = async () => {
       const userData = JSON.parse(localStorage.getItem("user") || "null");
       const token = localStorage.getItem("token");
       setUser(userData && token ? userData : null);
       // Clear guest info when user signs in
       localStorage.removeItem(GUEST_INFO_KEY);
       // Update free searches (will be unlimited for signed-in users)
-      const updateFreeSearches = async () => {
-        if (userData && token) {
-          setFreeSearches(null);
-          setLoadingSearches(false);
-          return;
-        }
-
-        // Check cache first
-        const cached = getCachedSearches();
-        if (cached !== null) {
-          setFreeSearches(cached);
-          setLoadingSearches(false);
-          // Fetch in background to update
-          const response = await apiFetch("/api/search/remaining").catch(
-            () => null
-          );
-          if (response?.ok) {
-            const data = await response.json();
-            const newValue = data.unlimited
-              ? null
-              : data.remaining ?? FREE_SEARCHES_TOTAL;
-            setFreeSearches(newValue);
-            setCachedSearches(newValue);
-          }
-          return;
-        }
-
+      if (userData && token) {
+        setFreeSearches(null);
+        setLoadingSearches(false);
+      } else {
+        // For logged out users, fetch remaining searches
         setLoadingSearches(true);
         try {
           const response = await apiFetch("/api/search/remaining");
@@ -225,17 +185,27 @@ export default function Explore() {
             const data = await response.json();
             const newValue = data.unlimited
               ? null
-              : data.remaining ?? FREE_SEARCHES_TOTAL;
+              : data.remaining ?? MAX_FREE_SEARCHES;
             setFreeSearches(newValue);
-            setCachedSearches(newValue);
+            // Update local storage to match backend
+            if (!data.unlimited && data.remaining !== undefined) {
+              const backendCount = MAX_FREE_SEARCHES - data.remaining;
+              setLocalSearchCount(backendCount);
+            }
+          } else {
+            // Fallback to local storage value
+            const localRemaining = getLocalRemainingSearches();
+            setFreeSearches(localRemaining !== null ? localRemaining : FREE_SEARCHES_TOTAL);
           }
         } catch (error) {
           console.error("Error fetching remaining searches:", error);
+          // Use local storage value on error
+          const localRemaining = getLocalRemainingSearches();
+          setFreeSearches(localRemaining !== null ? localRemaining : FREE_SEARCHES_TOTAL);
         } finally {
           setLoadingSearches(false);
         }
-      };
-      updateFreeSearches();
+      }
     };
 
     window.addEventListener("login", handleLogin);
