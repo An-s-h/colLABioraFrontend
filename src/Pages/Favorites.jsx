@@ -33,9 +33,10 @@ import {
 import Layout from "../components/Layout.jsx";
 import Button from "../components/ui/Button.jsx";
 import Modal from "../components/ui/Modal.jsx";
-import AnimatedBackgroundDiff from "../components/ui/AnimatedBackgroundDiff.jsx";
+import AnimatedBackground from "../components/ui/AnimatedBackground.jsx";
 import { BorderBeam } from "@/components/ui/border-beam";
 import { AuroraText } from "@/components/ui/aurora-text";
+import CustomSelect from "../components/ui/CustomSelect.jsx";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -48,7 +49,13 @@ import {
 } from "../components/ui/alert-dialog";
 import { pdf } from "@react-pdf/renderer";
 import PDFReportDocument from "../components/PDFReportDocument.jsx";
-import { FileText as FileTextIcon, CheckSquare, Square, X, XCircle } from "lucide-react";
+import {
+  FileText as FileTextIcon,
+  CheckSquare,
+  Square,
+  X,
+  XCircle,
+} from "lucide-react";
 
 export default function Favorites() {
   const [items, setItems] = useState([]);
@@ -67,6 +74,15 @@ export default function Favorites() {
     item: null,
     type: "",
     favorite: null, // Store the full favorite object to check addedByUrl
+    loading: false,
+  });
+  const [contactInfoModal, setContactInfoModal] = useState({
+    open: false,
+    trial: null,
+    loading: false,
+    generatedMessage: "",
+    generating: false,
+    copied: false,
   });
   const [urlInput, setUrlInput] = useState("");
   const [addingByUrl, setAddingByUrl] = useState(false);
@@ -85,6 +101,8 @@ export default function Favorites() {
     report: null,
   });
   const [userProfile, setUserProfile] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [addByUrlModal, setAddByUrlModal] = useState(false);
   const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const navigate = useNavigate();
@@ -163,15 +181,57 @@ export default function Favorites() {
   }, []);
 
   useEffect(() => {
+    let filtered = items;
+
+    // Apply type filter
     if (selectedFilter === "all") {
-      setFilteredItems(items);
+      filtered = items;
     } else if (selectedFilter === "addedByUrl") {
       // Filter items that were added by URL
-      setFilteredItems(items.filter((item) => item.addedByUrl === true));
+      filtered = items.filter((item) => item.addedByUrl === true);
     } else {
-      setFilteredItems(items.filter((item) => item.type === selectedFilter));
+      filtered = items.filter((item) => item.type === selectedFilter);
     }
-  }, [selectedFilter, items]);
+
+    // Apply search query filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter((item) => {
+        const itemData = item.item || {};
+        const searchableText = [
+          itemData.title || itemData.name || "",
+          itemData.description || itemData.bio || itemData.abstract || "",
+          itemData.affiliation || "",
+          itemData.location || "",
+          itemData.journal || "",
+          Array.isArray(itemData.authors)
+            ? itemData.authors.join(" ")
+            : itemData.authors || "",
+          Array.isArray(itemData.conditions)
+            ? itemData.conditions.join(" ")
+            : itemData.conditions || "",
+          Array.isArray(itemData.researchInterests)
+            ? itemData.researchInterests.join(" ")
+            : itemData.researchInterests || "",
+          Array.isArray(itemData.specialties)
+            ? itemData.specialties.join(" ")
+            : itemData.specialties || [],
+          Array.isArray(itemData.interests)
+            ? itemData.interests.join(" ")
+            : itemData.interests || [],
+          itemData.id || itemData._id || itemData.pmid || "",
+          itemData.orcid || "",
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+
+        return searchableText.includes(query);
+      });
+    }
+
+    setFilteredItems(filtered);
+  }, [selectedFilter, items, searchQuery]);
 
   function openDeleteDialog(favorite) {
     setDeleteDialog({
@@ -491,13 +551,94 @@ export default function Favorites() {
     });
   }
 
-  function openDetailsModal(item, type, favorite = null) {
-    setDetailsModal({
-      open: true,
-      item: item,
-      type: type,
-      favorite: favorite, // Pass the full favorite object
-    });
+  async function openDetailsModal(item, type, favorite = null) {
+    if (type === "trial") {
+      setDetailsModal({
+        open: true,
+        item: item, // Show basic info immediately
+        type: type,
+        favorite: favorite,
+        loading: true,
+      });
+
+      // Fetch detailed trial information with simplified details from backend
+      if (item.id || item._id) {
+        try {
+          const nctId = item.id || item._id;
+
+          // Fetch simplified trial details
+          const response = await fetch(
+            `${base}/api/search/trial/${nctId}/simplified`
+          );
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data.trial) {
+              // Merge detailed info with existing trial data
+              const mergedTrial = {
+                ...item,
+                ...data.trial,
+                simplifiedTitle:
+                  item.simplifiedTitle ||
+                  data.trial.simplifiedDetails?.title ||
+                  data.trial.simplifiedTitle,
+              };
+              setDetailsModal({
+                open: true,
+                item: mergedTrial,
+                type: type,
+                favorite: favorite,
+                loading: false,
+              });
+              return;
+            }
+          }
+
+          // Fallback: try regular endpoint if simplified fails
+          const fallbackResponse = await fetch(
+            `${base}/api/search/trial/${nctId}`
+          );
+          if (fallbackResponse.ok) {
+            const fallbackData = await fallbackResponse.json();
+            if (fallbackData.trial) {
+              const mergedTrial = {
+                ...item,
+                ...fallbackData.trial,
+                simplifiedTitle:
+                  item.simplifiedTitle || fallbackData.trial.simplifiedTitle,
+              };
+              setDetailsModal({
+                open: true,
+                item: mergedTrial,
+                type: type,
+                favorite: favorite,
+                loading: false,
+              });
+              return;
+            }
+          }
+        } catch (error) {
+          console.error("Error fetching detailed trial info:", error);
+        }
+      }
+
+      // If fetch fails or no NCT ID, just use the trial we have
+      setDetailsModal({
+        open: true,
+        item: item,
+        type: type,
+        favorite: favorite,
+        loading: false,
+      });
+    } else {
+      setDetailsModal({
+        open: true,
+        item: item,
+        type: type,
+        favorite: favorite,
+        loading: false,
+      });
+    }
   }
 
   function closeDetailsModal() {
@@ -506,18 +647,77 @@ export default function Favorites() {
       item: null,
       type: "",
       favorite: null,
+      loading: false,
+    });
+  }
+
+  async function openContactInfoModal(trial) {
+    setContactInfoModal({
+      open: true,
+      trial: trial, // Show basic info immediately
+      loading: true,
+      generatedMessage: "",
+      generating: false,
+      copied: false,
+    });
+
+    // Fetch detailed trial information from backend
+    if (trial.id || trial._id) {
+      try {
+        const nctId = trial.id || trial._id;
+        const response = await fetch(`${base}/api/search/trial/${nctId}`);
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.trial) {
+            // Merge detailed info with existing trial data
+            setContactInfoModal({
+              open: true,
+              trial: { ...trial, ...data.trial },
+              loading: false,
+              generatedMessage: "",
+              generating: false,
+              copied: false,
+            });
+            return;
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching detailed trial info:", error);
+      }
+    }
+
+    // If fetch fails or no NCT ID, just use the trial we have
+    setContactInfoModal({
+      open: true,
+      trial: trial,
+      loading: false,
+      generatedMessage: "",
+      generating: false,
+      copied: false,
+    });
+  }
+
+  function closeContactInfoModal() {
+    setContactInfoModal({
+      open: false,
+      trial: null,
+      loading: false,
+      generatedMessage: "",
+      generating: false,
+      copied: false,
     });
   }
 
   async function addFavoriteByUrl() {
     if (!urlInput.trim()) {
       toast.error("Please enter a URL");
-      return;
+      return false;
     }
 
     if (!user?._id && !user?.id) {
       toast.error("Please sign in to add favorites");
-      return;
+      return false;
     }
 
     setAddingByUrl(true);
@@ -535,7 +735,7 @@ export default function Favorites() {
 
       if (!response.ok) {
         toast.error(data.error || "Failed to add favorite");
-        return;
+        return false;
       }
 
       if (data.message) {
@@ -547,9 +747,11 @@ export default function Favorites() {
       // Clear input and reload favorites
       setUrlInput("");
       await load();
+      return true;
     } catch (error) {
       console.error("Error adding favorite by URL:", error);
       toast.error("Failed to add favorite. Please try again.");
+      return false;
     } finally {
       setAddingByUrl(false);
     }
@@ -559,73 +761,53 @@ export default function Favorites() {
     const t = favorite.item;
     // Check if this favorite was added by URL
     const isAddedByUrl = favorite.addedByUrl === true;
+    const itemId = t.id || t._id;
 
     return (
       <div
         key={favorite._id}
-        className="bg-white rounded-xl shadow-sm border border-slate-200 hover:shadow-lg hover:border-indigo-300 transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden h-full flex flex-col"
+        className="bg-white rounded-xl shadow-sm border transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden flex flex-col h-full"
+        style={{
+          borderColor: t.isRead
+            ? "rgba(147, 51, 234, 0.4)" // Purple for read
+            : "rgba(59, 130, 246, 0.4)", // Blue for unread
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.boxShadow =
+            "0 10px 15px -3px rgba(47, 60, 150, 0.1), 0 4px 6px -2px rgba(47, 60, 150, 0.05)";
+          e.currentTarget.style.borderColor = t.isRead
+            ? "rgba(147, 51, 234, 0.6)" // Darker purple on hover
+            : "rgba(59, 130, 246, 0.6)"; // Darker blue on hover
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.boxShadow = "0 1px 2px 0 rgba(0, 0, 0, 0.05)";
+          e.currentTarget.style.borderColor = t.isRead
+            ? "rgba(147, 51, 234, 0.4)" // Purple for read
+            : "rgba(59, 130, 246, 0.4)"; // Blue for unread
+        }}
       >
-        <div className="p-5 flex flex-col flex-1">
-          {/* Match Badge Banner */}
-          {t.matchPercentage !== undefined && (
-            <div className="mb-3 -mt-2 -mx-5 px-5 py-2 bg-gradient-to-r from-indigo-50 to-blue-50 border-b border-indigo-100">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-indigo-600" />
-                  <span className="text-sm font-bold text-indigo-700">
-                    {t.matchPercentage}% Match
-                  </span>
-                </div>
-                {t.matchExplanation && (
-                  <span className="text-xs text-indigo-600 truncate flex-1 ml-2 max-w-[200px] sm:max-w-none">
-                    {t.matchExplanation}
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Header */}
-          <div className="flex items-start justify-between mb-3">
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-2 flex-wrap">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleItemSelection(favorite);
-                  }}
-                  className="p-1 hover:bg-indigo-50 rounded transition-colors"
-                >
-                  {isItemSelected(favorite) ? (
-                    <CheckSquare className="w-5 h-5 text-indigo-600" />
-                  ) : (
-                    <Square className="w-5 h-5 text-slate-400" />
-                  )}
-                </button>
-                <span className="inline-flex items-center px-2.5 py-1 bg-indigo-100 text-indigo-700 text-xs font-medium rounded-full">
-                  <Beaker className="w-3 h-3 mr-1" />
-                  {t.id || t._id || "Trial"}
-                </span>
-                {isAddedByUrl && (
-                  <span className="inline-flex items-center px-2.5 py-1 bg-purple-100 text-purple-700 text-xs font-medium rounded-full border border-purple-200">
-                    <LinkIcon className="w-3 h-3 mr-1" />
-                    Added by You
-                  </span>
-                )}
-                {t.status && (
-                  <span
-                    className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(
-                      t.status
-                    )}`}
-                  >
-                    {t.status.replace(/_/g, " ")}
-                  </span>
-                )}
-              </div>
-              <h3 className="text-base font-bold text-slate-900 mb-3 line-clamp-2">
-                {t.title || "Untitled Trial"}
-              </h3>
-            </div>
+        <div className="p-5 flex flex-col flex-grow">
+          {/* Selection Checkbox - Top Left */}
+          <div className="flex items-start justify-between mb-2">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleItemSelection(favorite);
+              }}
+              className="p-1 hover:bg-slate-50 rounded transition-colors"
+            >
+              {isItemSelected(favorite) ? (
+                <CheckSquare className="w-5 h-5" style={{ color: "#2F3C96" }} />
+              ) : (
+                <Square className="w-5 h-5 text-slate-400" />
+              )}
+            </button>
+            {isAddedByUrl && (
+              <span className="inline-flex items-center px-2.5 py-1 bg-purple-100 text-purple-700 text-xs font-medium rounded-full border border-purple-200">
+                <LinkIcon className="w-3 h-3 mr-1" />
+                Added by You
+              </span>
+            )}
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -637,11 +819,80 @@ export default function Favorites() {
             </button>
           </div>
 
+          {/* Match Progress Bar */}
+          {t.matchPercentage !== undefined && (
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <TrendingUp
+                    className="w-4 h-4"
+                    style={{ color: "#2F3C96" }}
+                  />
+                  <span
+                    className="text-sm font-bold"
+                    style={{ color: "#2F3C96" }}
+                  >
+                    {t.matchPercentage}% Match
+                  </span>
+                </div>
+                {t.status && (
+                  <span
+                    className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(
+                      t.status
+                    )}`}
+                  >
+                    {t.status.replace(/_/g, " ")}
+                  </span>
+                )}
+              </div>
+              {/* Progress Bar */}
+              <div
+                className="w-full h-2.5 rounded-full overflow-hidden"
+                style={{
+                  backgroundColor: "rgba(208, 196, 226, 0.3)",
+                }}
+              >
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${t.matchPercentage}%`,
+                    background: "linear-gradient(90deg, #2F3C96, #253075)",
+                  }}
+                ></div>
+              </div>
+            </div>
+          )}
+
+          {/* Trial Title */}
+          <div className="mb-4">
+            <h3
+              className="text-lg font-bold mb-0 line-clamp-3 leading-snug flex items-start gap-2"
+              style={{
+                color: t.isRead
+                  ? "#D0C4E2" // Light purple for read
+                  : "#2F3C96", // Default blue for unread
+              }}
+            >
+              {t.isRead && (
+                <CheckCircle
+                  className="w-4 h-4 mt-1 shrink-0"
+                  style={{ color: "#D0C4E2" }}
+                />
+              )}
+              <span className="flex-1">
+                {t.simplifiedTitle || t.title || "Untitled Trial"}
+              </span>
+            </h3>
+          </div>
+
           {/* Basic Info */}
-          <div className="space-y-1.5 mb-3 text-sm text-slate-700">
+          <div className="space-y-1.5 mb-4">
             {t.conditions?.length > 0 && (
-              <div className="flex items-center gap-2">
-                <Info className="w-3.5 h-3.5" />
+              <div
+                className="flex items-center text-sm"
+                style={{ color: "#787878" }}
+              >
+                <Info className="w-3.5 h-3.5 mr-2 shrink-0" />
                 <span className="line-clamp-1">
                   {Array.isArray(t.conditions)
                     ? t.conditions.join(", ")
@@ -650,42 +901,140 @@ export default function Favorites() {
               </div>
             )}
             {t.phase && (
-              <div className="flex items-center gap-2 text-slate-600">
-                <Calendar className="w-3.5 h-3.5" /> Phase {t.phase}
+              <div
+                className="flex items-center text-sm"
+                style={{ color: "#787878" }}
+              >
+                <Calendar className="w-3.5 h-3.5 mr-2 shrink-0" />
+                <span>Phase {t.phase}</span>
               </div>
             )}
           </div>
 
-          {/* Description with Info Button */}
-          {t.description && (
-            <div className="mb-3">
+          {/* Description/Details Preview */}
+          {(t.description || t.conditionDescription) && (
+            <div className="mb-4 flex-grow">
               <button
                 onClick={() => openDetailsModal(t, "trial", favorite)}
-                className="w-full flex items-center gap-2 text-sm text-slate-700 hover:text-indigo-700 font-medium py-2 px-3 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
+                className="w-full text-left text-sm py-2 px-3 rounded-lg transition-all duration-200 border group"
+                style={{
+                  backgroundColor: "rgba(208, 196, 226, 0.2)",
+                  borderColor: "rgba(47, 60, 150, 0.2)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor =
+                    "rgba(208, 196, 226, 0.3)";
+                  e.currentTarget.style.borderColor = "rgba(47, 60, 150, 0.3)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor =
+                    "rgba(208, 196, 226, 0.2)";
+                  e.currentTarget.style.borderColor = "rgba(47, 60, 150, 0.2)";
+                }}
               >
-                <Info className="w-4 h-4" />
-                <span className="flex-1 text-left line-clamp-2">
-                  {t.description}
-                </span>
+                <div className="flex items-start gap-2">
+                  <Info
+                    className="w-4 h-4 mt-0.5 shrink-0 transition-colors duration-200"
+                    style={{ color: "#2F3C96" }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div
+                      className="transition-colors duration-200"
+                      style={{ color: "#787878" }}
+                    >
+                      <span className="line-clamp-2">
+                        {t.description ||
+                          t.conditionDescription ||
+                          "View details for more information"}
+                      </span>
+                    </div>
+                    <div
+                      className="mt-1.5 flex items-center gap-1 font-medium transition-all duration-200"
+                      style={{ color: "#2F3C96" }}
+                    >
+                      <span>Read more details</span>
+                      <span className="inline-block group-hover:translate-x-0.5 transition-transform duration-200">
+                        →
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </button>
             </div>
           )}
 
-          {/* Buttons */}
-          <div className="flex gap-2 mt-auto pt-4 border-t border-slate-100">
+          {/* Spacer for trials without description */}
+          {!t.description && !t.conditionDescription && (
+            <div className="flex-grow"></div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex gap-2 mt-auto">
             <button
               onClick={() => generateSummary(t, "trial")}
-              className="flex-1 flex items-center justify-center gap-2 py-2 bg-gradient-to-r from-slate-600 to-slate-700 text-white rounded-lg text-sm font-semibold hover:from-slate-700 hover:to-slate-800 transition-all shadow-sm"
+              className="flex-1 flex items-center justify-center gap-2 py-2 text-white rounded-lg text-sm font-semibold transition-all shadow-sm"
+              style={{
+                background: "linear-gradient(135deg, #2F3C96, #253075)",
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.background =
+                  "linear-gradient(135deg, #253075, #1C2454)";
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.background =
+                  "linear-gradient(135deg, #2F3C96, #253075)";
+              }}
             >
-              <Sparkles className="w-4 h-4" /> Summarize
+              <Sparkles className="w-4 h-4" />
+              Understand this trial
             </button>
             <button
-              onClick={() => openDetailsModal(t, "trial", favorite)}
-              className="flex-1 flex items-center justify-center gap-2 py-2 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-lg text-sm font-semibold hover:from-indigo-700 hover:to-indigo-800 transition-all shadow-sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                openDeleteDialog(favorite);
+              }}
+              className="p-2 rounded-lg border transition-all"
+              style={{
+                backgroundColor: "rgba(208, 196, 226, 0.2)",
+                borderColor: "rgba(208, 196, 226, 0.3)",
+                color: "#dc2626",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor =
+                  "rgba(220, 38, 38, 0.1)";
+                e.currentTarget.style.borderColor = "rgba(220, 38, 38, 0.3)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor =
+                  "rgba(208, 196, 226, 0.2)";
+                e.currentTarget.style.borderColor = "rgba(208, 196, 226, 0.3)";
+                e.currentTarget.style.color = "#dc2626";
+              }}
             >
-              <Info className="w-4 h-4" /> Details
+              <Trash2 className="w-4 h-4" />
             </button>
           </div>
+
+          {/* View Contact Information Button */}
+          <button
+            onClick={() => openContactInfoModal(t)}
+            className="flex items-center justify-center gap-2 py-2 text-xs font-medium rounded-lg transition-colors mt-3 w-full"
+            style={{
+              color: "#2F3C96",
+              backgroundColor: "rgba(208, 196, 226, 0.2)",
+            }}
+            onMouseEnter={(e) => {
+              e.target.style.backgroundColor = "rgba(208, 196, 226, 0.3)";
+              e.target.style.color = "#253075";
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.backgroundColor = "rgba(208, 196, 226, 0.2)";
+              e.target.style.color = "#2F3C96";
+            }}
+          >
+            <Info className="w-3.5 h-3.5" />
+            View Contact Information
+          </button>
         </div>
       </div>
     );
@@ -695,77 +1044,71 @@ export default function Favorites() {
     const p = favorite.item;
     // Check if this favorite was added by URL
     const isAddedByUrl = favorite.addedByUrl === true;
+    const itemId = p.id || p.pmid || p._id;
 
     return (
       <div
         key={favorite._id}
-        className="bg-white rounded-xl shadow-sm border border-slate-200 hover:shadow-lg hover:border-indigo-300 transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden h-full flex flex-col"
+        className="bg-white rounded-xl shadow-sm border transition-all duration-300 transform hover:-translate-y-0.5 overflow-hidden flex flex-col h-full"
+        style={{
+          borderColor: p.isRead
+            ? "rgba(147, 51, 234, 0.4)" // Purple for read
+            : "rgba(59, 130, 246, 0.4)", // Blue for unread
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.boxShadow =
+            "0 10px 15px -3px rgba(47, 60, 150, 0.1), 0 4px 6px -2px rgba(47, 60, 150, 0.05)";
+          e.currentTarget.style.borderColor = p.isRead
+            ? "rgba(147, 51, 234, 0.6)" // Darker purple on hover
+            : "rgba(59, 130, 246, 0.6)"; // Darker blue on hover
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.boxShadow = "0 1px 2px 0 rgba(0, 0, 0, 0.05)";
+          e.currentTarget.style.borderColor = p.isRead
+            ? "rgba(147, 51, 234, 0.4)" // Purple for read
+            : "rgba(59, 130, 246, 0.4)"; // Blue for unread
+        }}
       >
-        <div className="p-5 flex flex-col flex-1">
-          {/* Match Badge Banner */}
-          {p.matchPercentage !== undefined && (
-            <div className="mb-3 -mt-2 -mx-5 px-5 py-2 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-blue-600" />
-                  <span className="text-sm font-bold text-blue-700">
-                    {p.matchPercentage}% Match
-                  </span>
-                </div>
-                {p.matchExplanation && (
-                  <span className="text-xs text-blue-600 truncate flex-1 ml-2 max-w-[200px] sm:max-w-none">
-                    {p.matchExplanation}
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Publication Header */}
-          <div className="flex items-start justify-between mb-3">
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-2 flex-wrap">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleItemSelection(favorite);
-                  }}
-                  className="p-1 hover:bg-indigo-50 rounded transition-colors"
-                >
-                  {isItemSelected(favorite) ? (
-                    <CheckSquare className="w-5 h-5 text-indigo-600" />
-                  ) : (
-                    <Square className="w-5 h-5 text-slate-400" />
-                  )}
-                </button>
-                <span className="inline-flex items-center px-2.5 py-1 bg-indigo-100 text-indigo-700 text-xs font-medium rounded-full">
-                  <FileText className="w-3 h-3 mr-1" />
-                  {p.pmid ? `PMID: ${p.pmid}` : p.id || "PUB-001"}
-                </span>
-                {isAddedByUrl && (
-                  <span className="inline-flex items-center px-2.5 py-1 bg-purple-100 text-purple-700 text-xs font-medium rounded-full border border-purple-200">
-                    <LinkIcon className="w-3 h-3 mr-1" />
-                    Added by You
-                  </span>
-                )}
-                {p.journal && (
-                  <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border bg-slate-50 text-slate-700 border-slate-200">
-                    {p.journal.length > 20
-                      ? `${p.journal.substring(0, 20)}...`
-                      : p.journal}
-                  </span>
-                )}
-              </div>
-              <h3 className="text-base font-bold text-slate-900 mb-3 line-clamp-2 leading-tight">
-                {p.title || "Untitled Publication"}
-              </h3>
-            </div>
+        <div className="p-5 flex flex-col flex-grow">
+          {/* Selection Checkbox - Top Left */}
+          <div className="flex items-start justify-between mb-2">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleItemSelection(favorite);
+              }}
+              className="p-1 hover:bg-slate-50 rounded transition-colors"
+            >
+              {isItemSelected(favorite) ? (
+                <CheckSquare className="w-5 h-5" style={{ color: "#2F3C96" }} />
+              ) : (
+                <Square className="w-5 h-5 text-slate-400" />
+              )}
+            </button>
+            {isAddedByUrl && (
+              <span className="inline-flex items-center px-2.5 py-1 bg-purple-100 text-purple-700 text-xs font-medium rounded-full border border-purple-200">
+                <LinkIcon className="w-3 h-3 mr-1" />
+                Added by You
+              </span>
+            )}
             <div className="flex items-center gap-2 shrink-0">
               {/* Citations - More Prominent */}
               {(p.citations || p.citations === 0) && (
-                <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-50 rounded-lg border border-indigo-200">
-                  <TrendingUp className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                  <span className="text-xs font-bold text-indigo-700">
+                <div
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border"
+                  style={{
+                    backgroundColor: "rgba(208, 196, 226, 0.2)",
+                    borderColor: "rgba(208, 196, 226, 0.3)",
+                  }}
+                >
+                  <TrendingUp
+                    className="w-3.5 h-3.5 shrink-0"
+                    style={{ color: "#2F3C96" }}
+                  />
+                  <span
+                    className="text-xs font-bold"
+                    style={{ color: "#2F3C96" }}
+                  >
                     {p.citations || 0}
                   </span>
                 </div>
@@ -782,19 +1125,79 @@ export default function Favorites() {
             </div>
           </div>
 
+          {/* Match Progress Bar */}
+          {p.matchPercentage !== undefined && (
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <TrendingUp
+                    className="w-4 h-4"
+                    style={{ color: "#2F3C96" }}
+                  />
+                  <span
+                    className="text-sm font-bold"
+                    style={{ color: "#2F3C96" }}
+                  >
+                    {p.matchPercentage}% Match
+                  </span>
+                </div>
+              </div>
+              {/* Progress Bar */}
+              <div
+                className="w-full h-2.5 rounded-full overflow-hidden"
+                style={{
+                  backgroundColor: "rgba(208, 196, 226, 0.3)",
+                }}
+              >
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${p.matchPercentage}%`,
+                    background: "linear-gradient(90deg, #2F3C96, #253075)",
+                  }}
+                ></div>
+              </div>
+            </div>
+          )}
+
+          {/* Publication Title */}
+          <div className="mb-4">
+            <h3
+              className="text-lg font-bold mb-0 line-clamp-3 leading-snug flex items-start gap-2"
+              style={{
+                color: p.isRead
+                  ? "#D0C4E2" // Light purple for read
+                  : "#2F3C96", // Default blue for unread
+              }}
+            >
+              {p.isRead && (
+                <CheckCircle
+                  className="w-4 h-4 mt-1 shrink-0"
+                  style={{ color: "#D0C4E2" }}
+                />
+              )}
+              <span className="flex-1">
+                {p.simplifiedTitle || p.title || "Untitled Publication"}
+              </span>
+            </h3>
+          </div>
+
           {/* Basic Info - Authors and Published Date */}
-          <div className="space-y-1.5 mb-3">
+          <div className="space-y-1.5 mb-4">
             {p.authors && Array.isArray(p.authors) && p.authors.length > 0 && (
-              <div className="flex items-center text-sm text-slate-700">
+              <div
+                className="flex items-center text-sm"
+                style={{ color: "#787878" }}
+              >
                 <User className="w-3.5 h-3.5 mr-2 shrink-0" />
-                <span className="line-clamp-1">
-                  {p.authors.slice(0, 3).join(", ")}
-                  {p.authors.length > 3 && " et al."}
-                </span>
+                <span className="line-clamp-1">{p.authors.join(", ")}</span>
               </div>
             )}
             {(p.year || p.month) && (
-              <div className="flex items-center text-sm text-slate-600">
+              <div
+                className="flex items-center text-sm"
+                style={{ color: "#787878" }}
+              >
                 <Calendar className="w-3.5 h-3.5 mr-2 shrink-0" />
                 <span>
                   {p.month && p.month + " "}
@@ -802,46 +1205,131 @@ export default function Favorites() {
                 </span>
               </div>
             )}
-            {p.journal && (
-              <div className="flex items-center text-sm text-slate-600">
-                <BookOpen className="w-3.5 h-3.5 mr-2 shrink-0" />
-                <span className="line-clamp-1">{p.journal}</span>
-              </div>
-            )}
           </div>
 
-          {/* One-line Abstract Description */}
+          {/* Abstract Preview */}
           {p.abstract && (
-            <div className="mb-3">
+            <div className="mb-4 flex-grow">
               <button
                 onClick={() => openDetailsModal(p, "publication", favorite)}
-                className="w-full text-left text-sm text-slate-700 hover:text-indigo-700 font-medium py-2 px-3 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
+                className="w-full text-left text-sm py-2 px-3 rounded-lg transition-all duration-200 border group"
+                style={{
+                  backgroundColor: "rgba(208, 196, 226, 0.2)",
+                  borderColor: "rgba(47, 60, 150, 0.2)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor =
+                    "rgba(208, 196, 226, 0.3)";
+                  e.currentTarget.style.borderColor = "rgba(47, 60, 150, 0.3)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor =
+                    "rgba(208, 196, 226, 0.2)";
+                  e.currentTarget.style.borderColor = "rgba(47, 60, 150, 0.2)";
+                }}
               >
                 <div className="flex items-start gap-2">
-                  <Info className="w-4 h-4 mt-0.5 shrink-0" />
-                  <span className="line-clamp-2 flex-1">{p.abstract}</span>
+                  <Info
+                    className="w-4 h-4 mt-0.5 shrink-0 transition-colors duration-200"
+                    style={{ color: "#2F3C96" }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div
+                      className="transition-colors duration-200"
+                      style={{ color: "#787878" }}
+                    >
+                      <span className="line-clamp-2">{p.abstract}</span>
+                    </div>
+                    <div
+                      className="mt-1.5 flex items-center gap-1 font-medium transition-all duration-200"
+                      style={{ color: "#2F3C96" }}
+                    >
+                      <span>View full details</span>
+                      <span className="inline-block group-hover:translate-x-0.5 transition-transform duration-200">
+                        →
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </button>
             </div>
           )}
 
+          {/* Spacer for cards without abstract */}
+          {!p.abstract && <div className="flex-grow"></div>}
+
           {/* Action Buttons */}
-          <div className="flex gap-2 mt-auto pt-4 border-t border-slate-100">
+          <div className="flex gap-2 mt-auto">
             <button
               onClick={() => generateSummary(p, "publication")}
-              className="flex-1 flex items-center justify-center gap-2 py-2 bg-gradient-to-r from-slate-600 to-slate-700 text-white rounded-lg text-sm font-semibold hover:from-slate-700 hover:to-slate-800 transition-all shadow-sm"
+              className="flex-1 flex items-center justify-center gap-2 py-2 text-white rounded-lg text-sm font-semibold transition-all shadow-sm"
+              style={{
+                background: "linear-gradient(135deg, #2F3C96, #253075)",
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.background =
+                  "linear-gradient(135deg, #253075, #1C2454)";
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.background =
+                  "linear-gradient(135deg, #2F3C96, #253075)";
+              }}
             >
               <Sparkles className="w-4 h-4" />
-              Summarize
+              Understand this Paper
             </button>
             <button
-              onClick={() => openDetailsModal(p, "publication", favorite)}
-              className="flex-1 flex items-center justify-center gap-2 py-2 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-lg text-sm font-semibold hover:from-indigo-700 hover:to-indigo-800 transition-all shadow-sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                openDeleteDialog(favorite);
+              }}
+              className="p-2 rounded-lg border transition-all"
+              style={{
+                backgroundColor: "rgba(208, 196, 226, 0.2)",
+                borderColor: "rgba(208, 196, 226, 0.3)",
+                color: "#dc2626",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor =
+                  "rgba(220, 38, 38, 0.1)";
+                e.currentTarget.style.borderColor = "rgba(220, 38, 38, 0.3)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor =
+                  "rgba(208, 196, 226, 0.2)";
+                e.currentTarget.style.borderColor = "rgba(208, 196, 226, 0.3)";
+                e.currentTarget.style.color = "#dc2626";
+              }}
             >
-              <Info className="w-4 h-4" />
-              Details
+              <Trash2 className="w-4 h-4" />
             </button>
           </div>
+
+          {/* Open Paper Action */}
+          {(p.url || p.link) && (
+            <a
+              href={p.url || p.link}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="flex items-center justify-center gap-2 py-2 text-xs font-medium rounded-lg transition-colors mt-3 w-full"
+              style={{
+                color: "#2F3C96",
+                backgroundColor: "rgba(208, 196, 226, 0.2)",
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.backgroundColor = "rgba(208, 196, 226, 0.3)";
+                e.target.style.color = "#253075";
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.backgroundColor = "rgba(208, 196, 226, 0.2)";
+                e.target.style.color = "#2F3C96";
+              }}
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              Open Paper
+            </a>
+          )}
         </div>
       </div>
     );
@@ -1137,7 +1625,7 @@ export default function Favorites() {
     return (
       <Layout>
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50 to-slate-100 relative overflow-hidden">
-          <AnimatedBackgroundDiff />
+          <AnimatedBackground />
           <div className="relative pt-24 px-4 md:px-8 mx-auto max-w-6xl pb-8">
             <div className="text-center py-16">
               <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
@@ -1152,14 +1640,14 @@ export default function Favorites() {
   return (
     <Layout>
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50 to-slate-100 relative overflow-hidden">
-        <AnimatedBackgroundDiff />
+        <AnimatedBackground />
         <div className="relative pt-24 px-4 md:px-8 mx-auto max-w-6xl pb-8">
           {/* Header */}
           <div className="text-center mb-6 animate-fade-in">
-            <h1 className="text-3xl md:text-5xl font-bold bg-gradient-to-r from-indigo-700 via-indigo-600 to-blue-700 bg-clip-text text-transparent mb-1">
+            <h1 className="text-3xl md:text-5xl font-bold bg-gradient-to-r from-[#2F3C96] via-[#474F97] to-[#D0C4E2] bg-clip-text text-transparent mb-1">
               <AuroraText
                 speed={2.5}
-                colors={["#38bdf8", "#6366F1", "#818CF8", "#9333EA", "#C084FC"]}
+                colors={["#2F3C96", "#474F97", "#757BB1", "#B8A5D5", "#D0C4E2"]}
               >
                 My Favorites
               </AuroraText>
@@ -1167,133 +1655,146 @@ export default function Favorites() {
             <p className="text-sm text-slate-600 mb-4">
               All your saved trials, publications, experts, and forum threads
             </p>
-            {/* Create Summary Report and Clear Selections Buttons */}
-            <div className="flex flex-wrap items-center justify-center gap-3">
-              <button
-                onClick={generateSummaryReport}
-                disabled={
-                  selectedItems.experts.length +
+          </div>
+
+          {/* Search Bar and Summary Report Section */}
+          <div className="mb-6 grid grid-cols-1 lg:grid-cols-4 gap-4">
+            {/* Search Favorites - 3/4 width */}
+            <div className="lg:col-span-3 bg-white rounded-xl shadow-lg p-5 border border-slate-200 animate-fade-in">
+              <BorderBeam
+                duration={10}
+                size={100}
+                className="from-transparent via-[#2F3C96] to-transparent"
+              />
+              <BorderBeam
+                duration={10}
+                size={300}
+                borderWidth={3}
+                className="from-transparent via-[#D0C4E2] to-transparent"
+              />
+              <div className="flex items-center gap-2 mb-3">
+                <FileText className="w-5 h-5 text-[#2F3C96]" />
+                <h2 className="text-lg font-semibold text-slate-900">
+                  Search Favorites
+                </h2>
+              </div>
+              <div className="flex flex-col md:flex-row gap-3 mb-4">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search by title, name, description, author, condition, or any keyword..."
+                  className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2F3C96] focus:border-[#2F3C96] transition text-slate-900 placeholder-slate-400"
+                />
+                <button
+                  onClick={() => setAddByUrlModal(true)}
+                  className="flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#2F3C96] to-[#474F97] text-white rounded-lg font-semibold hover:from-[#474F97] hover:to-[#757BB1] transition-all shadow-md hover:shadow-lg whitespace-nowrap"
+                >
+                  <LinkIcon className="w-4 h-4" />
+                  Add by URL
+                </button>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between pt-4 border-t border-slate-200">
+                {/* Filter Dropdown */}
+                <div className="flex-1 w-full sm:w-auto">
+                  <CustomSelect
+                    value={selectedFilter}
+                    onChange={(value) => setSelectedFilter(value)}
+                    options={filterOptions.map((filter) => ({
+                      value: filter.value,
+                      label: `${filter.icon} ${filter.label}${
+                        selectedFilter === filter.value
+                          ? ` (${filteredItems.length})`
+                          : ""
+                      }`,
+                    }))}
+                    placeholder="Filter by type..."
+                    className="w-full sm:w-64"
+                  />
+                </div>
+                {searchQuery && (
+                  <div className="flex items-center gap-3">
+                    <p className="text-xs text-slate-600">
+                      {filteredItems.length} result
+                      {filteredItems.length !== 1 ? "s" : ""} found
+                    </p>
+                    <button
+                      onClick={() => setSearchQuery("")}
+                      className="text-xs text-[#2F3C96] hover:text-[#474F97] font-medium"
+                    >
+                      Clear search
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Create Summary Report - 1/4 width */}
+            <div className="lg:col-span-1 bg-white rounded-xl shadow-lg p-5 border border-slate-200 animate-fade-in">
+              <BorderBeam
+                duration={10}
+                size={100}
+                className="from-transparent via-[#2F3C96] to-transparent"
+              />
+              <BorderBeam
+                duration={10}
+                size={300}
+                borderWidth={3}
+                className="from-transparent via-[#D0C4E2] to-transparent"
+              />
+              <div className="flex items-center gap-2 mb-3">
+                <FileTextIcon className="w-5 h-5 text-[#2F3C96]" />
+                <h2 className="text-lg font-semibold text-slate-900">
+                  Summary Report
+                </h2>
+              </div>
+              <div className="space-y-3 mb-4">
+                <div className="text-xs text-slate-600 space-y-2">
+                  <p className="flex items-start gap-2">
+                    <span className="text-[#2F3C96] font-bold">•</span>
+                    <span>
+                      Export comprehensive reports as PDF for easy sharing
+                    </span>
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-2 pt-4 border-t border-slate-200">
+                <button
+                  onClick={generateSummaryReport}
+                  disabled={
+                    selectedItems.experts.length +
+                      selectedItems.publications.length +
+                      selectedItems.trials.length ===
+                    0
+                  }
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#2F3C96] to-[#474F97] text-white rounded-lg font-semibold hover:from-[#474F97] hover:to-[#757BB1] transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                >
+                  <FileTextIcon className="w-4 h-4" />
+                  Create Report
+                  {selectedItems.experts.length +
                     selectedItems.publications.length +
-                    selectedItems.trials.length ===
-                  0
-                }
-                className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-indigo-600 to-blue-600 text-white rounded-xl font-semibold hover:from-indigo-700 hover:to-blue-700 transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <FileTextIcon className="w-5 h-5" />
-                Create Summary Report
+                    selectedItems.trials.length >
+                    0 && (
+                    <span className="ml-1 px-1.5 py-0.5 bg-white/20 rounded-full text-xs">
+                      {selectedItems.experts.length +
+                        selectedItems.publications.length +
+                        selectedItems.trials.length}
+                    </span>
+                  )}
+                </button>
                 {selectedItems.experts.length +
                   selectedItems.publications.length +
                   selectedItems.trials.length >
                   0 && (
-                  <span className="ml-2 px-2 py-0.5 bg-white/20 rounded-full text-xs">
-                    {selectedItems.experts.length +
-                      selectedItems.publications.length +
-                      selectedItems.trials.length}{" "}
-                    selected
-                  </span>
+                  <button
+                    onClick={clearSelections}
+                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg font-semibold hover:bg-slate-200 transition-all shadow-sm hover:shadow-md border border-slate-300 text-sm"
+                  >
+                    <XCircle className="w-4 h-4" />
+                    Clear Selections
+                  </button>
                 )}
-              </button>
-              {selectedItems.experts.length +
-                selectedItems.publications.length +
-                selectedItems.trials.length >
-                0 && (
-                <button
-                  onClick={clearSelections}
-                  className="inline-flex items-center gap-2 px-6 py-3 bg-slate-100 text-slate-700 rounded-xl font-semibold hover:bg-slate-200 transition-all shadow-md hover:shadow-lg border border-slate-300"
-                >
-                  <XCircle className="w-5 h-5" />
-                  Clear Selections
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Add by URL Section */}
-          <div className="mb-6 bg-white rounded-xl shadow-lg p-5 border border-slate-200 animate-fade-in">
-            <BorderBeam
-              duration={10}
-              size={100}
-              className="from-transparent via-indigo-500 to-transparent"
-            />
-            <BorderBeam
-              duration={10}
-              size={300}
-              borderWidth={3}
-              className="from-transparent via-blue-500 to-transparent"
-            />
-            <div className="flex items-center gap-2 mb-3">
-              <LinkIcon className="w-5 h-5 text-indigo-600" />
-              <h2 className="text-lg font-semibold text-slate-900">
-                Add by URL
-              </h2>
-            </div>
-            <p className="text-sm text-slate-600 mb-4">
-              Paste a ClinicalTrials.gov or PubMed URL to automatically add it
-              to your favorites
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <input
-                type="url"
-                value={urlInput}
-                onChange={(e) => setUrlInput(e.target.value)}
-                onKeyPress={(e) => e.key === "Enter" && addFavoriteByUrl()}
-                placeholder="https://clinicaltrials.gov/study/NCT... or https://pubmed.ncbi.nlm.nih.gov/..."
-                className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition text-slate-900 placeholder-slate-400"
-                disabled={addingByUrl}
-              />
-              <button
-                onClick={addFavoriteByUrl}
-                disabled={addingByUrl || !urlInput.trim()}
-                className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-lg font-semibold hover:from-indigo-700 hover:to-indigo-800 transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {addingByUrl ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Adding...
-                  </>
-                ) : (
-                  <>
-                    <Plus className="w-4 h-4" />
-                    Add to Favorites
-                  </>
-                )}
-              </button>
-            </div>
-            <div className="mt-3 text-xs text-slate-500 space-y-1">
-              <p className="font-medium">Supported URLs:</p>
-              <ul className="list-disc list-inside space-y-0.5 ml-2">
-                <li>
-                  ClinicalTrials.gov:
-                  https://clinicaltrials.gov/study/NCT12345678
-                </li>
-                <li>PubMed: https://pubmed.ncbi.nlm.nih.gov/12345678/</li>
-              </ul>
-            </div>
-          </div>
-
-          {/* Filter Tabs */}
-          <div className="mb-6">
-            <div className="flex flex-wrap justify-center gap-2">
-              {filterOptions.map((filter, idx) => (
-                <button
-                  key={filter.value}
-                  onClick={() => setSelectedFilter(filter.value)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-full transition-all shadow-sm text-sm font-medium animate-fade-in ${
-                    selectedFilter === filter.value
-                      ? "bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-md"
-                      : "bg-white border border-slate-300 text-slate-700 hover:border-indigo-400 hover:bg-indigo-50 hover:text-indigo-700"
-                  }`}
-                  style={{ animationDelay: `${idx * 50}ms` }}
-                >
-                  <span className="text-base">{filter.icon}</span>
-                  <span>{filter.label}</span>
-                  {selectedFilter === filter.value && (
-                    <span className="bg-white/20 px-2 py-0.5 rounded-full text-xs">
-                      {filteredItems.length}
-                    </span>
-                  )}
-                </button>
-              ))}
+              </div>
             </div>
           </div>
 
@@ -1311,27 +1812,27 @@ export default function Favorites() {
                   const sectionMeta = {
                     trial: {
                       label: "Clinical Trials",
-                      gradient: "from-indigo-600 to-blue-600",
+                      gradient: "from-[#2F3C96] to-[#474F97]",
                       icon: Beaker,
                     },
                     publication: {
                       label: "Publications",
-                      gradient: "from-blue-600 to-indigo-700",
+                      gradient: "from-[#474F97] to-[#757BB1]",
                       icon: FileText,
                     },
                     expert: {
                       label: "Experts",
-                      gradient: "from-purple-600 to-purple-700",
+                      gradient: "from-[#757BB1] to-[#B8A5D5]",
                       icon: User,
                     },
                     collaborator: {
                       label: "Collaborators",
-                      gradient: "from-teal-600 to-emerald-600",
+                      gradient: "from-[#B8A5D5] to-[#D0C4E2]",
                       icon: Users,
                     },
                     thread: {
                       label: "Forum Threads",
-                      gradient: "from-pink-600 to-rose-600",
+                      gradient: "from-[#2F3C96] to-[#D0C4E2]",
                       icon: MessageCircle,
                     },
                   }[section];
@@ -1469,213 +1970,378 @@ export default function Favorites() {
                 : "Collaborator Details"
             }
           >
-            {detailsModal.item && detailsModal.type === "trial" && (
-              <div className="space-y-6">
-                {/* Header */}
-                <div className="pb-4 border-b border-slate-200">
-                  <div className="flex items-center gap-3 mb-2">
-                    <Beaker className="w-5 h-5 text-indigo-600" />
-                    <h4 className="font-bold text-slate-900 text-lg">
-                      {detailsModal.item.title}
-                    </h4>
-                  </div>
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    <span className="inline-flex items-center px-2.5 py-1 bg-indigo-100 text-indigo-700 text-xs font-medium rounded-full">
-                      {detailsModal.item.id || detailsModal.item._id}
-                    </span>
-                    {detailsModal.favorite?.addedByUrl && (
-                      <span className="inline-flex items-center px-2.5 py-1 bg-purple-100 text-purple-700 text-xs font-medium rounded-full border border-purple-200">
-                        <LinkIcon className="w-3 h-3 mr-1" />
-                        Added by You
-                      </span>
-                    )}
-                    {detailsModal.item.status && (
-                      <span
-                        className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(
-                          detailsModal.item.status
-                        )}`}
+            {detailsModal.loading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2
+                  className="w-8 h-8 animate-spin"
+                  style={{ color: "#2F3C96" }}
+                />
+                <span className="ml-3 text-sm" style={{ color: "#787878" }}>
+                  Loading detailed trial information...
+                </span>
+              </div>
+            ) : detailsModal.item && detailsModal.type === "trial" ? (
+              <div className="flex flex-col h-full -mx-6 -my-6">
+                <div className="space-y-6 flex-1 overflow-y-auto px-6 pt-6 pb-24">
+                  {/* Header */}
+                  <div
+                    className="pb-4 border-b sticky top-0 bg-white z-10 -mt-6 pt-6 -mx-6 px-6"
+                    style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+                  >
+                    <div className="flex items-center gap-3 mb-2">
+                      <Beaker
+                        className="w-5 h-5"
+                        style={{ color: "#2F3C96" }}
+                      />
+                      <h4
+                        className="font-bold text-lg"
+                        style={{ color: "#2F3C96" }}
                       >
-                        {detailsModal.item.status.replace(/_/g, " ")}
-                      </span>
-                    )}
-                    {detailsModal.item.phase && (
-                      <span className="inline-flex items-center px-2.5 py-1 bg-slate-100 text-slate-700 text-xs font-medium rounded-full">
-                        Phase {detailsModal.item.phase}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Description */}
-                {detailsModal.item.description && (
-                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-                    <h4 className="font-bold text-slate-900 mb-3 flex items-center gap-2 text-base">
-                      <FileText className="w-5 h-5 text-indigo-600" />
-                      Description
-                    </h4>
-                    <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-line">
-                      {detailsModal.item.description}
-                    </p>
-                  </div>
-                )}
-
-                {/* Location */}
-                {detailsModal.item.location &&
-                  detailsModal.item.location !== "Not specified" && (
-                    <div className="bg-green-50 rounded-xl p-4 border border-green-200">
-                      <h4 className="font-bold text-slate-900 mb-3 flex items-center gap-2 text-base">
-                        <MapPin className="w-5 h-5 text-green-600" />
-                        Trial Locations
+                        {detailsModal.item.simplifiedTitle ||
+                          detailsModal.item.simplifiedDetails?.title ||
+                          detailsModal.item.title}
                       </h4>
-                      <p className="text-sm text-slate-700 leading-relaxed">
-                        {detailsModal.item.location}
+                    </div>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      <span
+                        className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full border"
+                        style={{
+                          backgroundColor: "rgba(209, 211, 229, 1)",
+                          color: "#253075",
+                          borderColor: "rgba(163, 167, 203, 1)",
+                        }}
+                      >
+                        {detailsModal.item._id || detailsModal.item.id || "N/A"}
+                      </span>
+                      {detailsModal.favorite?.addedByUrl && (
+                        <span className="inline-flex items-center px-2.5 py-1 bg-purple-100 text-purple-700 text-xs font-medium rounded-full border border-purple-200">
+                          <LinkIcon className="w-3 h-3 mr-1" />
+                          Added by You
+                        </span>
+                      )}
+                      {detailsModal.item.status && (
+                        <span
+                          className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(
+                            detailsModal.item.status
+                          )}`}
+                        >
+                          {detailsModal.item.status.replace(/_/g, " ")}
+                        </span>
+                      )}
+                      {detailsModal.item.phase && (
+                        <span
+                          className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full border"
+                          style={{
+                            backgroundColor: "#F5F5F5",
+                            color: "#787878",
+                            borderColor: "rgba(232, 232, 232, 1)",
+                          }}
+                        >
+                          Phase {detailsModal.item.phase}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 1. Study Purpose */}
+                  {(detailsModal.item.simplifiedDetails?.studyPurpose ||
+                    detailsModal.item.description ||
+                    detailsModal.item.conditionDescription) && (
+                    <div
+                      className="bg-gradient-to-br rounded-xl p-5 mt-10 border shadow-sm"
+                      style={{
+                        background:
+                          "linear-gradient(135deg, rgba(232, 233, 242, 1), rgba(245, 242, 248, 1))",
+                        borderColor: "rgba(163, 167, 203, 1)",
+                      }}
+                    >
+                      <h4
+                        className="font-bold mb-3 flex items-center gap-2 text-base"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        <FileText
+                          className="w-5 h-5"
+                          style={{ color: "#2F3C96" }}
+                        />
+                        Study Purpose
+                      </h4>
+                      <p
+                        className="text-sm leading-relaxed whitespace-pre-line"
+                        style={{ color: "#787878" }}
+                      >
+                        {detailsModal.item.simplifiedDetails?.studyPurpose ||
+                          detailsModal.item.description ||
+                          detailsModal.item.conditionDescription}
                       </p>
                     </div>
                   )}
 
-                {/* Conditions */}
-                {detailsModal.item.conditions?.length > 0 && (
-                  <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
-                    <h4 className="font-bold text-slate-900 mb-3 flex items-center gap-2 text-base">
-                      <Activity className="w-5 h-5 text-blue-600" />
-                      Conditions
-                    </h4>
-                    <div className="flex flex-wrap gap-2">
-                      {detailsModal.item.conditions.map((condition, idx) => (
-                        <span
-                          key={idx}
-                          className="px-3 py-1.5 bg-white text-blue-700 text-sm font-medium rounded-lg border border-blue-300 shadow-sm"
+                  {/* 2. Who Can Join (Eligibility) */}
+                  {(detailsModal.item.simplifiedDetails?.eligibilityCriteria ||
+                    detailsModal.item.eligibility) && (
+                    <div
+                      className="bg-gradient-to-br rounded-xl p-5 border shadow-sm"
+                      style={{
+                        background:
+                          "linear-gradient(135deg, rgba(245, 242, 248, 1), rgba(232, 224, 239, 1))",
+                        borderColor: "#D0C4E2",
+                      }}
+                    >
+                      <h4
+                        className="font-bold mb-4 flex items-center gap-2 text-base"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        <ListChecks
+                          className="w-5 h-5"
+                          style={{ color: "#2F3C96" }}
+                        />
+                        Who Can Join (Eligibility)
+                      </h4>
+
+                      {/* Show simplified summary if available */}
+                      {detailsModal.item.simplifiedDetails?.eligibilityCriteria
+                        ?.summary && (
+                        <div
+                          className="bg-white rounded-lg p-4 border mb-4"
+                          style={{ borderColor: "rgba(232, 224, 239, 1)" }}
                         >
-                          {condition}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Eligibility */}
-                {detailsModal.item.eligibility && (
-                  <div className="bg-gradient-to-br from-indigo-50 to-blue-50 rounded-xl p-5 border border-indigo-200">
-                    <h4 className="font-bold text-slate-900 mb-4 flex items-center gap-2 text-base">
-                      <ListChecks className="w-5 h-5 text-indigo-600" />
-                      Eligibility Criteria
-                    </h4>
-
-                    {/* Quick Eligibility Info Cards */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-                      {/* Gender */}
-                      <div className="bg-white rounded-lg p-3 border border-indigo-100 shadow-sm">
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <Users className="w-4 h-4 text-indigo-600" />
-                          <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                            Gender
-                          </span>
+                          <p
+                            className="text-sm leading-relaxed"
+                            style={{ color: "#787878" }}
+                          >
+                            {
+                              detailsModal.item.simplifiedDetails
+                                .eligibilityCriteria.summary
+                            }
+                          </p>
                         </div>
-                        <p className="text-sm font-bold text-slate-900">
-                          {detailsModal.item.eligibility.gender || "All"}
-                        </p>
+                      )}
+
+                      {/* Quick Eligibility Info Cards */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                        {/* Gender */}
+                        <div
+                          className="bg-white rounded-lg p-3 border shadow-sm"
+                          style={{ borderColor: "rgba(232, 224, 239, 1)" }}
+                        >
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <Users
+                              className="w-4 h-4"
+                              style={{ color: "#2F3C96" }}
+                            />
+                            <span
+                              className="text-xs font-semibold uppercase tracking-wide"
+                              style={{ color: "#787878" }}
+                            >
+                              Gender
+                            </span>
+                          </div>
+                          <p
+                            className="text-sm font-bold"
+                            style={{ color: "#2F3C96" }}
+                          >
+                            {detailsModal.item.simplifiedDetails
+                              ?.eligibilityCriteria?.gender ||
+                              detailsModal.item.eligibility?.gender ||
+                              "All"}
+                          </p>
+                        </div>
+
+                        {/* Age Range */}
+                        <div
+                          className="bg-white rounded-lg p-3 border shadow-sm"
+                          style={{ borderColor: "rgba(232, 224, 239, 1)" }}
+                        >
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <Calendar
+                              className="w-4 h-4"
+                              style={{ color: "#2F3C96" }}
+                            />
+                            <span
+                              className="text-xs font-semibold uppercase tracking-wide"
+                              style={{ color: "#787878" }}
+                            >
+                              Age Range
+                            </span>
+                          </div>
+                          <p
+                            className="text-sm font-bold"
+                            style={{ color: "#2F3C96" }}
+                          >
+                            {detailsModal.item.simplifiedDetails
+                              ?.eligibilityCriteria?.ageRange ||
+                              (detailsModal.item.eligibility?.minimumAge !==
+                                "Not specified" &&
+                              detailsModal.item.eligibility?.minimumAge
+                                ? detailsModal.item.eligibility.minimumAge
+                                : "N/A") +
+                                " - " +
+                                (detailsModal.item.eligibility?.maximumAge !==
+                                  "Not specified" &&
+                                detailsModal.item.eligibility?.maximumAge
+                                  ? detailsModal.item.eligibility.maximumAge
+                                  : "N/A")}
+                          </p>
+                        </div>
+
+                        {/* Healthy Volunteers */}
+                        <div
+                          className="bg-white rounded-lg p-3 border shadow-sm"
+                          style={{ borderColor: "rgba(232, 224, 239, 1)" }}
+                        >
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <CheckCircle
+                              className="w-4 h-4"
+                              style={{ color: "#2F3C96" }}
+                            />
+                            <span
+                              className="text-xs font-semibold uppercase tracking-wide"
+                              style={{ color: "#787878" }}
+                            >
+                              Volunteers
+                            </span>
+                          </div>
+                          <p
+                            className="text-sm font-bold"
+                            style={{ color: "#2F3C96" }}
+                          >
+                            {detailsModal.item.simplifiedDetails
+                              ?.eligibilityCriteria?.volunteers ||
+                              detailsModal.item.eligibility
+                                ?.healthyVolunteers ||
+                              "Unknown"}
+                          </p>
+                        </div>
                       </div>
 
-                      {/* Age Range */}
-                      <div className="bg-white rounded-lg p-3 border border-indigo-100 shadow-sm">
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <Calendar className="w-4 h-4 text-indigo-600" />
-                          <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                            Age Range
-                          </span>
-                        </div>
-                        <p className="text-sm font-bold text-slate-900">
-                          {detailsModal.item.eligibility.minimumAge !==
-                            "Not specified" &&
-                          detailsModal.item.eligibility.minimumAge
-                            ? detailsModal.item.eligibility.minimumAge
-                            : "N/A"}
-                          {" - "}
-                          {detailsModal.item.eligibility.maximumAge !==
-                            "Not specified" &&
-                          detailsModal.item.eligibility.maximumAge
-                            ? detailsModal.item.eligibility.maximumAge
-                            : "N/A"}
-                        </p>
-                      </div>
-
-                      {/* Healthy Volunteers */}
-                      <div className="bg-white rounded-lg p-3 border border-indigo-100 shadow-sm">
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <CheckCircle className="w-4 h-4 text-indigo-600" />
-                          <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                            Volunteers
-                          </span>
-                        </div>
-                        <p className="text-sm font-bold text-slate-900">
-                          {detailsModal.item.eligibility.healthyVolunteers ||
-                            "Unknown"}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Detailed Eligibility Criteria */}
-                    {detailsModal.item.eligibility.criteria &&
-                      detailsModal.item.eligibility.criteria !==
-                        "Not specified" && (
-                        <div className="mt-4 pt-4 border-t border-indigo-200">
-                          <h5 className="font-semibold text-slate-800 mb-3 flex items-center gap-2 text-sm">
-                            <Info className="w-4 h-4 text-indigo-600" />
+                      {/* Detailed Eligibility Criteria - Show simplified if available */}
+                      {(detailsModal.item.simplifiedDetails?.eligibilityCriteria
+                        ?.detailedCriteria ||
+                        (detailsModal.item.eligibility?.criteria &&
+                          detailsModal.item.eligibility.criteria !==
+                            "Not specified")) && (
+                        <div
+                          className="mt-4 pt-4 border-t"
+                          style={{ borderColor: "#D0C4E2" }}
+                        >
+                          <h5
+                            className="font-semibold mb-3 flex items-center gap-2 text-sm"
+                            style={{ color: "#2F3C96" }}
+                          >
+                            <Info
+                              className="w-4 h-4"
+                              style={{ color: "#2F3C96" }}
+                            />
                             Detailed Eligibility Criteria
                           </h5>
-                          <div className="bg-white rounded-lg p-4 border border-indigo-100">
-                            <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-line">
-                              {detailsModal.item.eligibility.criteria}
+                          <div
+                            className="bg-white rounded-lg p-4 border"
+                            style={{ borderColor: "rgba(232, 224, 239, 1)" }}
+                          >
+                            <p
+                              className="text-sm leading-relaxed whitespace-pre-line"
+                              style={{ color: "#787878" }}
+                            >
+                              {detailsModal.item.simplifiedDetails
+                                ?.eligibilityCriteria?.detailedCriteria ||
+                                detailsModal.item.eligibility.criteria}
                             </p>
                           </div>
                         </div>
                       )}
-                  </div>
-                )}
-
-                {/* Contacts */}
-                {detailsModal.item.contacts?.length > 0 && (
-                  <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-                    <h4 className="font-bold text-slate-900 mb-3 flex items-center gap-2 text-base">
-                      <User className="w-5 h-5 text-indigo-600" />
-                      Contact Information
-                    </h4>
-                    <div className="space-y-3">
-                      {detailsModal.item.contacts.map((contact, i) => (
-                        <div
-                          key={i}
-                          className="bg-white rounded-lg p-4 border border-slate-200 shadow-sm"
-                        >
-                          {contact.name && (
-                            <div className="font-bold text-slate-900 mb-2 text-sm">
-                              {contact.name}
-                            </div>
-                          )}
-                          <div className="space-y-1.5">
-                            {contact.email && (
-                              <a
-                                href={`mailto:${contact.email}`}
-                                className="flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700 font-medium"
-                              >
-                                <Mail className="w-4 h-4" />
-                                {contact.email}
-                              </a>
-                            )}
-                            {contact.phone && (
-                              <div className="flex items-center gap-2 text-sm text-slate-700">
-                                <Send className="w-4 h-4" />
-                                {contact.phone}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
                     </div>
-                  </div>
-                )}
+                  )}
+
+                  {/* Conditions Studied - Show simplified if available */}
+                  {(detailsModal.item.simplifiedDetails?.conditionsStudied ||
+                    (detailsModal.item.conditions &&
+                      detailsModal.item.conditions.length > 0)) && (
+                    <div
+                      className="bg-gradient-to-br rounded-xl p-5 border shadow-sm"
+                      style={{
+                        background:
+                          "linear-gradient(135deg, rgba(232, 233, 242, 1), rgba(245, 242, 248, 1))",
+                        borderColor: "rgba(163, 167, 203, 1)",
+                      }}
+                    >
+                      <h4
+                        className="font-bold mb-3 flex items-center gap-2 text-base"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        <Activity
+                          className="w-5 h-5"
+                          style={{ color: "#2F3C96" }}
+                        />
+                        Conditions Studied
+                      </h4>
+                      {detailsModal.item.simplifiedDetails
+                        ?.conditionsStudied ? (
+                        <p
+                          className="text-sm leading-relaxed"
+                          style={{ color: "#787878" }}
+                        >
+                          {
+                            detailsModal.item.simplifiedDetails
+                              .conditionsStudied
+                          }
+                        </p>
+                      ) : (
+                        <div className="flex flex-wrap gap-2">
+                          {detailsModal.item.conditions.map(
+                            (condition, idx) => (
+                              <span
+                                key={idx}
+                                className="px-3 py-1.5 bg-white text-sm font-medium rounded-lg border"
+                                style={{
+                                  color: "#2F3C96",
+                                  borderColor: "#D0C4E2",
+                                }}
+                              >
+                                {condition}
+                              </span>
+                            )
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* View Full Trial Button */}
+                  {(detailsModal.item.id || detailsModal.item._id) && (
+                    <div
+                      className="mt-6 pt-6 border-t"
+                      style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+                    >
+                      <a
+                        href={`https://clinicaltrials.gov/study/${
+                          detailsModal.item.id || detailsModal.item._id
+                        }`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-xl transition-all w-full"
+                        style={{
+                          color: "#FFFFFF",
+                          backgroundColor: "#2F3C96",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.target.style.backgroundColor = "#253075";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.target.style.backgroundColor = "#2F3C96";
+                        }}
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                        View Full Trial
+                      </a>
+                    </div>
+                  )}
+                </div>
 
                 {/* Sticky Footer */}
-                <div className="sticky bottom-[-100]  px-6 py-4 -mx-6 -mb-6 flex gap-3 mt-6 mx-4">
+                <div
+                  className="sticky bottom-0 bg-white border-t px-6 py-4 -mx-6 -mb-6 flex gap-3 mt-6"
+                  style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+                >
                   <button
                     onClick={() => {
                       const fav = items.find(
@@ -1707,7 +2373,7 @@ export default function Favorites() {
                   </button>
                 </div>
               </div>
-            )}
+            ) : null}
 
             {detailsModal.item && detailsModal.type === "publication" && (
               <div className="flex flex-col h-full -mx-6 -my-6">
@@ -2062,8 +2728,193 @@ export default function Favorites() {
                 </div>
               )}
           </Modal>
+
+          {/* Contact Information Modal */}
+          <Modal
+            isOpen={contactInfoModal.open}
+            onClose={closeContactInfoModal}
+            title="Contact Information"
+          >
+            <div className="space-y-4">
+              {contactInfoModal.loading ? (
+                <div className="text-center py-8">
+                  <Loader2
+                    className="w-8 h-8 animate-spin mx-auto mb-4"
+                    style={{ color: "#2F3C96" }}
+                  />
+                  <p className="text-sm" style={{ color: "#787878" }}>
+                    Loading contact information...
+                  </p>
+                </div>
+              ) : contactInfoModal.trial ? (
+                <>
+                  <div className="pb-4 border-b border-slate-200">
+                    <div className="flex items-center gap-3 mb-2">
+                      <h4 className="font-bold text-slate-900 text-lg">
+                        {contactInfoModal.trial?.title || "Trial"}
+                      </h4>
+                    </div>
+                  </div>
+
+                  {contactInfoModal.trial.contacts &&
+                  contactInfoModal.trial.contacts.length > 0 ? (
+                    <div className="space-y-4">
+                      {contactInfoModal.trial.contacts.map((contact, i) => (
+                        <div
+                          key={i}
+                          className="bg-gray-50 rounded-lg p-4 border"
+                          style={{ borderColor: "rgba(232, 232, 232, 1)" }}
+                        >
+                          {contact.name && (
+                            <div
+                              className="font-bold mb-3 text-base flex items-center gap-2"
+                              style={{ color: "#2F3C96" }}
+                            >
+                              <User
+                                className="w-4 h-4"
+                                style={{ color: "#787878" }}
+                              />
+                              {contact.name}
+                            </div>
+                          )}
+                          <div className="space-y-2">
+                            {contact.email && (
+                              <a
+                                href={`mailto:${contact.email}`}
+                                className="flex items-center gap-2 text-sm font-medium transition-colors"
+                                style={{ color: "#2F3C96" }}
+                                onMouseEnter={(e) =>
+                                  (e.target.style.color = "#253075")
+                                }
+                                onMouseLeave={(e) =>
+                                  (e.target.style.color = "#2F3C96")
+                                }
+                              >
+                                <Mail className="w-4 h-4" />
+                                {contact.email}
+                              </a>
+                            )}
+                            {contact.phone && (
+                              <div
+                                className="flex items-center gap-2 text-sm"
+                                style={{ color: "#787878" }}
+                              >
+                                <Send
+                                  className="w-4 h-4"
+                                  style={{ color: "#2F3C96" }}
+                                />
+                                <a
+                                  href={`tel:${contact.phone}`}
+                                  className="transition-colors"
+                                  style={{ color: "#787878" }}
+                                  onMouseEnter={(e) =>
+                                    (e.target.style.color = "#2F3C96")
+                                  }
+                                  onMouseLeave={(e) =>
+                                    (e.target.style.color = "#787878")
+                                  }
+                                >
+                                  {contact.phone}
+                                </a>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <Info className="w-8 h-8 text-gray-400" />
+                      </div>
+                      <p className="text-gray-600">
+                        No contact information available for this trial.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={closeContactInfoModal}
+                      className="flex-1 px-6 py-2.5 border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl transition-all"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </Modal>
         </div>
       </div>
+
+      {/* Add by URL Modal */}
+      <Modal
+        isOpen={addByUrlModal}
+        onClose={() => {
+          setAddByUrlModal(false);
+          setUrlInput("");
+        }}
+        title="Add Favorite by URL"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">
+            Paste a ClinicalTrials.gov or PubMed URL to automatically add it to
+            your favorites
+          </p>
+          <div className="flex flex-col gap-3">
+            <input
+              type="url"
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              onKeyPress={async (e) => {
+                if (e.key === "Enter") {
+                  const success = await addFavoriteByUrl();
+                  if (success) {
+                    setAddByUrlModal(false);
+                  }
+                }
+              }}
+              placeholder="https://clinicaltrials.gov/study/NCT... or https://pubmed.ncbi.nlm.nih.gov/..."
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2F3C96] focus:border-[#2F3C96] transition text-slate-900 placeholder-slate-400"
+              disabled={addingByUrl}
+            />
+            <button
+              onClick={async () => {
+                const success = await addFavoriteByUrl();
+                if (success) {
+                  setAddByUrlModal(false);
+                }
+              }}
+              disabled={addingByUrl || !urlInput.trim()}
+              className="w-full px-6 py-2.5 bg-gradient-to-r from-[#2F3C96] to-[#474F97] text-white rounded-lg font-semibold hover:from-[#474F97] hover:to-[#757BB1] transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {addingByUrl ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4" />
+                  Add to Favorites
+                </>
+              )}
+            </button>
+          </div>
+          <div className="mt-4 pt-4 border-t border-slate-200">
+            <p className="text-xs font-medium text-slate-700 mb-2">
+              Supported URLs:
+            </p>
+            <ul className="text-xs text-slate-600 space-y-1 list-disc list-inside">
+              <li>
+                ClinicalTrials.gov: https://clinicaltrials.gov/study/NCT12345678
+              </li>
+              <li>PubMed: https://pubmed.ncbi.nlm.nih.gov/12345678/</li>
+            </ul>
+          </div>
+        </div>
+      </Modal>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog

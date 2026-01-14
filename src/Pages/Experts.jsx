@@ -25,7 +25,7 @@ import {
 import Layout from "../components/Layout.jsx";
 import Button from "../components/ui/Button.jsx";
 import Modal from "../components/ui/Modal.jsx";
-import AnimatedBackgroundDiff from "../components/ui/AnimatedBackgroundDiff.jsx";
+import AnimatedBackground from "../components/ui/AnimatedBackground.jsx";
 import { BorderBeam } from "@/components/ui/border-beam";
 import { AuroraText } from "@/components/ui/aurora-text";
 import SmartSearchInput from "../components/SmartSearchInput.jsx";
@@ -51,6 +51,7 @@ export default function Experts() {
   const [useMedicalInterest, setUseMedicalInterest] = useState(true); // Toggle for using medical interest
   const [userMedicalInterest, setUserMedicalInterest] = useState(""); // User's medical interest
   const [isInitialLoad, setIsInitialLoad] = useState(true); // Track if it's the initial load
+  const [expertSource, setExpertSource] = useState("global"); // "global" or "platform"
   const [isSignedIn, setIsSignedIn] = useState(false); // Track if user is signed in
   const [user, setUser] = useState(null); // Track user state
   const [results, setResults] = useState([]);
@@ -66,20 +67,7 @@ export default function Experts() {
     expert: null,
   });
 
-  // Quick search categories
-  const quickFilters = [
-    { label: "Oncology", value: "oncology", icon: "🩺" },
-    { label: "Cardiology", value: "cardiology", icon: "❤️" },
-    { label: "Neurology", value: "neurology", icon: "🧠" },
-    { label: "Immunology", value: "immunology", icon: "🦠" },
-    { label: "Genetics", value: "genetics", icon: "🧬" },
-    { label: "Pediatrics", value: "pediatrics", icon: "👶" },
-  ];
-
-  const sharedExpertSuggestionTerms = [
-    ...quickFilters.map((filter) => filter.label),
-    ...quickFilters.map((filter) => filter.value),
-  ].filter(Boolean);
+  const sharedExpertSuggestionTerms = [];
 
   const diseaseSuggestionTerms = [
     ...sharedExpertSuggestionTerms,
@@ -117,9 +105,6 @@ export default function Experts() {
         ? overrides.diseaseOfInterest
         : diseaseOfInterest;
 
-    // Build search query: "researchArea in diseaseOfInterest in location"
-    const searchQueryParts = [];
-
     // Mark that initial load is complete when user performs search
     if (isInitialLoad) {
       setIsInitialLoad(false);
@@ -138,60 +123,111 @@ export default function Experts() {
       currentDiseaseOfInterest = userMedicalInterest;
     }
 
-    if (currentResearchArea) {
-      searchQueryParts.push(currentResearchArea);
-    }
+    // Determine which endpoint to use based on expertSource
+    const endpoint = expertSource === "platform" 
+      ? "/api/search/experts/platform"
+      : "/api/search/experts";
 
-    if (currentDiseaseOfInterest) {
-      if (searchQueryParts.length > 0) {
-        searchQueryParts.push(`in ${currentDiseaseOfInterest}`);
-      } else {
-        searchQueryParts.push(currentDiseaseOfInterest);
+    // For platform experts, use different query structure
+    if (expertSource === "platform") {
+      // Allow browsing all experts if no search terms provided
+      if (currentResearchArea) {
+        params.set("researchArea", currentResearchArea);
       }
-    }
-
-    // Add location
-    let locationStr = null;
-    if (locationMode === "current" && userLocation) {
-      locationStr = [userLocation.city, userLocation.country]
-        .filter(Boolean)
-        .join(", ");
-      if (locationStr) {
-        searchQueryParts.push(`in ${locationStr}`);
-        params.set("location", locationStr);
-      }
-    } else if (locationMode === "custom" && location.trim()) {
-      searchQueryParts.push(`in ${location.trim()}`);
-      params.set("location", location.trim());
-      locationStr = location.trim();
-    } else if (locationMode === "global") {
-      searchQueryParts.push("global");
-    }
-
-    const searchQuery = searchQueryParts.join(" ");
-
-    if (searchQuery) params.set("q", searchQuery);
-
-    // Add user profile data for matching
-    if (userData?._id || userData?.id) {
-      params.set("userId", userData._id || userData.id);
-    } else if (currentDiseaseOfInterest || locationStr) {
       if (currentDiseaseOfInterest) {
-        params.set("conditions", currentDiseaseOfInterest);
+        params.set("diseaseOfInterest", currentDiseaseOfInterest);
       }
+      
+      // Add location
+      let locationStr = null;
       if (locationMode === "current" && userLocation) {
-        params.set("userLocation", JSON.stringify(userLocation));
+        locationStr = [userLocation.city, userLocation.country]
+          .filter(Boolean)
+          .join(", ");
+        if (locationStr) {
+          params.set("location", locationStr);
+        }
       } else if (locationMode === "custom" && location.trim()) {
-        params.set(
-          "userLocation",
-          JSON.stringify({ country: location.trim() })
-        );
+        params.set("location", location.trim());
+        locationStr = location.trim();
+      }
+
+      // Add user profile data for matching
+      if (userData?._id || userData?.id) {
+        params.set("userId", userData._id || userData.id);
+      } else if (currentDiseaseOfInterest || locationStr) {
+        if (currentDiseaseOfInterest) {
+          params.set("conditions", currentDiseaseOfInterest);
+        }
+        if (locationMode === "current" && userLocation) {
+          params.set("userLocation", JSON.stringify(userLocation));
+        } else if (locationMode === "custom" && location.trim()) {
+          params.set(
+            "userLocation",
+            JSON.stringify({ country: location.trim() })
+          );
+        }
+      }
+    } else {
+      // For global experts, use the existing query structure
+      // Build search query: "researchArea in diseaseOfInterest in location"
+      const searchQueryParts = [];
+
+      if (currentResearchArea) {
+        searchQueryParts.push(currentResearchArea);
+      }
+
+      if (currentDiseaseOfInterest) {
+        if (searchQueryParts.length > 0) {
+          searchQueryParts.push(`in ${currentDiseaseOfInterest}`);
+        } else {
+          searchQueryParts.push(currentDiseaseOfInterest);
+        }
+      }
+
+      // Add location
+      let locationStr = null;
+      if (locationMode === "current" && userLocation) {
+        locationStr = [userLocation.city, userLocation.country]
+          .filter(Boolean)
+          .join(", ");
+        if (locationStr) {
+          searchQueryParts.push(`in ${locationStr}`);
+          params.set("location", locationStr);
+        }
+      } else if (locationMode === "custom" && location.trim()) {
+        searchQueryParts.push(`in ${location.trim()}`);
+        params.set("location", location.trim());
+        locationStr = location.trim();
+      } else if (locationMode === "global") {
+        searchQueryParts.push("global");
+      }
+
+      const searchQuery = searchQueryParts.join(" ");
+
+      if (searchQuery) params.set("q", searchQuery);
+
+      // Add user profile data for matching
+      if (userData?._id || userData?.id) {
+        params.set("userId", userData._id || userData.id);
+      } else if (currentDiseaseOfInterest || locationStr) {
+        if (currentDiseaseOfInterest) {
+          params.set("conditions", currentDiseaseOfInterest);
+        }
+        if (locationMode === "current" && userLocation) {
+          params.set("userLocation", JSON.stringify(userLocation));
+        } else if (locationMode === "custom" && location.trim()) {
+          params.set(
+            "userLocation",
+            JSON.stringify({ country: location.trim() })
+          );
+        }
       }
     }
 
     try {
       const response = await apiFetch(
-        `/api/search/experts?${params.toString()}`
+        `${endpoint}?${params.toString()}`
       );
 
       // Handle case where apiFetch returns undefined (401 redirect)
@@ -262,21 +298,22 @@ export default function Experts() {
         });
         setResults(sortedResults);
 
-        // Save search state to sessionStorage
-        const searchState = {
-          researchArea: nextResearchArea,
-          diseaseOfInterest: nextDiseaseOfInterest,
-          location,
-          locationMode,
-          useMedicalInterest,
-          userMedicalInterest,
-          results: sortedResults,
-          isInitialLoad: false,
-        };
-        sessionStorage.setItem(
-          "experts_search_state",
-          JSON.stringify(searchState)
-        );
+          // Save search state to sessionStorage
+          const searchState = {
+            researchArea: nextResearchArea,
+            diseaseOfInterest: nextDiseaseOfInterest,
+            location,
+            locationMode,
+            useMedicalInterest,
+            userMedicalInterest,
+            expertSource,
+            results: sortedResults,
+            isInitialLoad: false,
+          };
+          sessionStorage.setItem(
+            "experts_search_state",
+            JSON.stringify(searchState)
+          );
 
         if (data.message) {
           toast.error(data.message);
@@ -321,46 +358,84 @@ export default function Experts() {
       const params = new URLSearchParams();
       const userData = JSON.parse(localStorage.getItem("user") || "{}");
 
-      // Build search query
-      const searchQueryParts = [filterValue];
-      let locationStr = null;
+      // Determine which endpoint to use based on expertSource
+      const endpoint = expertSource === "platform" 
+        ? "/api/search/experts/platform"
+        : "/api/search/experts";
 
-      if (locationMode === "current" && userLocation) {
-        locationStr = [userLocation.city, userLocation.country]
-          .filter(Boolean)
-          .join(", ");
-        if (locationStr) {
-          searchQueryParts.push(`in ${locationStr}`);
-          params.set("location", locationStr);
-        }
-      } else if (locationMode === "custom" && location.trim()) {
-        searchQueryParts.push(`in ${location.trim()}`);
-        params.set("location", location.trim());
-        locationStr = location.trim();
-      } else if (locationMode === "global") {
-        searchQueryParts.push("global");
-      }
-
-      const searchQuery = searchQueryParts.join(" ");
-      params.set("q", searchQuery);
-
-      // Add user profile data for matching
-      if (userData?._id || userData?.id) {
-        params.set("userId", userData._id || userData.id);
-      } else if (locationStr) {
+      // For platform experts, use different query structure
+      if (expertSource === "platform") {
+        params.set("researchArea", filterValue);
+        
+        // Add location
+        let locationStr = null;
         if (locationMode === "current" && userLocation) {
-          params.set("userLocation", JSON.stringify(userLocation));
+          locationStr = [userLocation.city, userLocation.country]
+            .filter(Boolean)
+            .join(", ");
+          if (locationStr) {
+            params.set("location", locationStr);
+          }
         } else if (locationMode === "custom" && location.trim()) {
-          params.set(
-            "userLocation",
-            JSON.stringify({ country: location.trim() })
-          );
+          params.set("location", location.trim());
+          locationStr = location.trim();
+        }
+
+        // Add user profile data for matching
+        if (userData?._id || userData?.id) {
+          params.set("userId", userData._id || userData.id);
+        } else if (locationStr) {
+          if (locationMode === "current" && userLocation) {
+            params.set("userLocation", JSON.stringify(userLocation));
+          } else if (locationMode === "custom" && location.trim()) {
+            params.set(
+              "userLocation",
+              JSON.stringify({ country: location.trim() })
+            );
+          }
+        }
+      } else {
+        // For global experts, use the existing query structure
+        const searchQueryParts = [filterValue];
+        let locationStr = null;
+
+        if (locationMode === "current" && userLocation) {
+          locationStr = [userLocation.city, userLocation.country]
+            .filter(Boolean)
+            .join(", ");
+          if (locationStr) {
+            searchQueryParts.push(`in ${locationStr}`);
+            params.set("location", locationStr);
+          }
+        } else if (locationMode === "custom" && location.trim()) {
+          searchQueryParts.push(`in ${location.trim()}`);
+          params.set("location", location.trim());
+          locationStr = location.trim();
+        } else if (locationMode === "global") {
+          searchQueryParts.push("global");
+        }
+
+        const searchQuery = searchQueryParts.join(" ");
+        params.set("q", searchQuery);
+
+        // Add user profile data for matching
+        if (userData?._id || userData?.id) {
+          params.set("userId", userData._id || userData.id);
+        } else if (locationStr) {
+          if (locationMode === "current" && userLocation) {
+            params.set("userLocation", JSON.stringify(userLocation));
+          } else if (locationMode === "custom" && location.trim()) {
+            params.set(
+              "userLocation",
+              JSON.stringify({ country: location.trim() })
+            );
+          }
         }
       }
 
       try {
         const response = await apiFetch(
-          `/api/search/experts?${params.toString()}`
+          `${endpoint}?${params.toString()}`
         );
 
         // Handle case where apiFetch returns undefined (401 redirect)
@@ -438,6 +513,7 @@ export default function Experts() {
             locationMode,
             useMedicalInterest,
             userMedicalInterest,
+            expertSource,
             results: sortedResults,
             isInitialLoad: false,
           };
@@ -747,6 +823,7 @@ export default function Experts() {
             : true
         );
         setUserMedicalInterest(state.userMedicalInterest || "");
+        setExpertSource(state.expertSource || "global");
         setResults(state.results || []);
         setIsInitialLoad(
           state.isInitialLoad !== undefined ? state.isInitialLoad : false
@@ -767,6 +844,7 @@ export default function Experts() {
       setLocationMode("global");
       setUseMedicalInterest(true);
       setUserMedicalInterest("");
+      setExpertSource("global");
       setResults([]);
       setIsInitialLoad(true);
       setIsSignedIn(false);
@@ -881,25 +959,9 @@ export default function Experts() {
           const medicalInterest = userData.medicalInterests[0];
           setUserMedicalInterest(medicalInterest); // Use first medical interest
 
-          // Only auto-search if no saved state exists (no previous searches before sign-in)
-          const savedState = sessionStorage.getItem("experts_search_state");
-          if (!savedState) {
-            // No previous searches, so auto-fill and search with user's medical interest
-            setDiseaseOfInterest(medicalInterest);
-            setUseMedicalInterest(true);
-
-            // Auto-trigger search with medical interest as disease of interest
-            setIsInitialLoad(false);
-            setResearchArea(""); // Clear research area, will use medical interest as disease
-            // Trigger search after state updates
-            setTimeout(() => {
-              search();
-            }, 100);
-          } else {
-            // User had previous searches before signing in, preserve them
-            // Just update medical interest info without triggering search
-            setUseMedicalInterest(true);
-          }
+          // Don't auto-search - user must manually search
+          // Just update medical interest info
+          setUseMedicalInterest(true);
         } else {
           setUseMedicalInterest(false);
         }
@@ -934,19 +996,17 @@ export default function Experts() {
 
   return (
     <Layout>
-      {/* Free Searches Indicator */}
-      <FreeSearchesIndicator user={user} />
 
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50 to-slate-100 relative overflow-hidden">
-        <AnimatedBackgroundDiff />
+        <AnimatedBackground />
 
         <div className="relative pt-24 px-4 md:px-8 mx-auto max-w-6xl pb-8 ">
           {/* Compact Header */}
           <div className="text-center mb-6 animate-fade-in">
-            <h1 className="text-3xl md:text-5xl font-bold bg-gradient-to-r from-indigo-700 via-indigo-600 to-blue-700 bg-clip-text text-transparent mb-1">
+            <h1 className="text-3xl md:text-5xl font-bold bg-gradient-to-r from-[#2F3C96] via-[#474F97] to-[#D0C4E2] bg-clip-text text-transparent mb-1">
               <AuroraText
                 speed={2.5}
-                colors={["#38bdf8", "#6366F1", "#818CF8", "#9333EA", "#C084FC"]}
+                colors={["#2F3C96", "#474F97", "#757BB1", "#B8A5D5", "#D0C4E2"]}
               >
                 Explore Health Experts
               </AuroraText>
@@ -954,22 +1014,9 @@ export default function Experts() {
             <p className="text-sm text-slate-600">
               Connect with medical professionals and researchers worldwide
             </p>
-          </div>
-
-          {/* Quick Search Categories */}
-          <div className="mb-4">
-            <div className="flex flex-wrap justify-center gap-2">
-              {quickFilters.map((filter, idx) => (
-                <button
-                  key={filter.value}
-                  onClick={() => quickSearch(filter.value)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 rounded-full hover:border-indigo-400 hover:bg-indigo-50 hover:shadow-lg transition-all duration-300 shadow-sm text-xs font-medium text-slate-700 hover:text-indigo-700 animate-fade-in active:bg-blue-50 active:border-blue-300"
-                  style={{ animationDelay: `${idx * 50}ms` }}
-                >
-                  <span className="text-sm">{filter.icon}</span>
-                  <span>{filter.label}</span>
-                </button>
-              ))}
+            {/* Free Searches Indicator */}
+            <div className="mt-3 flex justify-center items-center w-full">
+              <FreeSearchesIndicator user={user} centered={true} />
             </div>
           </div>
 
@@ -978,13 +1025,13 @@ export default function Experts() {
             <BorderBeam
               duration={10}
               size={100}
-              className="from-transparent via-indigo-500 to-transparent"
+              className="from-transparent via-[#2F3C96] to-transparent"
             />
             <BorderBeam
               duration={10}
               size={300}
               borderWidth={3}
-              className="from-transparent via-blue-500 to-transparent"
+              className="from-transparent via-[#D0C4E2] to-transparent"
             />
             <div className="flex flex-col gap-3">
               {/* Main Search Inputs */}
@@ -1109,6 +1156,39 @@ export default function Experts() {
                   />
                 )}
               </div>
+
+              {/* Expert Source Toggle */}
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs font-medium text-slate-700">
+                    Expert Source:
+                  </span>
+                  <button
+                    onClick={() => {
+                      setExpertSource("global");
+                    }}
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                      expertSource === "global"
+                        ? "bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-md"
+                        : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                    }`}
+                  >
+                    Global Experts
+                  </button>
+                  <button
+                    onClick={() => {
+                      setExpertSource("platform");
+                    }}
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                      expertSource === "platform"
+                        ? "bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-md"
+                        : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                    }`}
+                  >
+                    Platform Experts
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1175,63 +1255,86 @@ export default function Experts() {
                 return (
                   <div
                     key={itemId}
-                    className={`rounded-xl shadow-sm border transition-all duration-500  cursor-pointer group overflow-hidden transform hover:-translate-y-0.5 animate-fade-in ${
+                    className={`rounded-xl shadow-sm border transition-all duration-300 cursor-pointer group overflow-hidden transform hover:-translate-y-0.5 animate-fade-in ${
                       isExpanded
-                        ? "bg-gradient-to-br from-indigo-50/30 via-white to-blue-50/20 shadow-lg border-indigo-400 ring-2 ring-indigo-200 ring-opacity-50"
+                        ? "bg-white shadow-lg border-indigo-300 ring-1 ring-indigo-200 ring-opacity-50"
                         : "bg-white border-slate-200 hover:shadow-lg hover:border-indigo-300"
                     }`}
                     style={{ animationDelay: `${cardIdx * 50}ms` }}
                     onClick={() => toggleCardExpansion(expert)}
                   >
-                    <div
-                      className={`h-1 bg-gradient-to-r transition-all duration-300 ${
-                        isExpanded
-                          ? "from-indigo-600 to-indigo-500"
-                          : "from-indigo-500 to-blue-500 group-hover:from-indigo-600 group-hover:to-blue-600"
-                      }`}
-                    ></div>
-
-                    <div className="p-3">
+                    <div className="p-5">
                       {/* Match Badge Banner */}
                       {expert.matchPercentage !== undefined && (
-                        <div className="mb-2 -mt-1 -mx-3 px-3 py-1.5 bg-gradient-to-r from-purple-50 to-indigo-50 border-b border-purple-100">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5">
-                              <TrendingUp className="w-3.5 h-3.5 text-purple-600" />
-                              <span className="text-xs font-bold text-purple-700">
+                        <div className="mb-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <TrendingUp
+                                className="w-4 h-4"
+                                style={{ color: "#2F3C96" }}
+                              />
+                              <span
+                                className="text-sm font-bold"
+                                style={{ color: "#2F3C96" }}
+                              >
                                 {expert.matchPercentage}% Match
                               </span>
                             </div>
                             {expert.matchExplanation && (
-                              <span className="text-[10px] text-purple-600 truncate flex-1 ml-1.5 max-w-[150px] sm:max-w-none">
+                              <span
+                                className="text-xs truncate flex-1 ml-1.5 max-w-[150px] sm:max-w-none"
+                                style={{ color: "#2F3C96" }}
+                              >
                                 {expert.matchExplanation}
                               </span>
                             )}
+                          </div>
+                          {/* Progress Bar */}
+                          <div
+                            className="w-full h-2.5 rounded-full overflow-hidden"
+                            style={{
+                              backgroundColor: "rgba(208, 196, 226, 0.3)",
+                            }}
+                          >
+                            <div
+                              className="h-full rounded-full transition-all duration-500"
+                              style={{
+                                width: `${expert.matchPercentage}%`,
+                                background:
+                                  "linear-gradient(90deg, #2F3C96, #253075)",
+                              }}
+                            ></div>
                           </div>
                         </div>
                       )}
 
                       <div className="flex items-start gap-4">
                         {/* Avatar */}
-                        <div className="w-10 h-10 bg-gradient-to-br from-indigo-600 via-indigo-600 to-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-lg shadow-md shrink-0 ring-2 ring-indigo-100 group-hover:ring-indigo-300 group-hover:shadow-lg transition-all duration-300 transform group-hover:scale-110">
+                        <div className="w-12 h-12 bg-gradient-to-br from-indigo-600 via-indigo-600 to-blue-600 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-md shrink-0 transition-all duration-300 group-hover:shadow-lg">
                           {expert.name?.charAt(0)?.toUpperCase() || "E"}
                         </div>
 
                         {/* Main Content */}
                         <div className="flex-1 min-w-0">
                           {/* Header */}
-                          <div className="flex items-start justify-between mb-1.5">
+                          <div className="flex items-start justify-between mb-3">
                             <div className="flex-1 min-w-0">
-                              <h3 className="text-sm font-bold text-slate-900 mb-1 leading-tight group-hover:text-indigo-700 transition-colors duration-300">
+                              <div className="flex items-center gap-2 mb-1">
+                                <User className="w-4 h-4 text-indigo-600" />
+                                <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full text-xs font-medium">
+                                  Expert
+                                </span>
+                              </div>
+                              <h3 className="text-base font-bold text-slate-900 mb-1">
                                 {expert.name || "Unknown Expert"}
                               </h3>
                               {expert.orcid && (
-                                <span className="text-sm text-slate-500 font-mono">
-                                  {expert.orcid}
-                                </span>
+                                <p className="text-xs text-indigo-600 mt-0.5">
+                                  ORCID: {expert.orcid}
+                                </p>
                               )}
                             </div>
-                            <div className="flex items-center gap-1 shrink-0">
+                            <div className="flex items-center gap-2 shrink-0">
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -1240,10 +1343,10 @@ export default function Experts() {
                                 disabled={favoritingItems.has(
                                   getFavoriteKey(expert)
                                 )}
-                                className={`p-1 rounded-md border transition-all duration-300 transform hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 ${
+                                className={`p-2 rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed ${
                                   isExpertFavorited
-                                    ? "bg-red-50 border-red-200 text-red-500 shadow-sm"
-                                    : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-red-500"
+                                    ? "bg-red-50 text-red-500 hover:bg-red-100"
+                                    : "text-slate-400 hover:bg-slate-100 hover:text-red-500"
                                 }`}
                                 title={
                                   isExpertFavorited
@@ -1252,118 +1355,108 @@ export default function Experts() {
                                 }
                               >
                                 {favoritingItems.has(getFavoriteKey(expert)) ? (
-                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                  <Loader2 className="w-4 h-4 animate-spin" />
                                 ) : (
                                   <Heart
-                                    className={`w-3 h-3 transition-all duration-300 ${
+                                    className={`w-4 h-4 transition-all duration-300 ${
                                       isExpertFavorited
-                                        ? "fill-current animate-pulse"
+                                        ? "fill-current"
                                         : ""
                                     }`}
                                   />
                                 )}
                               </button>
-                              <div
-                                className={`p-0.5 rounded-md transition-all duration-300 ${
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleCardExpansion(expert);
+                                }}
+                                className={`p-2 rounded-lg transition-all duration-300 ${
                                   isExpanded
                                     ? "bg-indigo-100 text-indigo-600"
-                                    : "text-slate-500 group-hover:text-indigo-600"
+                                    : "text-slate-500 hover:bg-slate-100 hover:text-indigo-600"
                                 }`}
                               >
                                 <ChevronDown
-                                  className={`w-3.5 h-3.5 transition-transform duration-500 ${
+                                  className={`w-4 h-4 transition-transform duration-500 ${
                                     isExpanded ? "rotate-180" : ""
                                   }`}
                                 />
-                              </div>
+                              </button>
                             </div>
                           </div>
 
                           {/* Basic Info */}
-                          <div className="space-y-0.5 mb-1.5">
+                          <div className="space-y-1 mb-3">
                             {expert.currentPosition && (
-                              <div className="flex items-start text-sm text-slate-700">
-                                <Briefcase className="w-3.5 h-3.5 mr-1.5 shrink-0 mt-0.5" />
-                                <span className="flex-1 leading-relaxed">
-                                  {expert.currentPosition}
-                                </span>
-                              </div>
+                              <p className="text-xs text-slate-700 line-clamp-1">
+                                {expert.currentPosition}
+                              </p>
                             )}
                             {!expert.currentPosition && expert.affiliation && (
-                              <div className="flex items-start text-sm text-slate-700">
-                                <Building2 className="w-3.5 h-3.5 mr-1.5 shrink-0 mt-0.5" />
-                                <span className="flex-1 leading-relaxed">
-                                  {expert.affiliation}
-                                </span>
-                              </div>
+                              <p className="text-xs text-slate-700 line-clamp-1">
+                                {expert.affiliation}
+                              </p>
                             )}
                             {expert.location && (
-                              <div className="flex items-center text-sm text-slate-600">
-                                <MapPin className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+                              <div className="flex items-center text-xs text-slate-600">
+                                <MapPin className="w-3 h-3 mr-1.5 shrink-0" />
                                 <span>{expert.location}</span>
                               </div>
                             )}
-                          </div>
-
-                          {/* Biography */}
-                          {expert.biography && (
-                            <div className="mb-1.5">
-                              <p className="text-sm text-slate-700 leading-relaxed line-clamp-3">
+                            {/* Biography */}
+                            {expert.biography && (
+                              <p className="text-xs text-slate-700 mt-2 line-clamp-2">
                                 {expert.biography}
                               </p>
-                            </div>
-                          )}
-
-                          {/* Research Interests */}
-                          {expert.researchInterests &&
-                            Array.isArray(expert.researchInterests) &&
-                            expert.researchInterests.length > 0 && (
-                              <div className="mb-1.5">
-                                <div className="flex flex-wrap gap-1.5">
+                            )}
+                            {/* Research Interests */}
+                            {expert.researchInterests &&
+                              Array.isArray(expert.researchInterests) &&
+                              expert.researchInterests.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-2">
                                   {expert.researchInterests
-                                    .slice(0, 5)
+                                    .slice(0, 3)
                                     .map((interest, idx) => (
                                       <span
                                         key={idx}
-                                        className="text-xs bg-gradient-to-r from-indigo-50 to-slate-50 text-indigo-700 px-2 py-0.5 rounded-md border border-indigo-200 hover:border-indigo-300 transition-all duration-300"
+                                        className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full"
                                       >
                                         {interest}
                                       </span>
                                     ))}
-                                  {expert.researchInterests.length > 2 && (
-                                    <span className="text-xs text-slate-500 px-2 py-0.5">
-                                      +{expert.researchInterests.length - 2}
+                                  {expert.researchInterests.length > 3 && (
+                                    <span className="text-xs text-slate-600">
+                                      +{expert.researchInterests.length - 3} more
                                     </span>
                                   )}
                                 </div>
-                              </div>
-                            )}
+                              )}
+                          </div>
 
                           {/* Expanded Publications Section */}
                           <div
                             className={`overflow-hidden transition-all duration-500 ease-in-out ${
                               isExpanded
-                                ? "max-h-[500px] opacity-100 mt-2"
+                                ? "max-h-[500px] opacity-100 mt-3"
                                 : "max-h-0 opacity-0 mt-0"
                             }`}
                           >
-                            <div className="pt-2 border-t border-slate-200">
+                            <div className="pt-3 border-t border-slate-200">
                               {isLoadingPubs ? (
-                                <div className="flex items-center justify-center py-3">
-                                  <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-500" />
-                                  <span className="ml-1.5 text-xs text-slate-600">
+                                <div className="flex items-center justify-center py-4">
+                                  <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+                                  <span className="ml-2 text-sm text-slate-600">
                                     Loading publications...
                                   </span>
                                 </div>
                               ) : expertPublications.length > 0 ? (
-                                <div className="space-y-2">
-                                  <div className="flex items-center gap-1.5">
-                                    <div className="h-px flex-1 bg-gradient-to-r from-transparent via-indigo-300 to-transparent"></div>
-                                    <h4 className="text-xs font-semibold text-indigo-700 flex items-center gap-1 px-1.5">
-                                      <BookOpen className="w-3 h-3" />
+                                <div className="space-y-3">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <BookOpen className="w-4 h-4 text-indigo-600" />
+                                    <h4 className="text-sm font-semibold text-indigo-700">
                                       Top Publications
                                     </h4>
-                                    <div className="h-px flex-1 bg-gradient-to-r from-transparent via-indigo-300 to-transparent"></div>
                                   </div>
                                   <div className="flex flex-col gap-2">
                                     {expertPublications
@@ -1372,7 +1465,7 @@ export default function Experts() {
                                         <div
                                           key={idx}
                                           onClick={(e) => e.stopPropagation()}
-                                          className="bg-gradient-to-br from-indigo-50 via-indigo-50/50 to-slate-50 rounded-lg p-2 border border-indigo-200 hover:border-indigo-400 hover:shadow-md transition-all duration-300 transform hover:scale-[1.01] hover:bg-indigo-100/80 group/pub"
+                                          className="bg-indigo-50 rounded-lg p-3 border border-indigo-200 hover:border-indigo-300 hover:shadow-sm transition-all duration-300"
                                         >
                                           <a
                                             href={pub.link || "#"}
@@ -1380,22 +1473,22 @@ export default function Experts() {
                                             rel="noreferrer"
                                             className="block"
                                           >
-                                            <h5 className="text-xs font-semibold text-slate-900 line-clamp-2 mb-1.5 hover:text-indigo-600 leading-relaxed transition-colors group-hover/pub:text-indigo-700">
+                                            <h5 className="text-sm font-semibold text-slate-900 line-clamp-2 mb-2 hover:text-indigo-600 transition-colors">
                                               {pub.title}
                                             </h5>
-                                            <div className="text-xs text-slate-600 space-y-0.5">
+                                            <div className="flex items-center gap-3 text-xs text-slate-600">
                                               {pub.year && (
-                                                <div className="font-medium text-indigo-600">
+                                                <span className="font-medium text-indigo-600">
                                                   {pub.year}
-                                                </div>
+                                                </span>
                                               )}
                                               {pub.citations > 0 && (
-                                                <div className="text-xs text-slate-500">
+                                                <span>
                                                   {pub.citations}{" "}
                                                   {pub.citations === 1
                                                     ? "citation"
                                                     : "citations"}
-                                                </div>
+                                                </span>
                                               )}
                                             </div>
                                           </a>
@@ -1408,18 +1501,18 @@ export default function Experts() {
                                         e.stopPropagation();
                                         openDetailsModal(expert);
                                       }}
-                                      className="w-full mt-1.5 text-xs text-indigo-600 hover:text-indigo-700 font-medium transition-colors flex items-center justify-center gap-1 py-1 rounded-md hover:bg-indigo-50"
+                                      className="w-full text-sm text-indigo-600 hover:text-indigo-700 font-medium transition-colors flex items-center justify-center gap-1.5 py-2 rounded-lg hover:bg-indigo-50"
                                     >
                                       View all {expertPublications.length}{" "}
                                       publications
-                                      <ExternalLink className="w-2.5 h-2.5" />
+                                      <ExternalLink className="w-4 h-4" />
                                     </button>
                                   )}
                                 </div>
                               ) : (
-                                <div className="text-center py-3">
-                                  <BookOpen className="w-5 h-5 text-slate-300 mx-auto mb-1.5" />
-                                  <p className="text-xs text-slate-500">
+                                <div className="text-center py-4">
+                                  <BookOpen className="w-6 h-6 text-slate-300 mx-auto mb-2" />
+                                  <p className="text-sm text-slate-500">
                                     No publications found
                                   </p>
                                 </div>
@@ -1428,7 +1521,7 @@ export default function Experts() {
                           </div>
 
                           {/* Action Buttons */}
-                          <div className="flex items-center gap-1.5 mt-3 pt-2 border-t border-slate-100">
+                          <div className="flex items-center gap-2 mt-auto pt-3 border-t border-slate-100">
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -1455,9 +1548,21 @@ export default function Experts() {
                                   `/expert/profile?${params.toString()}`
                                 );
                               }}
-                              className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-md text-xs font-semibold hover:from-indigo-700 hover:to-indigo-800 transition-all duration-300 shadow-sm hover:shadow-md transform hover:scale-105"
+                              className="flex-1 flex items-center justify-center gap-2 py-2 text-white rounded-lg text-sm font-semibold transition-all shadow-sm"
+                              style={{
+                                background:
+                                  "linear-gradient(135deg, #2F3C96, #253075)",
+                              }}
+                              onMouseEnter={(e) => {
+                                e.target.style.background =
+                                  "linear-gradient(135deg, #253075, #1C2454)";
+                              }}
+                              onMouseLeave={(e) => {
+                                e.target.style.background =
+                                  "linear-gradient(135deg, #2F3C96, #253075)";
+                              }}
                             >
-                              <User className="w-3.5 h-3.5" />
+                              <User className="w-4 h-4" />
                               View Profile
                             </button>
                             {expert.email && (
@@ -1467,10 +1572,23 @@ export default function Experts() {
                                   e.stopPropagation();
                                   toast.success("Message sent successfully!");
                                 }}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-md text-xs font-semibold hover:from-indigo-700 hover:to-indigo-800 transition-all duration-300 shadow-sm hover:shadow-md transform hover:scale-105"
+                                className="flex items-center justify-center gap-2 py-2 px-3 text-xs font-medium rounded-lg transition-colors"
+                                style={{
+                                  color: "#2F3C96",
+                                  backgroundColor: "rgba(208, 196, 226, 0.2)",
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.target.style.backgroundColor =
+                                    "rgba(208, 196, 226, 0.3)";
+                                  e.target.style.color = "#253075";
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.target.style.backgroundColor =
+                                    "rgba(208, 196, 226, 0.2)";
+                                  e.target.style.color = "#2F3C96";
+                                }}
                               >
                                 <Mail className="w-3.5 h-3.5" />
-                                Contact
                               </a>
                             )}
                             {expert.orcidUrl && (
@@ -1479,10 +1597,23 @@ export default function Experts() {
                                 target="_blank"
                                 rel="noreferrer"
                                 onClick={(e) => e.stopPropagation()}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-700 rounded-md text-xs font-semibold hover:bg-slate-200 hover:text-indigo-700 transition-all duration-300 transform hover:scale-105"
+                                className="flex items-center justify-center gap-2 py-2 px-3 text-xs font-medium rounded-lg transition-colors"
+                                style={{
+                                  color: "#2F3C96",
+                                  backgroundColor: "rgba(208, 196, 226, 0.2)",
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.target.style.backgroundColor =
+                                    "rgba(208, 196, 226, 0.3)";
+                                  e.target.style.color = "#253075";
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.target.style.backgroundColor =
+                                    "rgba(208, 196, 226, 0.2)";
+                                  e.target.style.color = "#2F3C96";
+                                }}
                               >
                                 <ExternalLink className="w-3.5 h-3.5" />
-                                Profile
                               </a>
                             )}
                             <button
@@ -1490,10 +1621,23 @@ export default function Experts() {
                                 e.stopPropagation();
                                 openDetailsModal(expert);
                               }}
-                              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-700 rounded-md text-xs font-semibold hover:bg-slate-200 hover:text-blue-700 transition-all duration-300 transform hover:scale-105"
+                              className="flex items-center justify-center gap-2 py-2 px-3 text-xs font-medium rounded-lg transition-colors"
+                              style={{
+                                color: "#2F3C96",
+                                backgroundColor: "rgba(208, 196, 226, 0.2)",
+                              }}
+                              onMouseEnter={(e) => {
+                                e.target.style.backgroundColor =
+                                  "rgba(208, 196, 226, 0.3)";
+                                e.target.style.color = "#253075";
+                              }}
+                              onMouseLeave={(e) => {
+                                e.target.style.backgroundColor =
+                                  "rgba(208, 196, 226, 0.2)";
+                                e.target.style.color = "#2F3C96";
+                              }}
                             >
                               <Info className="w-3.5 h-3.5" />
-                              Details
                             </button>
                           </div>
                         </div>
