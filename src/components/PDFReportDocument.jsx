@@ -263,7 +263,7 @@ const PageHeader = ({ report }) => (
 );
 
 // Helper component to render section header
-const SectionHeader = ({ icon, title, count }) => (
+const SectionHeader = ({ icon, title, count, trialNumbers }) => (
   <View style={styles.sectionHeader}>
     <View style={styles.iconContainer}>
       <Text style={styles.iconText}>{icon}</Text>
@@ -271,6 +271,9 @@ const SectionHeader = ({ icon, title, count }) => (
     <Text style={styles.sectionHeaderText}>
       {title}
       {count !== undefined && <Text style={styles.badge}> {count}</Text>}
+      {trialNumbers && trialNumbers.length > 0 && (
+        <Text style={styles.badge}> ({trialNumbers.join(", ")})</Text>
+      )}
     </Text>
   </View>
 );
@@ -500,6 +503,7 @@ export default function PDFReportDocument({ report }) {
               icon={Icons.Trial}
               title="Clinical Trials"
               count={report.trials.length}
+              trialNumbers={report.trials.map(t => t.trialNumber || t.id || t._id).filter(Boolean)}
             />
             <View style={styles.sectionContent}>
               <View style={styles.itemCard}>
@@ -508,6 +512,12 @@ export default function PDFReportDocument({ report }) {
                 </Text>
 
                 <View style={styles.itemGrid}>
+                  <View style={styles.itemField}>
+                    <Text style={styles.label}>Trial Number</Text>
+                    <Text style={styles.value}>
+                      {report.trials[0].trialNumber || report.trials[0].id || report.trials[0]._id || "Not specified"}
+                    </Text>
+                  </View>
                   <View style={styles.itemField}>
                     <Text style={styles.label}>Phase</Text>
                     <Text style={styles.value}>
@@ -749,6 +759,7 @@ export default function PDFReportDocument({ report }) {
                 icon={Icons.Trial}
                 title="Clinical Trials"
                 count={report.trials.length}
+                trialNumbers={report.trials.map(t => t.trialNumber || t.id || t._id).filter(Boolean)}
               />
               <View style={styles.sectionContent}>
                 <View style={styles.itemCard}>
@@ -757,6 +768,12 @@ export default function PDFReportDocument({ report }) {
                   </Text>
 
                   <View style={styles.itemGrid}>
+                    <View style={styles.itemField}>
+                      <Text style={styles.label}>Trial Number</Text>
+                      <Text style={styles.value}>
+                        {trial.trialNumber || trial.id || trial._id || "Not specified"}
+                      </Text>
+                    </View>
                     <View style={styles.itemField}>
                       <Text style={styles.label}>Phase</Text>
                       <Text style={styles.value}>

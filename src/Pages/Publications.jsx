@@ -72,6 +72,15 @@ export default function Publications() {
     loading: false,
   });
 
+  // Helper function to sort publications by match percentage (highest first)
+  const sortPublicationsByMatch = (publications) => {
+    return [...publications].sort((a, b) => {
+      const aMatch = a.matchPercentage ?? -1;
+      const bMatch = b.matchPercentage ?? -1;
+      return bMatch - aMatch; // Descending order (highest first)
+    });
+  };
+
   // Advanced search state
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
   const [queryTerms, setQueryTerms] = useState([
@@ -80,10 +89,10 @@ export default function Publications() {
   const [addedTerms, setAddedTerms] = useState([]); // Terms that have been added (confirmed)
   const [constructedQuery, setConstructedQuery] = useState("");
   const [searchHistory, setSearchHistory] = useState([]);
-  
+
   // Date filter state
   const [dateRange, setDateRange] = useState({ start: "", end: "" });
-  
+
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -100,6 +109,7 @@ export default function Publications() {
     "Text Word",
     "Journal",
     "Publication Type",
+    "Proximity Search",
   ];
 
   // Convert to format for CustomSelect
@@ -129,6 +139,8 @@ export default function Publications() {
       "Journal name abbreviation or full name. Example: 'Nature' or 'JAMA'",
     "Publication Type":
       "Type of publication. Examples: 'Review', 'Clinical Trial', 'Case Reports', 'Meta-Analysis'",
+    "Proximity Search":
+      "Find terms within N words of each other. Format: 'term1 term2' with distance (e.g., 'cancer treatment ~5' finds terms within 5 words). Example: 'breast cancer ~3'",
   };
 
   const publicationSuggestionTerms = [userMedicalInterest].filter(Boolean);
@@ -165,8 +177,46 @@ export default function Publications() {
       .filter((t) => t.term.trim())
       .map((t) => {
         if (t.field === "All Fields") {
-          return t.term;
+          // For "All Fields", check if it's a Google Scholar-style query or has minus signs
+          let term = t.term.trim();
+          // Auto-detect phrases (multiple words) and wrap in quotes
+          if (
+            term.includes(" ") &&
+            !term.startsWith('"') &&
+            !term.endsWith('"')
+          ) {
+            // Check if it contains operators - if so, don't wrap the whole thing
+            if (!/\b(AND|OR|NOT)\b/i.test(term)) {
+              term = `"${term}"`;
+            }
+          }
+          return term;
         }
+
+        // Handle Proximity Search
+        if (t.field === "Proximity Search") {
+          let termValue = t.term.trim();
+          // Format: "term1 term2" ~N or term1 term2 ~N
+          // Extract distance if provided
+          const proximityMatch = termValue.match(/^(.+?)\s*~\s*(\d+)$/);
+          if (proximityMatch) {
+            const [, terms, distance] = proximityMatch;
+            // Ensure terms are quoted
+            let searchTerms = terms.trim();
+            if (!searchTerms.startsWith('"') && !searchTerms.endsWith('"')) {
+              searchTerms = `"${searchTerms}"`;
+            }
+            // PubMed proximity syntax: "terms"[TIAB:~N]
+            return `${searchTerms}[TIAB:~${distance}]`;
+          }
+          // Default to proximity of 10 words if no distance specified
+          let searchTerms = termValue.trim();
+          if (!searchTerms.startsWith('"') && !searchTerms.endsWith('"')) {
+            searchTerms = `"${searchTerms}"`;
+          }
+          return `${searchTerms}[TIAB:~10]`;
+        }
+
         // Map field names to PubMed field tags (simplified essential fields)
         const fieldMap = {
           Author: "[AU]",
@@ -187,6 +237,19 @@ export default function Publications() {
           termValue = termValue.replace(/\s+/g, " ").trim();
           // If it contains quotes already, don't add more
           if (!termValue.startsWith('"') && !termValue.endsWith('"')) {
+            termValue = `"${termValue}"`;
+          }
+        } else {
+          // For other fields, auto-detect phrases (multiple words) and wrap in quotes
+          // This improves exact matching for multi-word terms
+          if (
+            termValue.includes(" ") &&
+            !termValue.startsWith('"') &&
+            !termValue.endsWith('"') &&
+            !termValue.includes(" AND ") &&
+            !termValue.includes(" OR ") &&
+            !termValue.includes(" NOT ")
+          ) {
             termValue = `"${termValue}"`;
           }
         }
@@ -233,12 +296,12 @@ export default function Publications() {
     // Check if there are any valid terms OR date filters before searching
     const hasSearchTerms = constructedQuery && finalAddedTerms.length > 0;
     const hasDateFilter = dateRange.start || dateRange.end;
-    
+
     if (hasSearchTerms || hasDateFilter) {
       // Use constructed query if available, otherwise use empty string (date filter will be applied)
       const searchQuery = constructedQuery || "";
       setQ(searchQuery);
-      
+
       // Add to search history only if there are search terms
       if (hasSearchTerms) {
         const historyItem = {
@@ -249,11 +312,13 @@ export default function Publications() {
         };
         setSearchHistory([historyItem, ...searchHistory.slice(0, 9)]);
       }
-      
+
       search(searchQuery);
       setShowAdvancedSearch(false); // Close modal after search
     } else {
-      toast.error("Please add at least one search term or select a date range before searching");
+      toast.error(
+        "Please add at least one search term or select a date range before searching"
+      );
     }
   };
 
@@ -305,21 +370,21 @@ export default function Publications() {
     }
 
     if (searchQuery) params.set("q", searchQuery);
-    
+
     // Add date range parameters if set (format: YYYY/MM)
     if (dateRange.start) {
-      params.set("mindate", dateRange.start.replace(/-/g, '/'));
+      params.set("mindate", dateRange.start.replace(/-/g, "/"));
     }
     if (dateRange.end) {
-      params.set("maxdate", dateRange.end.replace(/-/g, '/'));
+      params.set("maxdate", dateRange.end.replace(/-/g, "/"));
     }
-    
+
     // Reset pagination for new searches
     params.set("page", "1");
     params.set("pageSize", "6");
     setCurrentPage(1);
     setLastSearchQuery(searchQuery);
-    
+
     // Store search parameters for pagination
     setLastSearchParams({
       searchQuery,
@@ -395,12 +460,12 @@ export default function Publications() {
 
       const data = await response.json();
       const searchResults = data.results || [];
-      
+
       // Set pagination data
       setTotalCount(data.totalCount || 0);
       const calculatedTotalPages = Math.ceil((data.totalCount || 0) / 6);
       setTotalPages(calculatedTotalPages);
-      
+
       // Store search parameters for pagination
       setLastSearchParams({
         searchQuery,
@@ -414,13 +479,9 @@ export default function Publications() {
       });
 
       // Sort by matchPercentage in descending order (highest first)
-      const sortedResults = [...searchResults].sort((a, b) => {
-        const aMatch = a.matchPercentage ?? -1;
-        const bMatch = b.matchPercentage ?? -1;
-        return bMatch - aMatch; // Descending order
-      });
+      const sortedResults = sortPublicationsByMatch(searchResults);
       setResults(sortedResults);
-      
+
       // Calculate total pages for server-side pagination
       const totalPages = Math.ceil((data.totalCount || 0) / 6);
 
@@ -490,37 +551,49 @@ export default function Publications() {
 
   // Navigate to specific page (server-side pagination)
   async function goToPage(page) {
-    if (page < 1 || page > totalPages || page === currentPage || loading) return;
-    
+    if (page < 1 || page > totalPages || page === currentPage || loading)
+      return;
+
     setLoading(true);
     setCurrentPage(page);
-    
+
     const params = new URLSearchParams();
-    const { searchQuery: savedQuery, dateRange: savedDateRange, locationMode: savedLocationMode, 
-            location: savedLocation, userLocation: savedUserLocation, useMedicalInterest: savedUseMedicalInterest,
-            userMedicalInterest: savedUserMedicalInterest, userData: savedUserData } = lastSearchParams;
-    
+    const {
+      searchQuery: savedQuery,
+      dateRange: savedDateRange,
+      locationMode: savedLocationMode,
+      location: savedLocation,
+      userLocation: savedUserLocation,
+      useMedicalInterest: savedUseMedicalInterest,
+      userMedicalInterest: savedUserMedicalInterest,
+      userData: savedUserData,
+    } = lastSearchParams;
+
     // Build search query
     let queryToUse = savedQuery || "";
     if (savedUseMedicalInterest && savedUserMedicalInterest && queryToUse) {
       queryToUse = `${savedUserMedicalInterest} ${queryToUse}`;
-    } else if (savedUseMedicalInterest && savedUserMedicalInterest && !queryToUse) {
+    } else if (
+      savedUseMedicalInterest &&
+      savedUserMedicalInterest &&
+      !queryToUse
+    ) {
       queryToUse = savedUserMedicalInterest;
     }
-    
+
     if (queryToUse) params.set("q", queryToUse);
-    
+
     // Add date range parameters if set (format: YYYY/MM)
     if (savedDateRange?.start) {
-      params.set("mindate", savedDateRange.start.replace(/-/g, '/'));
+      params.set("mindate", savedDateRange.start.replace(/-/g, "/"));
     }
     if (savedDateRange?.end) {
-      params.set("maxdate", savedDateRange.end.replace(/-/g, '/'));
+      params.set("maxdate", savedDateRange.end.replace(/-/g, "/"));
     }
-    
+
     params.set("page", String(page));
     params.set("pageSize", "6");
-    
+
     // Add location parameter
     if (savedLocationMode === "current" && savedUserLocation) {
       if (savedUserLocation.country) {
@@ -529,7 +602,7 @@ export default function Publications() {
     } else if (savedLocationMode === "custom" && savedLocation?.trim()) {
       params.set("location", savedLocation.trim());
     }
-    
+
     // Add user profile data for matching
     if (savedUserData?._id || savedUserData?.id) {
       params.set("userId", savedUserData._id || savedUserData.id);
@@ -538,20 +611,23 @@ export default function Publications() {
       if (savedLocationMode === "current" && savedUserLocation) {
         params.set("userLocation", JSON.stringify(savedUserLocation));
       } else if (savedLocationMode === "custom" && savedLocation?.trim()) {
-        params.set("userLocation", JSON.stringify({ country: savedLocation.trim() }));
+        params.set(
+          "userLocation",
+          JSON.stringify({ country: savedLocation.trim() })
+        );
       }
     }
-    
+
     try {
       const response = await apiFetch(
         `/api/search/publications?${params.toString()}`
       );
-      
+
       if (!response) {
         setLoading(false);
         return;
       }
-      
+
       if (response.status === 429) {
         const errorData = await response.json();
         toast.error(
@@ -562,23 +638,19 @@ export default function Publications() {
         setLoading(false);
         return;
       }
-      
+
       const data = await response.json();
       const searchResults = data.results || [];
-      
+
       // Set pagination data
       setTotalCount(data.totalCount || 0);
       const calculatedTotalPages = Math.ceil((data.totalCount || 0) / 6);
       setTotalPages(calculatedTotalPages);
-      
+
       // Sort by matchPercentage in descending order (highest first)
-      const sortedResults = [...searchResults].sort((a, b) => {
-        const aMatch = a.matchPercentage ?? -1;
-        const bMatch = b.matchPercentage ?? -1;
-        return bMatch - aMatch; // Descending order
-      });
+      const sortedResults = sortPublicationsByMatch(searchResults);
       setResults(sortedResults);
-      
+
       // Save updated state to sessionStorage
       const searchState = {
         q: lastSearchQuery || "",
@@ -598,9 +670,9 @@ export default function Publications() {
         "publications_search_state",
         JSON.stringify(searchState)
       );
-      
+
       // Scroll to top of results
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (error) {
       console.error("Page navigation error:", error);
       toast.error("Failed to load page");
@@ -642,21 +714,21 @@ export default function Publications() {
       }
 
       params.set("q", searchQuery);
-      
+
       // Add date range parameters if set (format: YYYY/MM)
       if (dateRange.start) {
-        params.set("mindate", dateRange.start.replace(/-/g, '/'));
+        params.set("mindate", dateRange.start.replace(/-/g, "/"));
       }
       if (dateRange.end) {
-        params.set("maxdate", dateRange.end.replace(/-/g, '/'));
+        params.set("maxdate", dateRange.end.replace(/-/g, "/"));
       }
-      
+
       // Reset pagination for new searches
       params.set("page", "1");
       params.set("pageSize", "6");
       setCurrentPage(1);
       setLastSearchQuery(searchQuery);
-      
+
       // Store search parameters for pagination
       setLastSearchParams({
         searchQuery,
@@ -732,7 +804,7 @@ export default function Publications() {
           if (!data) return; // Skip if rate limited
 
           const searchResults = data.results || [];
-          
+
           // Set pagination data
           setTotalCount(data.totalCount || 0);
           const calculatedTotalPages = Math.ceil((data.totalCount || 0) / 6);
@@ -767,41 +839,37 @@ export default function Publications() {
           }
 
           // Sort by matchPercentage in descending order (highest first)
-          const sortedResults = [...searchResults].sort((a, b) => {
-            const aMatch = a.matchPercentage ?? -1;
-            const bMatch = b.matchPercentage ?? -1;
-            return bMatch - aMatch; // Descending order
-          });
+          const sortedResults = sortPublicationsByMatch(searchResults);
           setResults(sortedResults);
 
-      // Save search state to sessionStorage (including pagination)
-      const searchState = {
-        q: filterValue,
-        location,
-        locationMode,
-        useMedicalInterest,
-        userMedicalInterest,
-        results: sortedResults,
-        currentPage: 1,
-        totalPages: calculatedTotalPages,
-        totalCount: data.totalCount || 0,
-        dateRange,
-        lastSearchParams: {
-          searchQuery: filterValue,
-          dateRange,
-          locationMode,
-          location,
-          userLocation,
-          useMedicalInterest,
-          userMedicalInterest,
-          userData,
-        },
-        isInitialLoad: false,
-      };
-      sessionStorage.setItem(
-        "publications_search_state",
-        JSON.stringify(searchState)
-      );
+          // Save search state to sessionStorage (including pagination)
+          const searchState = {
+            q: filterValue,
+            location,
+            locationMode,
+            useMedicalInterest,
+            userMedicalInterest,
+            results: sortedResults,
+            currentPage: 1,
+            totalPages: calculatedTotalPages,
+            totalCount: data.totalCount || 0,
+            dateRange,
+            lastSearchParams: {
+              searchQuery: filterValue,
+              dateRange,
+              locationMode,
+              location,
+              userLocation,
+              useMedicalInterest,
+              userMedicalInterest,
+              userData,
+            },
+            isInitialLoad: false,
+          };
+          sessionStorage.setItem(
+            "publications_search_state",
+            JSON.stringify(searchState)
+          );
 
           setLoading(false);
         })
@@ -958,12 +1026,13 @@ export default function Publications() {
         }),
       });
 
-      // Update the publication in results to mark as read
-      setResults((prevResults) =>
-        prevResults.map((p) =>
+      // Update the publication in results to mark as read and maintain sort order
+      setResults((prevResults) => {
+        const updated = prevResults.map((p) =>
           (p.pmid || p.id || p._id) === itemId ? { ...p, isRead: true } : p
-        )
-      );
+        );
+        return sortPublicationsByMatch(updated);
+      });
     } catch (error) {
       console.error("Error marking publication as read:", error);
     }
@@ -986,9 +1055,11 @@ export default function Publications() {
       try {
         const pmid = pub.pmid || pub.id || pub._id;
         const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
-        
+
         // Fetch simplified publication details
-        const response = await fetch(`${base}/api/search/publication/${pmid}/simplified`);
+        const response = await fetch(
+          `${base}/api/search/publication/${pmid}/simplified`
+        );
 
         if (response.ok) {
           const data = await response.json();
@@ -1002,9 +1073,11 @@ export default function Publications() {
             return;
           }
         }
-        
+
         // Fallback: try regular endpoint if simplified fails
-        const fallbackResponse = await fetch(`${base}/api/search/publication/${pmid}`);
+        const fallbackResponse = await fetch(
+          `${base}/api/search/publication/${pmid}`
+        );
         if (fallbackResponse.ok) {
           const fallbackData = await fallbackResponse.json();
           if (fallbackData.publication) {
@@ -1111,7 +1184,9 @@ export default function Publications() {
             : true
         );
         setUserMedicalInterest(state.userMedicalInterest || "");
-        setResults(state.results || []);
+        // Sort results by match percentage when restoring from sessionStorage
+        const restoredResults = state.results || [];
+        setResults(sortPublicationsByMatch(restoredResults));
         // Restore pagination state
         if (state.currentPage) setCurrentPage(state.currentPage);
         if (state.totalPages) setTotalPages(state.totalPages);
@@ -1331,16 +1406,22 @@ export default function Publications() {
                   value={q}
                   onChange={setQ}
                   onSubmit={(value) => search(value)}
-                  placeholder="Search by keyword, author, or topic..."
+                  placeholder='Search by keyword, author, or topic... (Supports: author:"Smith J", -term for NOT, proximity search)'
                   extraTerms={publicationSuggestionTerms}
                   className="flex-1"
                 />
                 <div className="flex gap-2">
                   <Button
                     onClick={() => setShowAdvancedSearch(!showAdvancedSearch)}
-                    className={`${dateRange.start || dateRange.end ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-slate-600 hover:bg-slate-700'} text-white px-4 py-2 rounded-lg shadow-md hover:shadow-lg transition-all text-sm font-semibold flex items-center gap-1.5`}
+                    className={`${
+                      dateRange.start || dateRange.end
+                        ? "bg-indigo-600 hover:bg-indigo-700"
+                        : "bg-slate-600 hover:bg-slate-700"
+                    } text-white px-4 py-2 rounded-lg shadow-md hover:shadow-lg transition-all text-sm font-semibold flex items-center gap-1.5`}
                   >
-                    {(dateRange.start || dateRange.end) && <Calendar className="w-3.5 h-3.5" />}
+                    {(dateRange.start || dateRange.end) && (
+                      <Calendar className="w-3.5 h-3.5" />
+                    )}
                     {showAdvancedSearch ? "Hide" : "Advanced"}
                     {(dateRange.start || dateRange.end) && (
                       <span className="bg-white/20 px-1.5 py-0.5 rounded text-xs">
@@ -1583,14 +1664,23 @@ export default function Publications() {
                       </label>
                       <div className="flex gap-2">
                         <select
-                          value={dateRange.start ? dateRange.start.split('-')[1] || '' : ''}
+                          value={
+                            dateRange.start
+                              ? dateRange.start.split("-")[1] || ""
+                              : ""
+                          }
                           onChange={(e) => {
-                            const year = dateRange.start ? dateRange.start.split('-')[0] : new Date().getFullYear();
+                            const year = dateRange.start
+                              ? dateRange.start.split("-")[0]
+                              : new Date().getFullYear();
                             const newMonth = e.target.value;
                             if (newMonth && year) {
-                              setDateRange(prev => ({ ...prev, start: `${year}-${newMonth}` }));
+                              setDateRange((prev) => ({
+                                ...prev,
+                                start: `${year}-${newMonth}`,
+                              }));
                             } else if (!newMonth && year) {
-                              setDateRange(prev => ({ ...prev, start: '' }));
+                              setDateRange((prev) => ({ ...prev, start: "" }));
                             }
                           }}
                           className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-slate-700 transition-all"
@@ -1610,16 +1700,28 @@ export default function Publications() {
                           <option value="12">December</option>
                         </select>
                         <select
-                          value={dateRange.start ? dateRange.start.split('-')[0] || '' : ''}
+                          value={
+                            dateRange.start
+                              ? dateRange.start.split("-")[0] || ""
+                              : ""
+                          }
                           onChange={(e) => {
-                            const month = dateRange.start ? dateRange.start.split('-')[1] : '';
+                            const month = dateRange.start
+                              ? dateRange.start.split("-")[1]
+                              : "";
                             const newYear = e.target.value;
                             if (newYear && month) {
-                              setDateRange(prev => ({ ...prev, start: `${newYear}-${month}` }));
+                              setDateRange((prev) => ({
+                                ...prev,
+                                start: `${newYear}-${month}`,
+                              }));
                             } else if (newYear && !month) {
-                              setDateRange(prev => ({ ...prev, start: `${newYear}-01` }));
+                              setDateRange((prev) => ({
+                                ...prev,
+                                start: `${newYear}-01`,
+                              }));
                             } else {
-                              setDateRange(prev => ({ ...prev, start: '' }));
+                              setDateRange((prev) => ({ ...prev, start: "" }));
                             }
                           }}
                           className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-slate-700 transition-all"
@@ -1627,12 +1729,16 @@ export default function Publications() {
                           <option value="">Select Year</option>
                           {Array.from({ length: 50 }, (_, i) => {
                             const year = new Date().getFullYear() - i;
-                            return <option key={year} value={year}>{year}</option>;
+                            return (
+                              <option key={year} value={year}>
+                                {year}
+                              </option>
+                            );
                           })}
                         </select>
                       </div>
                     </div>
-                    
+
                     {/* To Date */}
                     <div className="space-y-2">
                       <label className="text-xs font-semibold text-slate-700 flex items-center gap-1">
@@ -1640,14 +1746,23 @@ export default function Publications() {
                       </label>
                       <div className="flex gap-2">
                         <select
-                          value={dateRange.end ? dateRange.end.split('-')[1] || '' : ''}
+                          value={
+                            dateRange.end
+                              ? dateRange.end.split("-")[1] || ""
+                              : ""
+                          }
                           onChange={(e) => {
-                            const year = dateRange.end ? dateRange.end.split('-')[0] : new Date().getFullYear();
+                            const year = dateRange.end
+                              ? dateRange.end.split("-")[0]
+                              : new Date().getFullYear();
                             const newMonth = e.target.value;
                             if (newMonth && year) {
-                              setDateRange(prev => ({ ...prev, end: `${year}-${newMonth}` }));
+                              setDateRange((prev) => ({
+                                ...prev,
+                                end: `${year}-${newMonth}`,
+                              }));
                             } else if (!newMonth && year) {
-                              setDateRange(prev => ({ ...prev, end: '' }));
+                              setDateRange((prev) => ({ ...prev, end: "" }));
                             }
                           }}
                           className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-slate-700 transition-all"
@@ -1667,16 +1782,28 @@ export default function Publications() {
                           <option value="12">December</option>
                         </select>
                         <select
-                          value={dateRange.end ? dateRange.end.split('-')[0] || '' : ''}
+                          value={
+                            dateRange.end
+                              ? dateRange.end.split("-")[0] || ""
+                              : ""
+                          }
                           onChange={(e) => {
-                            const month = dateRange.end ? dateRange.end.split('-')[1] : '';
+                            const month = dateRange.end
+                              ? dateRange.end.split("-")[1]
+                              : "";
                             const newYear = e.target.value;
                             if (newYear && month) {
-                              setDateRange(prev => ({ ...prev, end: `${newYear}-${month}` }));
+                              setDateRange((prev) => ({
+                                ...prev,
+                                end: `${newYear}-${month}`,
+                              }));
                             } else if (newYear && !month) {
-                              setDateRange(prev => ({ ...prev, end: `${newYear}-12` }));
+                              setDateRange((prev) => ({
+                                ...prev,
+                                end: `${newYear}-12`,
+                              }));
                             } else {
-                              setDateRange(prev => ({ ...prev, end: '' }));
+                              setDateRange((prev) => ({ ...prev, end: "" }));
                             }
                           }}
                           className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-slate-700 transition-all"
@@ -1684,23 +1811,31 @@ export default function Publications() {
                           <option value="">Select Year</option>
                           {Array.from({ length: 50 }, (_, i) => {
                             const year = new Date().getFullYear() - i;
-                            return <option key={year} value={year}>{year}</option>;
+                            return (
+                              <option key={year} value={year}>
+                                {year}
+                              </option>
+                            );
                           })}
                         </select>
                       </div>
                     </div>
                   </div>
-                  
+
                   {/* Quick Presets */}
                   <div className="flex flex-wrap items-center gap-2 mb-3">
-                    <span className="text-xs font-medium text-slate-500">Quick select:</span>
+                    <span className="text-xs font-medium text-slate-500">
+                      Quick select:
+                    </span>
                     <button
                       type="button"
                       onClick={() => {
                         const now = new Date();
                         setDateRange({
                           start: `${now.getFullYear()}-01`,
-                          end: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+                          end: `${now.getFullYear()}-${String(
+                            now.getMonth() + 1
+                          ).padStart(2, "0")}`,
                         });
                       }}
                       className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-white border border-slate-300 text-slate-600 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-700 shadow-sm hover:shadow"
@@ -1712,8 +1847,12 @@ export default function Publications() {
                       onClick={() => {
                         const now = new Date();
                         setDateRange({
-                          start: `${now.getFullYear() - 1}-${String(now.getMonth() + 1).padStart(2, '0')}`,
-                          end: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+                          start: `${now.getFullYear() - 1}-${String(
+                            now.getMonth() + 1
+                          ).padStart(2, "0")}`,
+                          end: `${now.getFullYear()}-${String(
+                            now.getMonth() + 1
+                          ).padStart(2, "0")}`,
                         });
                       }}
                       className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-white border border-slate-300 text-slate-600 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-700 shadow-sm hover:shadow"
@@ -1725,8 +1864,12 @@ export default function Publications() {
                       onClick={() => {
                         const now = new Date();
                         setDateRange({
-                          start: `${now.getFullYear() - 5}-${String(now.getMonth() + 1).padStart(2, '0')}`,
-                          end: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+                          start: `${now.getFullYear() - 5}-${String(
+                            now.getMonth() + 1
+                          ).padStart(2, "0")}`,
+                          end: `${now.getFullYear()}-${String(
+                            now.getMonth() + 1
+                          ).padStart(2, "0")}`,
                         });
                       }}
                       className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-white border border-slate-300 text-slate-600 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-700 shadow-sm hover:shadow"
@@ -1738,8 +1881,12 @@ export default function Publications() {
                       onClick={() => {
                         const now = new Date();
                         setDateRange({
-                          start: `${now.getFullYear() - 10}-${String(now.getMonth() + 1).padStart(2, '0')}`,
-                          end: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+                          start: `${now.getFullYear() - 10}-${String(
+                            now.getMonth() + 1
+                          ).padStart(2, "0")}`,
+                          end: `${now.getFullYear()}-${String(
+                            now.getMonth() + 1
+                          ).padStart(2, "0")}`,
                         });
                       }}
                       className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-white border border-slate-300 text-slate-600 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-700 shadow-sm hover:shadow"
@@ -1757,7 +1904,7 @@ export default function Publications() {
                       </button>
                     )}
                   </div>
-                  
+
                   {/* Active Filter Display */}
                   {(dateRange.start || dateRange.end) && (
                     <div className="pt-3 border-t border-slate-200">
@@ -1766,13 +1913,21 @@ export default function Publications() {
                         <p className="text-xs text-indigo-700 font-medium">
                           <span className="text-slate-500">Active filter:</span>{" "}
                           {dateRange.start ? (
-                            new Date(dateRange.start + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+                            new Date(
+                              dateRange.start + "-01"
+                            ).toLocaleDateString("en-US", {
+                              month: "long",
+                              year: "numeric",
+                            })
                           ) : (
                             <span className="text-slate-400">Any</span>
                           )}
                           {" → "}
                           {dateRange.end ? (
-                            new Date(dateRange.end + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+                            new Date(dateRange.end + "-01").toLocaleDateString(
+                              "en-US",
+                              { month: "long", year: "numeric" }
+                            )
                           ) : (
                             <span className="text-slate-400">Present</span>
                           )}
@@ -1780,35 +1935,6 @@ export default function Publications() {
                       </div>
                     </div>
                   )}
-                </div>
-              </div>
-
-              <div className="border-t border-slate-200 pt-4">
-                <h3 className="text-sm font-semibold text-slate-800 mb-2">
-                  Query box
-                </h3>
-                <textarea
-                  value={constructedQuery}
-                  onChange={(e) => {
-                    setConstructedQuery(e.target.value);
-                    setQ(e.target.value);
-                  }}
-                  placeholder="Enter / edit your search query here"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 min-h-[100px] resize-y"
-                />
-                <div className="flex gap-2 mt-3">
-                  <Button
-                    onClick={executeAdvancedSearch}
-                    className="bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white px-6 py-2 rounded-lg text-sm font-medium flex-1"
-                  >
-                    Search
-                  </Button>
-                  <Button
-                    onClick={clearQuery}
-                    className="bg-slate-500 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-medium"
-                  >
-                    Clear
-                  </Button>
                 </div>
               </div>
             </div>
@@ -1911,6 +2037,25 @@ export default function Publications() {
                                 >
                                   {pub.matchPercentage}% Match
                                 </span>
+                                {/* Info Icon with Tooltip */}
+                                <div className="relative group">
+                                  <Info
+                                    className="w-4 h-4 cursor-help transition-opacity hover:opacity-70"
+                                    style={{ color: "#2F3C96" }}
+                                  />
+                                  {/* Tooltip */}
+                                  <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 pointer-events-none">
+                                    <div className="font-semibold mb-1">
+                                      Match Relevance
+                                    </div>
+                                    <div className="text-gray-300 leading-relaxed">
+                                      {pub.matchExplanation ||
+                                        `This publication matches ${pub.matchPercentage}% based on your profile, interests, and search criteria. The match considers factors like your medical interests, location, and research preferences.`}
+                                    </div>
+                                    {/* Tooltip arrow */}
+                                    <div className="absolute left-1/2 -translate-x-1/2 bottom-full w-0 h-0 border-l-4 border-r-4 border-b-4 border-transparent border-b-gray-900"></div>
+                                  </div>
+                                </div>
                               </div>
                             </div>
                             {/* Progress Bar */}
@@ -1949,7 +2094,9 @@ export default function Publications() {
                               />
                             )}
                             <span className="flex-1">
-                              {pub.simplifiedTitle || pub.title || "Untitled Publication"}
+                              {pub.simplifiedTitle ||
+                                pub.title ||
+                                "Untitled Publication"}
                             </span>
                           </h3>
                         </div>
@@ -2170,25 +2317,38 @@ export default function Publications() {
                 })}
             </div>
           )}
-          
+
           {/* Results Count and Pagination */}
           {!loading && results.length > 0 && isSignedIn && (
             <div className="mt-6 flex flex-col items-center gap-4">
               {/* Results Count */}
               <div className="text-sm text-slate-600">
-                Page <span className="font-semibold text-indigo-700">{currentPage}</span> of{" "}
-                <span className="font-semibold text-indigo-700">{totalPages.toLocaleString()}</span>
-                {" "}({totalCount.toLocaleString()} total results)
+                Page{" "}
+                <span className="font-semibold text-indigo-700">
+                  {currentPage}
+                </span>{" "}
+                of{" "}
+                <span className="font-semibold text-indigo-700">
+                  {totalPages.toLocaleString()}
+                </span>{" "}
+                ({totalCount.toLocaleString()} total results)
                 {(dateRange.start || dateRange.end) && (
                   <span className="text-slate-500">
-                    {" "}• Filtered by date
-                    {dateRange.start && dateRange.end && `: ${dateRange.start} to ${dateRange.end}`}
-                    {dateRange.start && !dateRange.end && `: from ${dateRange.start}`}
-                    {!dateRange.start && dateRange.end && `: until ${dateRange.end}`}
+                    {" "}
+                    • Filtered by date
+                    {dateRange.start &&
+                      dateRange.end &&
+                      `: ${dateRange.start} to ${dateRange.end}`}
+                    {dateRange.start &&
+                      !dateRange.end &&
+                      `: from ${dateRange.start}`}
+                    {!dateRange.start &&
+                      dateRange.end &&
+                      `: until ${dateRange.end}`}
                   </span>
                 )}
               </div>
-              
+
               {/* Pagination Controls */}
               {totalPages > 1 && (
                 <div className="flex items-center justify-center gap-2 flex-wrap">
@@ -2199,7 +2359,7 @@ export default function Publications() {
                   >
                     Previous
                   </button>
-                  
+
                   {/* Page Numbers */}
                   {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                     let pageNum;
@@ -2212,7 +2372,7 @@ export default function Publications() {
                     } else {
                       pageNum = currentPage - 2 + i;
                     }
-                    
+
                     return (
                       <button
                         key={pageNum}
@@ -2228,7 +2388,7 @@ export default function Publications() {
                       </button>
                     );
                   })}
-                  
+
                   {totalPages > 5 && currentPage < totalPages - 2 && (
                     <>
                       <span className="px-2 text-indigo-700">...</span>
@@ -2241,7 +2401,7 @@ export default function Publications() {
                       </button>
                     </>
                   )}
-                  
+
                   <button
                     onClick={() => goToPage(currentPage + 1)}
                     disabled={currentPage === totalPages || loading}
@@ -2341,227 +2501,86 @@ export default function Publications() {
                 Loading detailed publication information...
               </span>
             </div>
-          ) : detailsModal.publication && (
-            <div className="flex flex-col h-full -mx-6 -my-6">
-              {/* Scrollable Content */}
-              <div className="flex-1 overflow-y-auto space-y-6 px-6 pt-6 pb-24">
-                {/* Header */}
-                <div
-                  className="pb-4 border-b"
-                  style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
-                >
-                  <h3
-                    className="text-xl font-bold mb-3 leading-tight"
-                    style={{ color: "#2F3C96" }}
+          ) : (
+            detailsModal.publication && (
+              <div className="flex flex-col h-full -mx-6 -my-6">
+                {/* Scrollable Content */}
+                <div className="flex-1 overflow-y-auto space-y-6 px-6 pt-6 pb-24">
+                  {/* Header */}
+                  <div
+                    className="pb-4 border-b"
+                    style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
                   >
-                    {detailsModal.publication.simplifiedDetails?.title ||
-                      detailsModal.publication.simplifiedTitle ||
-                      detailsModal.publication.title}
-                  </h3>
-                  <div className="flex flex-wrap gap-2">
-                    {detailsModal.publication.pmid && (
-                      <span
-                        className="inline-flex items-center px-3 py-1 text-xs font-medium rounded-md border"
+                    <h3
+                      className="text-xl font-bold mb-3 leading-tight"
+                      style={{ color: "#2F3C96" }}
+                    >
+                      {detailsModal.publication.simplifiedDetails?.title ||
+                        detailsModal.publication.simplifiedTitle ||
+                        detailsModal.publication.title}
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {detailsModal.publication.pmid && (
+                        <span
+                          className="inline-flex items-center px-3 py-1 text-xs font-medium rounded-md border"
+                          style={{
+                            backgroundColor: "rgba(47, 60, 150, 0.15)",
+                            color: "#2F3C96",
+                            borderColor: "rgba(47, 60, 150, 0.3)",
+                          }}
+                        >
+                          <FileText className="w-3 h-3 mr-1.5" />
+                          PMID: {detailsModal.publication.pmid}
+                        </span>
+                      )}
+                      {detailsModal.publication.journal && (
+                        <span
+                          className="inline-flex items-center px-3 py-1 text-xs font-medium rounded-md border"
+                          style={{
+                            backgroundColor: "rgba(208, 196, 226, 0.2)",
+                            color: "#787878",
+                            borderColor: "rgba(208, 196, 226, 0.3)",
+                          }}
+                        >
+                          <BookOpen className="w-3 h-3 mr-1.5" />
+                          {detailsModal.publication.journal}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Abstract Section - Show simplified if available */}
+                  {(detailsModal.publication.simplifiedDetails?.abstract ||
+                    detailsModal.publication.abstract) && (
+                    <div>
+                      <div
+                        className="rounded-xl p-5 border"
                         style={{
-                          backgroundColor: "rgba(47, 60, 150, 0.15)",
-                          color: "#2F3C96",
-                          borderColor: "rgba(47, 60, 150, 0.3)",
-                        }}
-                      >
-                        <FileText className="w-3 h-3 mr-1.5" />
-                        PMID: {detailsModal.publication.pmid}
-                      </span>
-                    )}
-                    {detailsModal.publication.journal && (
-                      <span
-                        className="inline-flex items-center px-3 py-1 text-xs font-medium rounded-md border"
-                        style={{
-                          backgroundColor: "rgba(208, 196, 226, 0.2)",
-                          color: "#787878",
+                          background:
+                            "linear-gradient(135deg, rgba(208, 196, 226, 0.2), rgba(232, 224, 239, 0.2))",
                           borderColor: "rgba(208, 196, 226, 0.3)",
                         }}
                       >
-                        <BookOpen className="w-3 h-3 mr-1.5" />
-                        {detailsModal.publication.journal}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Abstract Section - Show simplified if available */}
-                {(detailsModal.publication.simplifiedDetails?.abstract ||
-                  detailsModal.publication.abstract) && (
-                  <div>
-                    <div
-                      className="rounded-xl p-5 border"
-                      style={{
-                        background:
-                          "linear-gradient(135deg, rgba(208, 196, 226, 0.2), rgba(232, 224, 239, 0.2))",
-                        borderColor: "rgba(208, 196, 226, 0.3)",
-                      }}
-                    >
-                      <h4
-                        className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
-                        style={{ color: "#2F3C96" }}
-                      >
-                        <Info className="w-4 h-4" />
-                        Abstract
-                      </h4>
-                      <p
-                        className="text-sm leading-relaxed whitespace-pre-wrap"
-                        style={{ color: "#787878" }}
-                      >
-                        {detailsModal.publication.simplifiedDetails?.abstract ||
-                          detailsModal.publication.abstract}
-                      </p>
+                        <h4
+                          className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
+                          style={{ color: "#2F3C96" }}
+                        >
+                          <Info className="w-4 h-4" />
+                          Abstract
+                        </h4>
+                        <p
+                          className="text-sm leading-relaxed whitespace-pre-wrap"
+                          style={{ color: "#787878" }}
+                        >
+                          {detailsModal.publication.simplifiedDetails
+                            ?.abstract || detailsModal.publication.abstract}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {/* Methods Section - Show simplified if available */}
-                {detailsModal.publication.simplifiedDetails?.methods && (
-                  <div>
-                    <div
-                      className="bg-white rounded-xl p-5 border shadow-sm"
-                      style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
-                    >
-                      <h4
-                        className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
-                        style={{ color: "#2F3C96" }}
-                      >
-                        <ListChecks className="w-4 h-4" />
-                        Methods
-                      </h4>
-                      <p
-                        className="text-sm leading-relaxed"
-                        style={{ color: "#787878" }}
-                      >
-                        {detailsModal.publication.simplifiedDetails.methods}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Results Section - Show simplified if available */}
-                {detailsModal.publication.simplifiedDetails?.results && (
-                  <div>
-                    <div
-                      className="bg-white rounded-xl p-5 border shadow-sm"
-                      style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
-                    >
-                      <h4
-                        className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
-                        style={{ color: "#2F3C96" }}
-                      >
-                        <TrendingUp className="w-4 h-4" />
-                        Results
-                      </h4>
-                      <p
-                        className="text-sm leading-relaxed"
-                        style={{ color: "#787878" }}
-                      >
-                        {detailsModal.publication.simplifiedDetails.results}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Conclusion Section - Show simplified if available */}
-                {detailsModal.publication.simplifiedDetails?.conclusion && (
-                  <div>
-                    <div
-                      className="bg-white rounded-xl p-5 border shadow-sm"
-                      style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
-                    >
-                      <h4
-                        className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
-                        style={{ color: "#2F3C96" }}
-                      >
-                        <CheckCircle className="w-4 h-4" />
-                        Conclusion
-                      </h4>
-                      <p
-                        className="text-sm leading-relaxed"
-                        style={{ color: "#787878" }}
-                      >
-                        {detailsModal.publication.simplifiedDetails.conclusion}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Key Takeaways Section - Show simplified if available */}
-                {detailsModal.publication.simplifiedDetails?.keyTakeaways &&
-                  detailsModal.publication.simplifiedDetails.keyTakeaways.length > 0 && (
-                  <div>
-                    <div
-                      className="bg-gradient-to-br rounded-xl p-5 border shadow-sm"
-                      style={{
-                        background:
-                          "linear-gradient(135deg, rgba(232, 224, 239, 0.4), rgba(245, 242, 248, 0.6))",
-                        borderColor: "rgba(208, 196, 226, 0.3)",
-                      }}
-                    >
-                      <h4
-                        className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
-                        style={{ color: "#2F3C96" }}
-                      >
-                        <AlertCircle className="w-4 h-4" />
-                        Key Takeaways
-                      </h4>
-                      <ul className="space-y-2">
-                        {detailsModal.publication.simplifiedDetails.keyTakeaways.map(
-                          (takeaway, idx) => (
-                            <li
-                              key={idx}
-                              className="flex items-start gap-2 text-sm"
-                              style={{ color: "#787878" }}
-                            >
-                              <span
-                                className="mt-1.5 shrink-0 w-1.5 h-1.5 rounded-full"
-                                style={{ backgroundColor: "#2F3C96" }}
-                              ></span>
-                              <span>{takeaway}</span>
-                            </li>
-                          )
-                        )}
-                      </ul>
-                    </div>
-                  </div>
-                )}
-
-                {/* What This Means For You Section - Show simplified if available */}
-                {detailsModal.publication.simplifiedDetails?.whatThisMeansForYou && (
-                  <div>
-                    <div
-                      className="bg-gradient-to-br rounded-xl p-5 border shadow-sm"
-                      style={{
-                        background:
-                          "linear-gradient(135deg, rgba(232, 233, 242, 1), rgba(245, 242, 248, 1))",
-                        borderColor: "rgba(163, 167, 203, 1)",
-                      }}
-                    >
-                      <h4
-                        className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
-                        style={{ color: "#2F3C96" }}
-                      >
-                        <Heart className="w-4 h-4" />
-                        What This Means For You
-                      </h4>
-                      <p
-                        className="text-sm leading-relaxed"
-                        style={{ color: "#787878" }}
-                      >
-                        {detailsModal.publication.simplifiedDetails.whatThisMeansForYou}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Authors Section */}
-                {detailsModal.publication.authors &&
-                  Array.isArray(detailsModal.publication.authors) &&
-                  detailsModal.publication.authors.length > 0 && (
+                  {/* Methods Section - Show simplified if available */}
+                  {detailsModal.publication.simplifiedDetails?.methods && (
                     <div>
                       <div
                         className="bg-white rounded-xl p-5 border shadow-sm"
@@ -2571,85 +2590,21 @@ export default function Publications() {
                           className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
                           style={{ color: "#2F3C96" }}
                         >
-                          <User className="w-4 h-4" />
-                          Authors
+                          <ListChecks className="w-4 h-4" />
+                          Methods
                         </h4>
                         <p
                           className="text-sm leading-relaxed"
                           style={{ color: "#787878" }}
                         >
-                          {detailsModal.publication.authors.join(", ")}
+                          {detailsModal.publication.simplifiedDetails.methods}
                         </p>
-                        {detailsModal.publication.authors.length > 1 && (
-                          <p
-                            className="text-xs mt-2"
-                            style={{ color: "#787878" }}
-                          >
-                            {detailsModal.publication.authors.length} authors
-                          </p>
-                        )}
                       </div>
                     </div>
                   )}
 
-                {/* Publication Metadata Cards */}
-                <div>
-                  <div
-                    className="bg-white rounded-xl p-5 border shadow-sm"
-                    style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
-                  >
-                    <h4
-                      className="font-semibold mb-4 flex items-center gap-2 text-sm uppercase tracking-wide"
-                      style={{ color: "#2F3C96" }}
-                    >
-                      <Calendar className="w-4 h-4" />
-                      Publication Information
-                    </h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {/* Publication Date */}
-                      {(detailsModal.publication.year ||
-                        detailsModal.publication.month) && (
-                        <div
-                          className="rounded-lg p-3 border"
-                          style={{
-                            backgroundColor: "rgba(208, 196, 226, 0.1)",
-                            borderColor: "rgba(208, 196, 226, 0.3)",
-                          }}
-                        >
-                          <div className="flex items-center gap-2 mb-1.5">
-                            <Calendar
-                              className="w-3.5 h-3.5"
-                              style={{ color: "#787878" }}
-                            />
-                            <span
-                              className="text-xs font-medium uppercase tracking-wide"
-                              style={{ color: "#787878" }}
-                            >
-                              Published
-                            </span>
-                          </div>
-                          <p
-                            className="text-sm font-semibold"
-                            style={{ color: "#2F3C96" }}
-                          >
-                            {detailsModal.publication.month
-                              ? `${detailsModal.publication.month} `
-                              : ""}
-                            {detailsModal.publication.day
-                              ? `${detailsModal.publication.day}, `
-                              : ""}
-                            {detailsModal.publication.year || "N/A"}
-                          </p>
-                        </div>
-                      )}
-
-                    </div>
-                  </div>
-                </div>
-
-                {/* Keywords Section */}
-                {detailsModal.publication.keywords &&
-                  detailsModal.publication.keywords.length > 0 && (
+                  {/* Results Section - Show simplified if available */}
+                  {detailsModal.publication.simplifiedDetails?.results && (
                     <div>
                       <div
                         className="bg-white rounded-xl p-5 border shadow-sm"
@@ -2660,57 +2615,20 @@ export default function Publications() {
                           style={{ color: "#2F3C96" }}
                         >
                           <TrendingUp className="w-4 h-4" />
-                          Keywords
-                        </h4>
-                        <div className="flex flex-wrap gap-2">
-                          {detailsModal.publication.keywords.map(
-                            (keyword, idx) => (
-                              <span
-                                key={idx}
-                                className="px-3 py-1.5 text-xs font-medium rounded-md border"
-                                style={{
-                                  backgroundColor: "rgba(47, 60, 150, 0.15)",
-                                  color: "#2F3C96",
-                                  borderColor: "rgba(47, 60, 150, 0.3)",
-                                }}
-                              >
-                                {keyword}
-                              </span>
-                            )
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                {/* Affiliations Section */}
-                {detailsModal.publication.affiliations &&
-                  detailsModal.publication.affiliations.length > 0 && (
-                    <div>
-                      <div
-                        className="bg-white rounded-xl p-5 border shadow-sm"
-                        style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
-                      >
-                        <h4
-                          className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
-                          style={{ color: "#2F3C96" }}
-                        >
-                          <MapPin className="w-4 h-4" />
-                          Affiliation
+                          Results
                         </h4>
                         <p
                           className="text-sm leading-relaxed"
                           style={{ color: "#787878" }}
                         >
-                          {detailsModal.publication.affiliations[0]}
+                          {detailsModal.publication.simplifiedDetails.results}
                         </p>
                       </div>
                     </div>
                   )}
 
-                {/* Publication Types */}
-                {detailsModal.publication.publicationTypes &&
-                  detailsModal.publication.publicationTypes.length > 0 && (
+                  {/* Conclusion Section - Show simplified if available */}
+                  {detailsModal.publication.simplifiedDetails?.conclusion && (
                     <div>
                       <div
                         className="bg-white rounded-xl p-5 border shadow-sm"
@@ -2720,93 +2638,318 @@ export default function Publications() {
                           className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
                           style={{ color: "#2F3C96" }}
                         >
-                          <FileText className="w-4 h-4" />
-                          Publication Type
+                          <CheckCircle className="w-4 h-4" />
+                          Conclusion
                         </h4>
-                        <div className="flex flex-wrap gap-2">
-                          {detailsModal.publication.publicationTypes.map(
-                            (type, idx) => (
-                              <span
-                                key={idx}
-                                className="px-3 py-1.5 text-xs font-medium rounded-md border"
-                                style={{
-                                  backgroundColor: "rgba(208, 196, 226, 0.2)",
-                                  color: "#787878",
-                                  borderColor: "rgba(208, 196, 226, 0.3)",
-                                }}
-                              >
-                                {type}
-                              </span>
-                            )
-                          )}
-                        </div>
+                        <p
+                          className="text-sm leading-relaxed"
+                          style={{ color: "#787878" }}
+                        >
+                          {
+                            detailsModal.publication.simplifiedDetails
+                              .conclusion
+                          }
+                        </p>
                       </div>
                     </div>
                   )}
-              </div>
 
-              {/* Sticky Actions Footer */}
-              <div
-                className="bottom-0 px-6 py-4 border-t bg-white/95 backdrop-blur-sm shadow-lg"
-                style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
-              >
-                <div className="flex flex-wrap gap-3">
-                  {detailsModal.publication.url && (
-                    <a
-                      href={detailsModal.publication.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex-1 px-4 py-2.5 text-white rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2 shadow-sm hover:shadow-md"
-                      style={{
-                        background: "linear-gradient(135deg, #2F3C96, #253075)",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.target.style.background =
-                          "linear-gradient(135deg, #253075, #1C2454)";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.target.style.background =
-                          "linear-gradient(135deg, #2F3C96, #253075)";
-                      }}
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                      View on PubMed
-                    </a>
-                  )}
-                  <button
-                    onClick={() => favorite(detailsModal.publication)}
-                    disabled={favoritingItems.has(
-                      getFavoriteKey(detailsModal.publication)
-                    )}
-                    className="px-4 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 border shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
-                    style={
-                      favorites.some(
-                        (fav) =>
-                          fav.type === "publication" &&
-                          (fav.item?.id ===
-                            (detailsModal.publication.id ||
-                              detailsModal.publication.pmid) ||
-                            fav.item?._id ===
-                              (detailsModal.publication.id ||
-                                detailsModal.publication.pmid) ||
-                            fav.item?.pmid ===
-                              (detailsModal.publication.id ||
-                                detailsModal.publication.pmid))
-                      )
-                        ? {
-                            backgroundColor: "#fee2e2",
-                            borderColor: "#fecaca",
-                            color: "#dc2626",
-                          }
-                        : {
-                            backgroundColor: "rgba(208, 196, 226, 0.2)",
+                  {/* Key Takeaways Section - Show simplified if available */}
+                  {detailsModal.publication.simplifiedDetails?.keyTakeaways &&
+                    detailsModal.publication.simplifiedDetails.keyTakeaways
+                      .length > 0 && (
+                      <div>
+                        <div
+                          className="bg-gradient-to-br rounded-xl p-5 border shadow-sm"
+                          style={{
+                            background:
+                              "linear-gradient(135deg, rgba(232, 224, 239, 0.4), rgba(245, 242, 248, 0.6))",
                             borderColor: "rgba(208, 196, 226, 0.3)",
-                            color: "#787878",
+                          }}
+                        >
+                          <h4
+                            className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
+                            style={{ color: "#2F3C96" }}
+                          >
+                            <AlertCircle className="w-4 h-4" />
+                            Key Takeaways
+                          </h4>
+                          <ul className="space-y-2">
+                            {detailsModal.publication.simplifiedDetails.keyTakeaways.map(
+                              (takeaway, idx) => (
+                                <li
+                                  key={idx}
+                                  className="flex items-start gap-2 text-sm"
+                                  style={{ color: "#787878" }}
+                                >
+                                  <span
+                                    className="mt-1.5 shrink-0 w-1.5 h-1.5 rounded-full"
+                                    style={{ backgroundColor: "#2F3C96" }}
+                                  ></span>
+                                  <span>{takeaway}</span>
+                                </li>
+                              )
+                            )}
+                          </ul>
+                        </div>
+                      </div>
+                    )}
+
+                  {/* What This Means For You Section - Show simplified if available */}
+                  {detailsModal.publication.simplifiedDetails
+                    ?.whatThisMeansForYou && (
+                    <div>
+                      <div
+                        className="bg-gradient-to-br rounded-xl p-5 border shadow-sm"
+                        style={{
+                          background:
+                            "linear-gradient(135deg, rgba(232, 233, 242, 1), rgba(245, 242, 248, 1))",
+                          borderColor: "rgba(163, 167, 203, 1)",
+                        }}
+                      >
+                        <h4
+                          className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
+                          style={{ color: "#2F3C96" }}
+                        >
+                          <Heart className="w-4 h-4" />
+                          What This Means For You
+                        </h4>
+                        <p
+                          className="text-sm leading-relaxed"
+                          style={{ color: "#787878" }}
+                        >
+                          {
+                            detailsModal.publication.simplifiedDetails
+                              .whatThisMeansForYou
                           }
-                    }
-                    onMouseEnter={(e) => {
-                      if (
-                        !favorites.some(
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Authors Section */}
+                  {detailsModal.publication.authors &&
+                    Array.isArray(detailsModal.publication.authors) &&
+                    detailsModal.publication.authors.length > 0 && (
+                      <div>
+                        <div
+                          className="bg-white rounded-xl p-5 border shadow-sm"
+                          style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+                        >
+                          <h4
+                            className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
+                            style={{ color: "#2F3C96" }}
+                          >
+                            <User className="w-4 h-4" />
+                            Authors
+                          </h4>
+                          <p
+                            className="text-sm leading-relaxed"
+                            style={{ color: "#787878" }}
+                          >
+                            {detailsModal.publication.authors.join(", ")}
+                          </p>
+                          {detailsModal.publication.authors.length > 1 && (
+                            <p
+                              className="text-xs mt-2"
+                              style={{ color: "#787878" }}
+                            >
+                              {detailsModal.publication.authors.length} authors
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                  {/* Publication Metadata Cards */}
+                  <div>
+                    <div
+                      className="bg-white rounded-xl p-5 border shadow-sm"
+                      style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+                    >
+                      <h4
+                        className="font-semibold mb-4 flex items-center gap-2 text-sm uppercase tracking-wide"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        <Calendar className="w-4 h-4" />
+                        Publication Information
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {/* Publication Date */}
+                        {(detailsModal.publication.year ||
+                          detailsModal.publication.month) && (
+                          <div
+                            className="rounded-lg p-3 border"
+                            style={{
+                              backgroundColor: "rgba(208, 196, 226, 0.1)",
+                              borderColor: "rgba(208, 196, 226, 0.3)",
+                            }}
+                          >
+                            <div className="flex items-center gap-2 mb-1.5">
+                              <Calendar
+                                className="w-3.5 h-3.5"
+                                style={{ color: "#787878" }}
+                              />
+                              <span
+                                className="text-xs font-medium uppercase tracking-wide"
+                                style={{ color: "#787878" }}
+                              >
+                                Published
+                              </span>
+                            </div>
+                            <p
+                              className="text-sm font-semibold"
+                              style={{ color: "#2F3C96" }}
+                            >
+                              {detailsModal.publication.month
+                                ? `${detailsModal.publication.month} `
+                                : ""}
+                              {detailsModal.publication.day
+                                ? `${detailsModal.publication.day}, `
+                                : ""}
+                              {detailsModal.publication.year || "N/A"}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Keywords Section */}
+                  {detailsModal.publication.keywords &&
+                    detailsModal.publication.keywords.length > 0 && (
+                      <div>
+                        <div
+                          className="bg-white rounded-xl p-5 border shadow-sm"
+                          style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+                        >
+                          <h4
+                            className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
+                            style={{ color: "#2F3C96" }}
+                          >
+                            <TrendingUp className="w-4 h-4" />
+                            Keywords
+                          </h4>
+                          <div className="flex flex-wrap gap-2">
+                            {detailsModal.publication.keywords.map(
+                              (keyword, idx) => (
+                                <span
+                                  key={idx}
+                                  className="px-3 py-1.5 text-xs font-medium rounded-md border"
+                                  style={{
+                                    backgroundColor: "rgba(47, 60, 150, 0.15)",
+                                    color: "#2F3C96",
+                                    borderColor: "rgba(47, 60, 150, 0.3)",
+                                  }}
+                                >
+                                  {keyword}
+                                </span>
+                              )
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                  {/* Affiliations Section */}
+                  {detailsModal.publication.affiliations &&
+                    detailsModal.publication.affiliations.length > 0 && (
+                      <div>
+                        <div
+                          className="bg-white rounded-xl p-5 border shadow-sm"
+                          style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+                        >
+                          <h4
+                            className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
+                            style={{ color: "#2F3C96" }}
+                          >
+                            <MapPin className="w-4 h-4" />
+                            Affiliation
+                          </h4>
+                          <p
+                            className="text-sm leading-relaxed"
+                            style={{ color: "#787878" }}
+                          >
+                            {detailsModal.publication.affiliations[0]}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                  {/* Publication Types */}
+                  {detailsModal.publication.publicationTypes &&
+                    detailsModal.publication.publicationTypes.length > 0 && (
+                      <div>
+                        <div
+                          className="bg-white rounded-xl p-5 border shadow-sm"
+                          style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+                        >
+                          <h4
+                            className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide"
+                            style={{ color: "#2F3C96" }}
+                          >
+                            <FileText className="w-4 h-4" />
+                            Publication Type
+                          </h4>
+                          <div className="flex flex-wrap gap-2">
+                            {detailsModal.publication.publicationTypes.map(
+                              (type, idx) => (
+                                <span
+                                  key={idx}
+                                  className="px-3 py-1.5 text-xs font-medium rounded-md border"
+                                  style={{
+                                    backgroundColor: "rgba(208, 196, 226, 0.2)",
+                                    color: "#787878",
+                                    borderColor: "rgba(208, 196, 226, 0.3)",
+                                  }}
+                                >
+                                  {type}
+                                </span>
+                              )
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                </div>
+
+                {/* Sticky Actions Footer */}
+                <div
+                  className="bottom-0 px-6 py-4 border-t bg-white/95 backdrop-blur-sm shadow-lg"
+                  style={{ borderColor: "rgba(208, 196, 226, 0.3)" }}
+                >
+                  <div className="flex flex-wrap gap-3">
+                    {detailsModal.publication.url && (
+                      <a
+                        href={detailsModal.publication.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex-1 px-4 py-2.5 text-white rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2 shadow-sm hover:shadow-md"
+                        style={{
+                          background:
+                            "linear-gradient(135deg, #2F3C96, #253075)",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.target.style.background =
+                            "linear-gradient(135deg, #253075, #1C2454)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.target.style.background =
+                            "linear-gradient(135deg, #2F3C96, #253075)";
+                        }}
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                        View on PubMed
+                      </a>
+                    )}
+                    <button
+                      onClick={() => favorite(detailsModal.publication)}
+                      disabled={favoritingItems.has(
+                        getFavoriteKey(detailsModal.publication)
+                      )}
+                      className="px-4 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 border shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={
+                        favorites.some(
                           (fav) =>
                             fav.type === "publication" &&
                             (fav.item?.id ===
@@ -2819,42 +2962,20 @@ export default function Publications() {
                                 (detailsModal.publication.id ||
                                   detailsModal.publication.pmid))
                         )
-                      ) {
-                        e.currentTarget.style.backgroundColor =
-                          "rgba(208, 196, 226, 0.3)";
-                        e.currentTarget.style.color = "#2F3C96";
+                          ? {
+                              backgroundColor: "#fee2e2",
+                              borderColor: "#fecaca",
+                              color: "#dc2626",
+                            }
+                          : {
+                              backgroundColor: "rgba(208, 196, 226, 0.2)",
+                              borderColor: "rgba(208, 196, 226, 0.3)",
+                              color: "#787878",
+                            }
                       }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (
-                        !favorites.some(
-                          (fav) =>
-                            fav.type === "publication" &&
-                            (fav.item?.id ===
-                              (detailsModal.publication.id ||
-                                detailsModal.publication.pmid) ||
-                              fav.item?._id ===
-                                (detailsModal.publication.id ||
-                                  detailsModal.publication.pmid) ||
-                              fav.item?.pmid ===
-                                (detailsModal.publication.id ||
-                                  detailsModal.publication.pmid))
-                        )
-                      ) {
-                        e.currentTarget.style.backgroundColor =
-                          "rgba(208, 196, 226, 0.2)";
-                        e.currentTarget.style.color = "#787878";
-                      }
-                    }}
-                  >
-                    {favoritingItems.has(
-                      getFavoriteKey(detailsModal.publication)
-                    ) ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Heart
-                        className={`w-4 h-4 ${
-                          favorites.some(
+                      onMouseEnter={(e) => {
+                        if (
+                          !favorites.some(
                             (fav) =>
                               fav.type === "publication" &&
                               (fav.item?.id ===
@@ -2867,34 +2988,83 @@ export default function Publications() {
                                   (detailsModal.publication.id ||
                                     detailsModal.publication.pmid))
                           )
-                            ? "fill-current"
-                            : ""
-                        }`}
-                      />
-                    )}
-                    {favoritingItems.has(
-                      getFavoriteKey(detailsModal.publication)
-                    )
-                      ? "Processing..."
-                      : favorites.some(
-                          (fav) =>
-                            fav.type === "publication" &&
-                            (fav.item?.id ===
-                              (detailsModal.publication.id ||
-                                detailsModal.publication.pmid) ||
-                              fav.item?._id ===
+                        ) {
+                          e.currentTarget.style.backgroundColor =
+                            "rgba(208, 196, 226, 0.3)";
+                          e.currentTarget.style.color = "#2F3C96";
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (
+                          !favorites.some(
+                            (fav) =>
+                              fav.type === "publication" &&
+                              (fav.item?.id ===
                                 (detailsModal.publication.id ||
                                   detailsModal.publication.pmid) ||
-                              fav.item?.pmid ===
+                                fav.item?._id ===
+                                  (detailsModal.publication.id ||
+                                    detailsModal.publication.pmid) ||
+                                fav.item?.pmid ===
+                                  (detailsModal.publication.id ||
+                                    detailsModal.publication.pmid))
+                          )
+                        ) {
+                          e.currentTarget.style.backgroundColor =
+                            "rgba(208, 196, 226, 0.2)";
+                          e.currentTarget.style.color = "#787878";
+                        }
+                      }}
+                    >
+                      {favoritingItems.has(
+                        getFavoriteKey(detailsModal.publication)
+                      ) ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Heart
+                          className={`w-4 h-4 ${
+                            favorites.some(
+                              (fav) =>
+                                fav.type === "publication" &&
+                                (fav.item?.id ===
+                                  (detailsModal.publication.id ||
+                                    detailsModal.publication.pmid) ||
+                                  fav.item?._id ===
+                                    (detailsModal.publication.id ||
+                                      detailsModal.publication.pmid) ||
+                                  fav.item?.pmid ===
+                                    (detailsModal.publication.id ||
+                                      detailsModal.publication.pmid))
+                            )
+                              ? "fill-current"
+                              : ""
+                          }`}
+                        />
+                      )}
+                      {favoritingItems.has(
+                        getFavoriteKey(detailsModal.publication)
+                      )
+                        ? "Processing..."
+                        : favorites.some(
+                            (fav) =>
+                              fav.type === "publication" &&
+                              (fav.item?.id ===
                                 (detailsModal.publication.id ||
-                                  detailsModal.publication.pmid))
-                        )
-                      ? "Remove from Favorites"
-                      : "Add to Favorites"}
-                  </button>
+                                  detailsModal.publication.pmid) ||
+                                fav.item?._id ===
+                                  (detailsModal.publication.id ||
+                                    detailsModal.publication.pmid) ||
+                                fav.item?.pmid ===
+                                  (detailsModal.publication.id ||
+                                    detailsModal.publication.pmid))
+                          )
+                        ? "Remove from Favorites"
+                        : "Add to Favorites"}
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
+            )
           )}
         </Modal>
 

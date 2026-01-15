@@ -2954,16 +2954,19 @@ export default function Favorites() {
               setReportModal({ open: false, loading: false, report: null })
             }
           />
-          <div className="relative z-10 w-full max-w-4xl max-h-[95vh] overflow-hidden bg-white rounded-2xl shadow-2xl border border-slate-200/50">
-            <div className="sticky top-0 z-20 flex items-center justify-between px-6 py-4 bg-gradient-to-r from-indigo-50 via-white to-indigo-50 border-b border-slate-200/80 backdrop-blur-sm">
-              <h2 className="text-xl font-bold bg-gradient-to-r from-indigo-700 to-indigo-600 bg-clip-text text-transparent">
+          <div className="relative z-10 w-full max-w-4xl max-h-[95vh] overflow-hidden bg-white rounded-2xl shadow-2xl" style={{ border: '1px solid rgba(47, 60, 150, 0.2)' }}>
+            <div className="sticky top-0 z-20 flex items-center justify-between px-6 py-4 border-b backdrop-blur-sm" style={{ background: 'linear-gradient(to right, rgba(208, 196, 226, 0.3), white, rgba(208, 196, 226, 0.3))', borderColor: 'rgba(47, 60, 150, 0.15)' }}>
+              <h2 className="text-xl font-bold" style={{ color: '#2F3C96' }}>
                 Summary Report
               </h2>
               <button
                 onClick={() =>
                   setReportModal({ open: false, loading: false, report: null })
                 }
-                className="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all"
+                className="p-2 rounded-lg transition-all"
+                style={{ color: '#787878' }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = '#2F3C96'; e.currentTarget.style.backgroundColor = '#F5F5F5'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = '#787878'; e.currentTarget.style.backgroundColor = 'transparent'; }}
               >
                 <X className="w-5 h-5" />
               </button>
@@ -2971,21 +2974,24 @@ export default function Favorites() {
             <div className="p-6 overflow-y-auto max-h-[calc(95vh-80px)]">
               {reportModal.loading ? (
                 <div className="py-12 text-center">
-                  <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                  <p className="text-slate-700 font-medium">
+                  <div className="w-12 h-12 border-4 rounded-full animate-spin mx-auto mb-4" style={{ borderColor: '#D0C4E2', borderTopColor: 'transparent' }}></div>
+                  <p className="font-medium" style={{ color: '#2F3C96' }}>
                     Generating your summary report...
                   </p>
-                  <p className="text-sm text-slate-500 mt-2">
+                  <p className="text-sm mt-2" style={{ color: '#787878' }}>
                     This may take a few moments
                   </p>
                 </div>
               ) : reportModal.report ? (
                 <div className="space-y-6">
                   {/* Action Buttons - Only Export PDF and Print */}
-                  <div className="flex gap-3 pb-4 border-b border-slate-200">
+                  <div className="flex gap-3 pb-4 border-b" style={{ borderColor: 'rgba(47, 60, 150, 0.15)' }}>
                     <button
                       onClick={exportToPDF}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-all shadow-sm"
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-white rounded-lg text-sm font-semibold transition-all shadow-sm"
+                      style={{ backgroundColor: '#2F3C96' }}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#253075'}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#2F3C96'}
                     >
                       <FileTextIcon className="w-4 h-4" />
                       Export PDF
@@ -2999,44 +3005,44 @@ export default function Favorites() {
                     style={{ display: "block" }}
                   >
                     {/* Patient Context */}
-                    <div className="bg-gradient-to-br from-indigo-50 to-blue-50 rounded-xl p-6 border border-indigo-200">
-                      <h2 className="text-2xl font-bold text-indigo-900 mb-4 flex items-center gap-2">
+                    <div className="rounded-xl p-6" style={{ background: 'linear-gradient(to bottom right, rgba(208, 196, 226, 0.3), rgba(208, 196, 226, 0.15))', border: '1px solid rgba(47, 60, 150, 0.2)' }}>
+                      <h2 className="text-2xl font-bold mb-4 flex items-center gap-2" style={{ color: '#2F3C96' }}>
                         <User className="w-6 h-6" />
                         Patient Context
                       </h2>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                          <p className="text-sm font-semibold text-slate-700 mb-1">
+                          <p className="text-sm font-semibold mb-1" style={{ color: '#787878' }}>
                             Patient Name:
                           </p>
-                          <p className="text-slate-900">
+                          <p style={{ color: '#2F3C96' }}>
                             {reportModal.report.patientContext.name ||
                               "Not specified"}
                           </p>
                         </div>
                         <div>
-                          <p className="text-sm font-semibold text-slate-700 mb-1">
+                          <p className="text-sm font-semibold mb-1" style={{ color: '#787878' }}>
                             Condition:
                           </p>
-                          <p className="text-slate-900">
+                          <p style={{ color: '#2F3C96' }}>
                             {reportModal.report.patientContext.condition}
                           </p>
                         </div>
                         <div>
-                          <p className="text-sm font-semibold text-slate-700 mb-1">
+                          <p className="text-sm font-semibold mb-1" style={{ color: '#787878' }}>
                             Location:
                           </p>
-                          <p className="text-slate-900">
+                          <p style={{ color: '#2F3C96' }}>
                             {reportModal.report.patientContext.location}
                           </p>
                         </div>
                         {reportModal.report.patientContext.keyConcerns?.length >
                           0 && (
                           <div>
-                            <p className="text-sm font-semibold text-slate-700 mb-1">
+                            <p className="text-sm font-semibold mb-1" style={{ color: '#787878' }}>
                               Key Concerns:
                             </p>
-                            <p className="text-slate-900">
+                            <p style={{ color: '#2F3C96' }}>
                               {reportModal.report.patientContext.keyConcerns.join(
                                 ", "
                               )}
@@ -3046,10 +3052,10 @@ export default function Favorites() {
                         {reportModal.report.patientContext.interests?.length >
                           0 && (
                           <div>
-                            <p className="text-sm font-semibold text-slate-700 mb-1">
+                            <p className="text-sm font-semibold mb-1" style={{ color: '#787878' }}>
                               Interests:
                             </p>
-                            <p className="text-slate-900">
+                            <p style={{ color: '#2F3C96' }}>
                               {reportModal.report.patientContext.interests.join(
                                 ", "
                               )}
@@ -3062,7 +3068,7 @@ export default function Favorites() {
                     {/* Experts Section */}
                     {reportModal.report.experts?.length > 0 && (
                       <div>
-                        <h2 className="text-2xl font-bold text-indigo-900 mb-4 flex items-center gap-2">
+                        <h2 className="text-2xl font-bold mb-4 flex items-center gap-2" style={{ color: '#2F3C96' }}>
                           <Users className="w-6 h-6" />
                           Experts Selected ({reportModal.report.experts.length})
                         </h2>
@@ -3070,26 +3076,27 @@ export default function Favorites() {
                           {reportModal.report.experts.map((expert, idx) => (
                             <div
                               key={idx}
-                              className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm"
+                              className="bg-white rounded-xl p-5 shadow-sm"
+                              style={{ border: '1px solid rgba(47, 60, 150, 0.15)' }}
                             >
-                              <h3 className="text-lg font-bold text-slate-900 mb-2">
+                              <h3 className="text-lg font-bold mb-2" style={{ color: '#2F3C96' }}>
                                 {expert.name}
                               </h3>
-                              <div className="space-y-2 text-sm">
+                              <div className="space-y-2 text-sm" style={{ color: '#787878' }}>
                                 <p>
-                                  <span className="font-semibold">
+                                  <span className="font-semibold" style={{ color: '#2F3C96' }}>
                                     Affiliation:
                                   </span>{" "}
                                   {expert.affiliation}
                                 </p>
                                 <p>
-                                  <span className="font-semibold">
+                                  <span className="font-semibold" style={{ color: '#2F3C96' }}>
                                     Specialty:
                                   </span>{" "}
                                   {expert.specialty}
                                 </p>
                                 <p>
-                                  <span className="font-semibold">
+                                  <span className="font-semibold" style={{ color: '#2F3C96' }}>
                                     Key Expertise:
                                   </span>{" "}
                                   {expert.keyExpertise}
@@ -3097,7 +3104,7 @@ export default function Favorites() {
                                 {Array.isArray(expert.topPublications) &&
                                   expert.topPublications.length > 0 && (
                                     <div>
-                                      <p className="font-semibold mb-1">
+                                      <p className="font-semibold mb-1" style={{ color: '#2F3C96' }}>
                                         Top Relevant Publications:
                                       </p>
                                       <ul className="list-disc list-inside space-y-1 ml-2">
@@ -3105,7 +3112,7 @@ export default function Favorites() {
                                           (pub, pIdx) => (
                                             <li
                                               key={pIdx}
-                                              className="text-slate-700"
+                                              style={{ color: '#787878' }}
                                             >
                                               <span className="font-medium">
                                                 {pub.title}
@@ -3118,13 +3125,13 @@ export default function Favorites() {
                                     </div>
                                   )}
                                 <p>
-                                  <span className="font-semibold">
+                                  <span className="font-semibold" style={{ color: '#2F3C96' }}>
                                     Why relevant:
                                   </span>{" "}
                                   {expert.relevance}
                                 </p>
                                 <p>
-                                  <span className="font-semibold">
+                                  <span className="font-semibold" style={{ color: '#2F3C96' }}>
                                     Contact:
                                   </span>{" "}
                                   {expert.contact}
@@ -3139,7 +3146,7 @@ export default function Favorites() {
                     {/* Publications Section */}
                     {reportModal.report.publications?.length > 0 && (
                       <div>
-                        <h2 className="text-2xl font-bold text-indigo-900 mb-4 flex items-center gap-2">
+                        <h2 className="text-2xl font-bold mb-4 flex items-center gap-2" style={{ color: '#2F3C96' }}>
                           <FileText className="w-6 h-6" />
                           Publications Selected (
                           {reportModal.report.publications.length})
@@ -3148,38 +3155,39 @@ export default function Favorites() {
                           {reportModal.report.publications.map((pub, idx) => (
                             <div
                               key={idx}
-                              className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm"
+                              className="bg-white rounded-xl p-5 shadow-sm"
+                              style={{ border: '1px solid rgba(47, 60, 150, 0.15)' }}
                             >
-                              <h3 className="text-lg font-bold text-slate-900 mb-2">
+                              <h3 className="text-lg font-bold mb-2" style={{ color: '#2F3C96' }}>
                                 {pub.title}
                               </h3>
-                              <div className="space-y-2 text-sm">
+                              <div className="space-y-2 text-sm" style={{ color: '#787878' }}>
                                 <p>
-                                  <span className="font-semibold">
+                                  <span className="font-semibold" style={{ color: '#2F3C96' }}>
                                     Authors:
                                   </span>{" "}
                                   {pub.authors}
                                 </p>
                                 <p>
-                                  <span className="font-semibold">
+                                  <span className="font-semibold" style={{ color: '#2F3C96' }}>
                                     Journal:
                                   </span>{" "}
                                   {pub.journal} ({pub.year})
                                 </p>
                                 <p>
-                                  <span className="font-semibold">
+                                  <span className="font-semibold" style={{ color: '#2F3C96' }}>
                                     Key Finding:
                                   </span>{" "}
                                   {pub.keyFinding}
                                 </p>
                                 <p>
-                                  <span className="font-semibold">
+                                  <span className="font-semibold" style={{ color: '#2F3C96' }}>
                                     Relevance to patient:
                                   </span>{" "}
                                   {pub.clinicalRelevance}
                                 </p>
                                 <p>
-                                  <span className="font-semibold">
+                                  <span className="font-semibold" style={{ color: '#2F3C96' }}>
                                     Level of evidence:
                                   </span>{" "}
                                   {pub.evidenceLevel}
@@ -3194,79 +3202,88 @@ export default function Favorites() {
                     {/* Clinical Trials Section */}
                     {reportModal.report.trials?.length > 0 && (
                       <div>
-                        <h2 className="text-2xl font-bold text-indigo-900 mb-4 flex items-center gap-2">
+                        <h2 className="text-2xl font-bold mb-4 flex items-center gap-2" style={{ color: '#2F3C96' }}>
                           <Beaker className="w-6 h-6" />
                           Clinical Trials Selected (
                           {reportModal.report.trials.length})
+                          <span className="text-sm font-normal ml-2" style={{ color: '#787878' }}>
+                            [{reportModal.report.trials.map(t => t.trialNumber || t.id || t._id).filter(Boolean).join(", ")}]
+                          </span>
                         </h2>
                         <div className="space-y-4">
                           {reportModal.report.trials.map((trial, idx) => (
                             <div
                               key={idx}
-                              className="bg-white rounded-xl p-5 border border-slate-200 shadow-sm"
+                              className="bg-white rounded-xl p-5 shadow-sm"
+                              style={{ border: '1px solid rgba(47, 60, 150, 0.15)' }}
                             >
-                              <h3 className="text-lg font-bold text-slate-900 mb-2">
+                              <h3 className="text-lg font-bold mb-2" style={{ color: '#2F3C96' }}>
                                 {trial.title}
                               </h3>
-                              <div className="space-y-2 text-sm">
+                              {(trial.trialNumber || trial.id || trial._id) && (
+                                <p className="text-sm font-medium mb-2" style={{ color: '#D0C4E2' }}>
+                                  Trial ID: <span style={{ color: '#2F3C96' }}>{trial.trialNumber || trial.id || trial._id}</span>
+                                </p>
+                              )}
+                              <div className="space-y-2 text-sm" style={{ color: '#787878' }}>
                                 <div className="grid grid-cols-2 gap-4">
                                   <p>
-                                    <span className="font-semibold">
+                                    <span className="font-semibold" style={{ color: '#2F3C96' }}>
                                       Phase:
                                     </span>{" "}
                                     {trial.phase}
                                   </p>
                                   <p>
-                                    <span className="font-semibold">
+                                    <span className="font-semibold" style={{ color: '#2F3C96' }}>
                                       Status:
                                     </span>{" "}
                                     {trial.status}
                                   </p>
                                   <p>
-                                    <span className="font-semibold">
+                                    <span className="font-semibold" style={{ color: '#2F3C96' }}>
                                       Condition:
                                     </span>{" "}
                                     {trial.condition}
                                   </p>
                                   <p>
-                                    <span className="font-semibold">
+                                    <span className="font-semibold" style={{ color: '#2F3C96' }}>
                                       Location:
                                     </span>{" "}
                                     {trial.location}
                                   </p>
                                 </div>
                                 <p>
-                                  <span className="font-semibold">
+                                  <span className="font-semibold" style={{ color: '#2F3C96' }}>
                                     Intervention:
                                   </span>{" "}
                                   {trial.intervention}
                                 </p>
                                 {trial.eligibilitySnapshot && (
-                                  <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
-                                    <p className="font-semibold mb-2">
+                                  <div className="rounded-lg p-3" style={{ backgroundColor: '#F5F5F5', border: '1px solid rgba(47, 60, 150, 0.1)' }}>
+                                    <p className="font-semibold mb-2" style={{ color: '#2F3C96' }}>
                                       Eligibility Snapshot:
                                     </p>
                                     <div className="grid grid-cols-2 gap-2 text-xs">
                                       <p>
-                                        <span className="font-medium">
+                                        <span className="font-medium" style={{ color: '#2F3C96' }}>
                                           Age:
                                         </span>{" "}
                                         {trial.eligibilitySnapshot.age}
                                       </p>
                                       <p>
-                                        <span className="font-medium">
+                                        <span className="font-medium" style={{ color: '#2F3C96' }}>
                                           Gender:
                                         </span>{" "}
                                         {trial.eligibilitySnapshot.gender}
                                       </p>
                                       <p>
-                                        <span className="font-medium">
+                                        <span className="font-medium" style={{ color: '#2F3C96' }}>
                                           Key Inclusion:
                                         </span>{" "}
                                         {trial.eligibilitySnapshot.keyInclusion}
                                       </p>
                                       <p>
-                                        <span className="font-medium">
+                                        <span className="font-medium" style={{ color: '#2F3C96' }}>
                                           Key Exclusion:
                                         </span>{" "}
                                         {trial.eligibilitySnapshot.keyExclusion}
@@ -3275,13 +3292,13 @@ export default function Favorites() {
                                   </div>
                                 )}
                                 <p>
-                                  <span className="font-semibold">
+                                  <span className="font-semibold" style={{ color: '#2F3C96' }}>
                                     Goal of Study:
                                   </span>{" "}
                                   {trial.goal}
                                 </p>
                                 <p>
-                                  <span className="font-semibold">
+                                  <span className="font-semibold" style={{ color: '#2F3C96' }}>
                                     Why relevant to patient:
                                   </span>{" "}
                                   {trial.relevance}
@@ -3294,19 +3311,19 @@ export default function Favorites() {
                     )}
 
                     {/* Doctor Notes Section */}
-                    <div className="bg-slate-50 rounded-xl p-6 border border-slate-200">
-                      <h2 className="text-2xl font-bold text-slate-900 mb-4 flex items-center gap-2">
+                    <div className="rounded-xl p-6" style={{ backgroundColor: '#F5F5F5', border: '1px solid rgba(47, 60, 150, 0.15)' }}>
+                      <h2 className="text-2xl font-bold mb-4 flex items-center gap-2" style={{ color: '#2F3C96' }}>
                         <FileText className="w-6 h-6" />
                         Doctor Notes
                       </h2>
                       <div className="space-y-4">
-                        <div className="bg-white rounded-lg p-4 border border-slate-200 min-h-[100px]">
-                          <p className="text-slate-400 text-sm">
+                        <div className="bg-white rounded-lg p-4 min-h-[100px]" style={{ border: '1px solid rgba(47, 60, 150, 0.1)' }}>
+                          <p className="text-sm" style={{ color: '#787878' }}>
                             [Space for clinical notes and discussion]
                           </p>
                         </div>
-                        <div className="bg-white rounded-lg p-4 border border-slate-200 min-h-[100px]">
-                          <p className="text-slate-400 text-sm">
+                        <div className="bg-white rounded-lg p-4 min-h-[100px]" style={{ border: '1px solid rgba(47, 60, 150, 0.1)' }}>
+                          <p className="text-sm" style={{ color: '#787878' }}>
                             [Additional notes]
                           </p>
                         </div>
@@ -3314,14 +3331,14 @@ export default function Favorites() {
                     </div>
 
                     {/* Footer */}
-                    <div className="text-center text-xs text-slate-500 pt-4 border-t border-slate-200">
+                    <div className="text-center text-xs pt-4" style={{ color: '#787878', borderTop: '1px solid rgba(47, 60, 150, 0.15)' }}>
                       <p>
                         Generated on{" "}
                         {new Date(
                           reportModal.report.generatedAt
                         ).toLocaleString()}
                       </p>
-                      <p className="mt-1">
+                      <p className="mt-1" style={{ color: '#2F3C96' }}>
                         Collabiora - Personalized Medical Research Platform
                       </p>
                     </div>

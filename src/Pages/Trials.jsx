@@ -162,6 +162,15 @@ export default function Trials() {
     copied: false,
   });
 
+  // Helper function to sort trials by match percentage (highest first)
+  const sortTrialsByMatch = (trials) => {
+    return [...trials].sort((a, b) => {
+      const aMatch = a.matchPercentage ?? -1;
+      const bMatch = b.matchPercentage ?? -1;
+      return bMatch - aMatch; // Descending order (highest first)
+    });
+  };
+
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -390,11 +399,7 @@ export default function Trials() {
       setTotalPages(calculatedTotalPages);
 
       // Sort by matchPercentage in descending order (highest first)
-      const sortedResults = [...searchResults].sort((a, b) => {
-        const aMatch = a.matchPercentage ?? -1;
-        const bMatch = b.matchPercentage ?? -1;
-        return bMatch - aMatch; // Descending order
-      });
+      const sortedResults = sortTrialsByMatch(searchResults);
       setResults(sortedResults);
 
       // Only count search after results are successfully loaded and processed
@@ -590,11 +595,7 @@ export default function Trials() {
       setTotalPages(calculatedTotalPages);
 
       // Sort by matchPercentage in descending order (highest first)
-      const sortedResults = [...searchResults].sort((a, b) => {
-        const aMatch = a.matchPercentage ?? -1;
-        const bMatch = b.matchPercentage ?? -1;
-        return bMatch - aMatch; // Descending order
-      });
+      const sortedResults = sortTrialsByMatch(searchResults);
       setResults(sortedResults);
 
       // Save updated state to sessionStorage
@@ -798,11 +799,7 @@ export default function Trials() {
           }
 
           // Sort by matchPercentage in descending order (highest first)
-          const sortedResults = [...searchResults].sort((a, b) => {
-            const aMatch = a.matchPercentage ?? -1;
-            const bMatch = b.matchPercentage ?? -1;
-            return bMatch - aMatch; // Descending order
-          });
+          const sortedResults = sortTrialsByMatch(searchResults);
           setResults(sortedResults);
 
           // Save search state to sessionStorage (including pagination)
@@ -1539,7 +1536,9 @@ export default function Trials() {
             : true
         );
         setUserMedicalInterest(state.userMedicalInterest || "");
-        setResults(state.results || []);
+        // Sort results by match percentage when restoring from sessionStorage
+        const restoredResults = state.results || [];
+        setResults(sortTrialsByMatch(restoredResults));
         // Restore pagination state
         if (state.currentPage) setCurrentPage(state.currentPage);
         if (state.totalPages) setTotalPages(state.totalPages);
@@ -2159,6 +2158,23 @@ export default function Trials() {
                                 >
                                   {trial.matchPercentage}% Match
                                 </span>
+                                {/* Info Icon with Tooltip */}
+                                <div className="relative group">
+                                  <Info
+                                    className="w-4 h-4 cursor-help transition-opacity hover:opacity-70"
+                                    style={{ color: "#2F3C96" }}
+                                  />
+                                  {/* Tooltip */}
+                                  <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 pointer-events-none">
+                                    <div className="font-semibold mb-1">Match Relevance</div>
+                                    <div className="text-gray-300 leading-relaxed">
+                                      {trial.matchExplanation || 
+                                        `This trial matches ${trial.matchPercentage}% based on your profile, medical conditions, location, and eligibility criteria. The match considers factors like your medical interests, location proximity, age, gender, and trial requirements.`}
+                                    </div>
+                                    {/* Tooltip arrow */}
+                                    <div className="absolute left-1/2 -translate-x-1/2 bottom-full w-0 h-0 border-l-4 border-r-4 border-b-4 border-transparent border-b-gray-900"></div>
+                                  </div>
+                                </div>
                               </div>
                               {trial.status && (
                                 <span

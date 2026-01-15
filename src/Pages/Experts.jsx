@@ -51,7 +51,7 @@ export default function Experts() {
   const [useMedicalInterest, setUseMedicalInterest] = useState(true); // Toggle for using medical interest
   const [userMedicalInterest, setUserMedicalInterest] = useState(""); // User's medical interest
   const [isInitialLoad, setIsInitialLoad] = useState(true); // Track if it's the initial load
-  const [expertSource, setExpertSource] = useState("global"); // "global" or "platform"
+  const [expertSource, setExpertSource] = useState("platform"); // "global" or "platform"
   const [isSignedIn, setIsSignedIn] = useState(false); // Track if user is signed in
   const [user, setUser] = useState(null); // Track user state
   const [results, setResults] = useState([]);
@@ -823,7 +823,7 @@ export default function Experts() {
             : true
         );
         setUserMedicalInterest(state.userMedicalInterest || "");
-        setExpertSource(state.expertSource || "global");
+        setExpertSource(state.expertSource || "platform");
         setResults(state.results || []);
         setIsInitialLoad(
           state.isInitialLoad !== undefined ? state.isInitialLoad : false
@@ -844,7 +844,7 @@ export default function Experts() {
       setLocationMode("global");
       setUseMedicalInterest(true);
       setUserMedicalInterest("");
-      setExpertSource("global");
+      setExpertSource("platform");
       setResults([]);
       setIsInitialLoad(true);
       setIsSignedIn(false);
