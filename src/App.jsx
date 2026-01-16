@@ -30,6 +30,7 @@ import Auth0Callback from "./Pages/Auth0Callback.jsx";
 import CompleteProfile from "./Pages/CompleteProfile.jsx";
 import AboutUs from "./Pages/AboutUs.jsx";
 import TrialDetails from "./Pages/TrialDetails.jsx";
+import PublicationDetails from "./Pages/PublicationDetails.jsx";
 import VerifyEmail from "./Pages/VerifyEmail.jsx";
 import "./App.css";
 import Navbar from "./components/Navbar.jsx";
@@ -80,6 +81,7 @@ const AppContent = () => {
         <Route path="/trials" element={<Trials />} />
         <Route path="/trial/:nctId" element={<TrialDetails />} />
         <Route path="/publications" element={<Publications />} />
+        <Route path="/publication/:pmid" element={<PublicationDetails />} />
         <Route path="/experts" element={<Experts />} />
         <Route path="/expert/profile" element={<ExpertProfile />} />
         <Route

@@ -456,6 +456,11 @@ export default function PDFReportDocument({ report }) {
               <View style={styles.publicationItem}>
                 <Text style={styles.publicationTitle}>
                   {report.publications[0].title || "Untitled Publication"}
+                  {report.publications[0].referenceNumber && (
+                    <Text style={{ fontSize: 8, fontWeight: "normal", color: "#6b7280" }}>
+                      {" "}[DOI: {report.publications[0].referenceNumber}]
+                    </Text>
+                  )}
                 </Text>
                 <View style={styles.itemGrid}>
                   <View style={styles.itemField}>
@@ -503,12 +508,17 @@ export default function PDFReportDocument({ report }) {
               icon={Icons.Trial}
               title="Clinical Trials"
               count={report.trials.length}
-              trialNumbers={report.trials.map(t => t.trialNumber || t.id || t._id).filter(Boolean)}
+              trialNumbers={report.trials.map(t => t.referenceNumber || t.trialNumber || t.id || t._id).filter(Boolean)}
             />
             <View style={styles.sectionContent}>
               <View style={styles.itemCard}>
                 <Text style={styles.itemTitle}>
                   {report.trials[0].title || "Untitled Trial"}
+                  {(report.trials[0].referenceNumber || report.trials[0].trialNumber || report.trials[0].id || report.trials[0]._id) && (
+                    <Text style={{ fontSize: 8, fontWeight: "normal", color: "#6b7280" }}>
+                      {" "}[NCT: {report.trials[0].referenceNumber || report.trials[0].trialNumber || report.trials[0].id || report.trials[0]._id}]
+                    </Text>
+                  )}
                 </Text>
 
                 <View style={styles.itemGrid}>
@@ -704,6 +714,11 @@ export default function PDFReportDocument({ report }) {
                 <View style={styles.publicationItem}>
                   <Text style={styles.publicationTitle}>
                     {pub.title || "Untitled Publication"}
+                    {pub.referenceNumber && (
+                      <Text style={{ fontSize: 8, fontWeight: "normal", color: "#6b7280" }}>
+                        {" "}[DOI: {pub.referenceNumber}]
+                      </Text>
+                    )}
                   </Text>
                   <View style={styles.itemGrid}>
                     <View style={styles.itemField}>
@@ -759,12 +774,17 @@ export default function PDFReportDocument({ report }) {
                 icon={Icons.Trial}
                 title="Clinical Trials"
                 count={report.trials.length}
-                trialNumbers={report.trials.map(t => t.trialNumber || t.id || t._id).filter(Boolean)}
+                trialNumbers={report.trials.map(t => t.referenceNumber || t.trialNumber || t.id || t._id).filter(Boolean)}
               />
               <View style={styles.sectionContent}>
                 <View style={styles.itemCard}>
                   <Text style={styles.itemTitle}>
                     {trial.title || "Untitled Trial"}
+                    {(trial.referenceNumber || trial.trialNumber || trial.id || trial._id) && (
+                      <Text style={{ fontSize: 8, fontWeight: "normal", color: "#6b7280" }}>
+                        {" "}[NCT: {trial.referenceNumber || trial.trialNumber || trial.id || trial._id}]
+                      </Text>
+                    )}
                   </Text>
 
                   <View style={styles.itemGrid}>

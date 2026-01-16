@@ -3160,6 +3160,11 @@ export default function Favorites() {
                             >
                               <h3 className="text-lg font-bold mb-2" style={{ color: '#2F3C96' }}>
                                 {pub.title}
+                                {pub.referenceNumber && (
+                                  <span className="text-sm font-normal ml-2" style={{ color: '#787878' }}>
+                                    [DOI: {pub.referenceNumber}]
+                                  </span>
+                                )}
                               </h3>
                               <div className="space-y-2 text-sm" style={{ color: '#787878' }}>
                                 <p>
@@ -3219,12 +3224,12 @@ export default function Favorites() {
                             >
                               <h3 className="text-lg font-bold mb-2" style={{ color: '#2F3C96' }}>
                                 {trial.title}
+                                {(trial.referenceNumber || trial.trialNumber || trial.id || trial._id) && (
+                                  <span className="text-sm font-normal ml-2" style={{ color: '#787878' }}>
+                                    [NCT: {trial.referenceNumber || trial.trialNumber || trial.id || trial._id}]
+                                  </span>
+                                )}
                               </h3>
-                              {(trial.trialNumber || trial.id || trial._id) && (
-                                <p className="text-sm font-medium mb-2" style={{ color: '#D0C4E2' }}>
-                                  Trial ID: <span style={{ color: '#2F3C96' }}>{trial.trialNumber || trial.id || trial._id}</span>
-                                </p>
-                              )}
                               <div className="space-y-2 text-sm" style={{ color: '#787878' }}>
                                 <div className="grid grid-cols-2 gap-4">
                                   <p>

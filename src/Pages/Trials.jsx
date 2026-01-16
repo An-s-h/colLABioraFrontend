@@ -25,6 +25,7 @@ import {
   CheckCircle2,
   AlertCircle,
   ChevronDown,
+  X,
 } from "lucide-react";
 import Layout from "../components/Layout.jsx";
 
@@ -178,6 +179,10 @@ export default function Trials() {
   const [lastSearchQuery, setLastSearchQuery] = useState(""); // Track last search query for pagination
   const [lastSearchParams, setLastSearchParams] = useState({}); // Store all search parameters for pagination
 
+  // Search keywords state (chips/tags)
+  const [searchKeywords, setSearchKeywords] = useState([]); // Keywords as chips below search bar
+  const MIN_KEYWORDS_REQUIRED = 2; // Minimum keywords required before search
+
   // Advanced search state
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
   const [eligibilitySex, setEligibilitySex] = useState("All"); // "All", "Female", "Male"
@@ -220,6 +225,54 @@ export default function Trials() {
       label: status.replace(/_/g, " "),
     })),
   ];
+
+  // Keyword chips management functions
+  const addKeyword = (keyword) => {
+    const trimmedKeyword = keyword.trim();
+    if (trimmedKeyword && !searchKeywords.includes(trimmedKeyword)) {
+      setSearchKeywords([...searchKeywords, trimmedKeyword]);
+      setQ(""); // Clear the input after adding
+    }
+  };
+
+  const removeKeyword = (keywordToRemove) => {
+    setSearchKeywords(searchKeywords.filter((k) => k !== keywordToRemove));
+  };
+
+  const clearAllKeywords = () => {
+    setSearchKeywords([]);
+    setQ("");
+  };
+
+  // Handle Enter key press - adds keyword instead of searching
+  const handleKeywordSubmit = (value) => {
+    if (value && value.trim()) {
+      addKeyword(value);
+    }
+  };
+
+  // Trigger search with validation for minimum keywords
+  const handleSearch = () => {
+    // Include current input value if not empty
+    let currentKeywords = [...searchKeywords];
+    if (q.trim() && !searchKeywords.includes(q.trim())) {
+      currentKeywords = [...searchKeywords, q.trim()];
+      setSearchKeywords(currentKeywords);
+      setQ("");
+    }
+
+    if (currentKeywords.length < MIN_KEYWORDS_REQUIRED) {
+      toast.error(
+        `Please add at least ${MIN_KEYWORDS_REQUIRED} keywords before searching. Currently: ${currentKeywords.length}`,
+        { duration: 3000 }
+      );
+      return;
+    }
+
+    // Combine keywords for search
+    const combinedQuery = currentKeywords.join(" ");
+    search(combinedQuery);
+  };
 
   async function search(overrideQuery) {
     const userData = JSON.parse(localStorage.getItem("user") || "{}");
@@ -1763,8 +1816,8 @@ export default function Trials() {
                 <SmartSearchInput
                   value={q}
                   onChange={setQ}
-                  onSubmit={(value) => search(value)}
-                  placeholder="Search by disease, treatment, condition..."
+                  onSubmit={handleKeywordSubmit}
+                  placeholder="Add keywords to improve your search results..."
                   extraTerms={trialSuggestionTerms}
                   className="flex-1"
                 />
@@ -1783,12 +1836,55 @@ export default function Trials() {
                     {showAdvancedSearch ? "Hide" : "Advanced"}
                   </Button>
                   <Button
-                    onClick={search}
+                    onClick={handleSearch}
                     className="bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white px-5 py-2 rounded-lg shadow-md hover:shadow-lg transition-all text-sm font-semibold"
                   >
                     Search
                   </Button>
                 </div>
+              </div>
+
+              {/* Keyword Chips Section */}
+              <div className="flex flex-col gap-2">
+                {searchKeywords.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-medium text-slate-600">
+                      Keywords ({searchKeywords.length}/{MIN_KEYWORDS_REQUIRED} min):
+                    </span>
+                    {searchKeywords.map((keyword, index) => (
+                      <span
+                        key={`${keyword}-${index}`}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 text-indigo-700 rounded-full text-xs font-medium shadow-sm hover:shadow transition-all group"
+                      >
+                        {keyword}
+                        <button
+                          onClick={() => removeKeyword(keyword)}
+                          className="hover:bg-indigo-200 rounded-full p-0.5 transition-colors"
+                          aria-label={`Remove ${keyword}`}
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                    <button
+                      onClick={clearAllKeywords}
+                      className="text-xs text-slate-500 hover:text-red-600 transition-colors underline underline-offset-2"
+                    >
+                      Clear all
+                    </button>
+                  </div>
+                )}
+                {searchKeywords.length === 0 && (
+                  <p className="text-xs text-slate-500 italic">
+                    Add at least {MIN_KEYWORDS_REQUIRED} keywords to search. Press Enter after each keyword.
+                  </p>
+                )}
+                {searchKeywords.length > 0 && searchKeywords.length < MIN_KEYWORDS_REQUIRED && (
+                  <p className="text-xs text-amber-600 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />
+                    Add {MIN_KEYWORDS_REQUIRED - searchKeywords.length} more keyword{MIN_KEYWORDS_REQUIRED - searchKeywords.length !== 1 ? 's' : ''} to enable search
+                  </p>
+                )}
               </div>
 
               {/* Location Options */}

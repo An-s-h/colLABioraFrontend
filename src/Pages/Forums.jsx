@@ -28,11 +28,65 @@ import {
   Filter,
   Tag,
 } from "lucide-react";
+import {
+  IconHospital,
+  IconRibbonHealth,
+  IconBrain,
+  IconDroplet,
+  IconHeartbeat,
+  IconSalad,
+  IconBarbell,
+  IconMicroscope,
+  IconBandage,
+  IconShield,
+  IconStethoscope,
+} from "@tabler/icons-react";
 import Layout from "../components/Layout.jsx";
 import AnimatedBackground from "../components/ui/AnimatedBackground.jsx";
 import CustomSelect from "../components/ui/CustomSelect.jsx";
 import { AuroraText } from "../components/ui/aurora-text";
 import { BorderBeam } from "../components/ui/border-beam";
+
+// Icon mapping for communities
+const getCommunityIcon = (slug, name) => {
+  const iconMap = {
+    "general-health": IconHospital,
+    "cancer-support": IconRibbonHealth,
+    "mental-health": IconBrain,
+    "diabetes-management": IconDroplet,
+    "heart-health": IconHeartbeat,
+    "nutrition-diet": IconSalad,
+    "fitness-exercise": IconBarbell,
+    "clinical-trials": IconMicroscope,
+    "chronic-pain": IconBandage,
+    "autoimmune-conditions": IconShield,
+  };
+
+  // Try slug first, then check name
+  const IconComponent =
+    iconMap[slug] ||
+    iconMap[name?.toLowerCase().replace(/\s+/g, "-")] ||
+    IconStethoscope;
+  return IconComponent;
+};
+
+// Community Icon Component with monochromatic styling
+const CommunityIcon = ({ community, size = "1.125rem" }) => {
+  const IconComponent = getCommunityIcon(community?.slug, community?.name);
+  const iconColor = community?.color || "#2F3C96";
+
+  return (
+    <IconComponent
+      className="shrink-0"
+      style={{
+        color: iconColor,
+        width: size,
+        height: size,
+      }}
+      stroke={1.5}
+    />
+  );
+};
 
 export default function Forums() {
   const [communities, setCommunities] = useState([]);
@@ -56,7 +110,7 @@ export default function Forums() {
   const [followingLoading, setFollowingLoading] = useState(new Set());
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("all"); // all, following, forYou, involving
-  const [sortBy, setSortBy] = useState("recent"); // recent, popular, top
+  const [sortBy, setSortBy] = useState("recent"); // recent, popular
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const [hoveredCommunity, setHoveredCommunity] = useState(null);
   const [isExploreCollapsed, setIsExploreCollapsed] = useState(false);
@@ -73,6 +127,11 @@ export default function Forums() {
   }, []);
 
   useEffect(() => {
+    // Don't reload threads if user is searching
+    if (searchQuery.trim()) {
+      return;
+    }
+
     if (selectedCommunity) {
       loadThreads();
     } else if (activeTab === "forYou" && user) {
@@ -84,7 +143,7 @@ export default function Forums() {
     } else if (activeTab === "all" && !selectedCommunity) {
       loadAllThreads();
     }
-  }, [selectedCommunity, activeTab, sortBy]);
+  }, [selectedCommunity, activeTab, sortBy, searchQuery]);
 
   async function loadFavorites() {
     const userData = JSON.parse(localStorage.getItem("user") || "{}");
@@ -227,6 +286,7 @@ export default function Forums() {
 
   async function searchThreads() {
     if (!searchQuery.trim()) {
+      // Clear search - reload based on current view
       if (selectedCommunity) {
         loadThreads();
       } else {
@@ -236,23 +296,43 @@ export default function Forums() {
     }
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      params.set("q", searchQuery);
-      if (selectedCommunity) params.set("communityId", selectedCommunity._id);
-
-      const response = await fetch(
-        `${base}/api/communities/search/threads?${params.toString()}`
-      );
-      if (!response.ok) throw new Error("Failed to search");
+      // Always search from overall forums, not communities
+      // Clear selectedCommunity when searching to show all results
+      const response = await fetch(`${base}/api/forums/threads`);
+      if (!response.ok) throw new Error("Failed to fetch threads");
 
       const data = await response.json();
-      setThreads(data.threads || []);
+      const allThreads = data.threads || [];
+
+      // Filter threads client-side based on search query
+      const query = searchQuery.toLowerCase();
+      const filteredThreads = allThreads.filter((thread) => {
+        const titleMatch = thread.title?.toLowerCase().includes(query);
+        const bodyMatch = thread.body?.toLowerCase().includes(query);
+        const authorMatch = thread.authorUserId?.username
+          ?.toLowerCase()
+          .includes(query);
+        return titleMatch || bodyMatch || authorMatch;
+      });
+
+      setThreads(filteredThreads);
     } catch (error) {
       console.error("Error searching:", error);
     } finally {
       setLoading(false);
     }
   }
+
+  // Debounced search effect - triggers search as user types (only for discussions)
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (searchQuery.trim()) {
+        searchThreads();
+      }
+    }, 300); // 300ms debounce
+
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery]);
 
   async function toggleFollow(communityId) {
     if (!user?._id && !user?.id) {
@@ -567,16 +647,11 @@ export default function Forums() {
     }
   }
 
+  // Don't filter communities based on discussion search query
+  // Communities should be shown separately and not affected by discussion search
   const filteredCommunities = useMemo(() => {
-    if (!searchQuery.trim()) return communities;
-    const query = searchQuery.toLowerCase();
-    return communities.filter(
-      (c) =>
-        c.name.toLowerCase().includes(query) ||
-        c.description?.toLowerCase().includes(query) ||
-        c.tags?.some((t) => t.toLowerCase().includes(query))
-    );
-  }, [communities, searchQuery]);
+    return communities;
+  }, [communities]);
 
   const displayedCommunities = useMemo(() => {
     if (activeTab === "following") {
@@ -822,8 +897,16 @@ export default function Forums() {
                   <input
                     type="text"
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && searchThreads()}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      // Search will trigger automatically via useEffect with debounce
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        searchThreads();
+                      }
+                    }}
                     placeholder="Search discussions..."
                     className="w-full pl-12 pr-4 py-3 rounded-lg border border-[#E8E8E8] bg-[#F5F5F5] text-base text-[#484848] placeholder-[#787878] focus:outline-none focus:ring-2 focus:ring-[#2F3C96]/20 focus:border-[#2F3C96] transition-all"
                   />
@@ -868,7 +951,7 @@ export default function Forums() {
 
                 {/* Sort Options - Segmented */}
                 <div className="flex items-center gap-0 bg-[#F5F5F5] rounded-lg p-1 shrink-0 border border-[#E8E8E8]">
-                  {["recent", "popular", "top"].map((sort, idx) => (
+                  {["recent", "popular"].map((sort, idx) => (
                     <button
                       key={sort}
                       onClick={() => setSortBy(sort)}
@@ -957,7 +1040,10 @@ export default function Forums() {
                                           backgroundColor: `${community.color}15`,
                                         }}
                                       >
-                                        {community.icon}
+                                        <CommunityIcon
+                                          community={community}
+                                          size="1rem"
+                                        />
                                       </div>
                                       <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-1.5">
@@ -1068,7 +1154,10 @@ export default function Forums() {
                                             backgroundColor: `${community.color}15`,
                                           }}
                                         >
-                                          {community.icon}
+                                          <CommunityIcon
+                                            community={community}
+                                            size="1rem"
+                                          />
                                         </div>
                                         <div className="flex-1 min-w-0">
                                           <div className="flex items-center gap-1.5">
@@ -1195,7 +1284,10 @@ export default function Forums() {
                                         backgroundColor: `${community.color}15`,
                                       }}
                                     >
-                                      {community.icon}
+                                      <CommunityIcon
+                                        community={community}
+                                        size="1rem"
+                                      />
                                     </div>
                                     <div className="flex-1 min-w-0">
                                       <div className="flex items-center gap-1.5">
@@ -1261,7 +1353,10 @@ export default function Forums() {
                                           backgroundColor: `${community.color}15`,
                                         }}
                                       >
-                                        {community.icon}
+                                        <CommunityIcon
+                                          community={community}
+                                          size="1rem"
+                                        />
                                       </div>
                                       <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-1.5">
@@ -1718,7 +1813,10 @@ export default function Forums() {
                             backgroundColor: `${modalSelectedCommunity.color}15`,
                           }}
                         >
-                          {modalSelectedCommunity.icon}
+                          <CommunityIcon
+                            community={modalSelectedCommunity}
+                            size="1.25rem"
+                          />
                         </div>
                         <div className="flex-1">
                           <p className="text-xs text-[#787878]">Posting in</p>
