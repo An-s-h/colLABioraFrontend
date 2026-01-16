@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import toast from "react-hot-toast";
 import {
   MessageCircle,
@@ -91,6 +91,9 @@ const CommunityIcon = ({ community, size = "1.125rem" }) => {
 export default function Forums() {
   const [communities, setCommunities] = useState([]);
   const [selectedCommunity, setSelectedCommunity] = useState(null);
+  const [selectedSubcategory, setSelectedSubcategory] = useState(null);
+  const [subcategories, setSubcategories] = useState([]);
+  const [loadingSubcategories, setLoadingSubcategories] = useState(false);
   const [threads, setThreads] = useState([]);
   const [expandedThreads, setExpandedThreads] = useState({});
   const [expandedThreadIds, setExpandedThreadIds] = useState(new Set());
@@ -99,9 +102,24 @@ export default function Forums() {
   const [loading, setLoading] = useState(false);
   const [loadingCommunities, setLoadingCommunities] = useState(true);
   const [newThreadModal, setNewThreadModal] = useState(false);
+  const [newSubcategoryModal, setNewSubcategoryModal] = useState(false);
+  const [newSubcategoryName, setNewSubcategoryName] = useState("");
+  const [newSubcategoryDescription, setNewSubcategoryDescription] =
+    useState("");
+  const [newSubcategoryTags, setNewSubcategoryTags] = useState([]);
+  const [meshSuggestions, setMeshSuggestions] = useState([]);
+  const [meshInput, setMeshInput] = useState("");
   const [newThreadTitle, setNewThreadTitle] = useState("");
   const [newThreadBody, setNewThreadBody] = useState("");
+  const [newThreadSubcategory, setNewThreadSubcategory] = useState(null);
+  const [newThreadTags, setNewThreadTags] = useState([]);
+  const [newThreadMeshInput, setNewThreadMeshInput] = useState("");
+  const [newThreadMeshSuggestions, setNewThreadMeshSuggestions] = useState([]);
   const [modalSelectedCommunity, setModalSelectedCommunity] = useState(null);
+  const [modalSubcategories, setModalSubcategories] = useState([]);
+  const [loadingModalSubcategories, setLoadingModalSubcategories] =
+    useState(false);
+  const tagSuggestionsRef = useRef(null);
   const [replyBody, setReplyBody] = useState({});
   const [replyingTo, setReplyingTo] = useState(null);
   const [favorites, setFavorites] = useState([]);
@@ -127,12 +145,50 @@ export default function Forums() {
   }, []);
 
   useEffect(() => {
+    if (selectedCommunity) {
+      loadSubcategories(selectedCommunity._id);
+      setSelectedSubcategory(null);
+    } else {
+      setSubcategories([]);
+      setSelectedSubcategory(null);
+    }
+  }, [selectedCommunity]);
+
+  useEffect(() => {
+    if (modalSelectedCommunity) {
+      loadModalSubcategories(modalSelectedCommunity._id);
+    } else {
+      setModalSubcategories([]);
+      setNewThreadSubcategory(null);
+    }
+  }, [modalSelectedCommunity]);
+
+  // Close tag suggestions when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (
+        tagSuggestionsRef.current &&
+        !tagSuggestionsRef.current.contains(event.target)
+      ) {
+        setNewThreadMeshSuggestions([]);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  useEffect(() => {
     // Don't reload threads if user is searching
     if (searchQuery.trim()) {
       return;
     }
 
-    if (selectedCommunity) {
+    if (selectedSubcategory) {
+      loadThreadsBySubcategory();
+    } else if (selectedCommunity) {
       loadThreads();
     } else if (activeTab === "forYou" && user) {
       loadRecommendedThreads();
@@ -143,7 +199,7 @@ export default function Forums() {
     } else if (activeTab === "all" && !selectedCommunity) {
       loadAllThreads();
     }
-  }, [selectedCommunity, activeTab, sortBy, searchQuery]);
+  }, [selectedCommunity, selectedSubcategory, activeTab, sortBy, searchQuery]);
 
   async function loadFavorites() {
     const userData = JSON.parse(localStorage.getItem("user") || "{}");
@@ -206,6 +262,42 @@ export default function Forums() {
     }
   }
 
+  async function loadSubcategories(communityId) {
+    if (!communityId) return;
+    setLoadingSubcategories(true);
+    try {
+      const response = await fetch(
+        `${base}/api/communities/${communityId}/subcategories`
+      );
+      if (!response.ok) throw new Error("Failed to fetch subcategories");
+
+      const data = await response.json();
+      setSubcategories(data.subcategories || []);
+    } catch (error) {
+      console.error("Error loading subcategories:", error);
+    } finally {
+      setLoadingSubcategories(false);
+    }
+  }
+
+  async function loadModalSubcategories(communityId) {
+    if (!communityId) return;
+    setLoadingModalSubcategories(true);
+    try {
+      const response = await fetch(
+        `${base}/api/communities/${communityId}/subcategories`
+      );
+      if (!response.ok) throw new Error("Failed to fetch subcategories");
+
+      const data = await response.json();
+      setModalSubcategories(data.subcategories || []);
+    } catch (error) {
+      console.error("Error loading subcategories:", error);
+    } finally {
+      setLoadingModalSubcategories(false);
+    }
+  }
+
   async function loadThreads() {
     if (!selectedCommunity) return;
     setLoading(true);
@@ -222,6 +314,39 @@ export default function Forums() {
 
       const data = await response.json();
       setThreads(data.threads || []);
+    } catch (error) {
+      console.error("Error loading threads:", error);
+      toast.error("Failed to load threads");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadThreadsBySubcategory() {
+    if (!selectedSubcategory) return;
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("sort", sortBy);
+      params.set("subcategoryId", selectedSubcategory._id);
+
+      // Filter threads client-side by subcategory for now
+      // In production, add server-side filtering
+      const response = await fetch(
+        `${base}/api/communities/${
+          selectedSubcategory.parentCommunityId || selectedCommunity._id
+        }/threads?${params.toString()}`
+      );
+      if (!response.ok) throw new Error("Failed to fetch threads");
+
+      const data = await response.json();
+      // Filter by subcategory on client side (would be better on server)
+      const filteredThreads = (data.threads || []).filter(
+        (thread) =>
+          thread.subcategoryId?._id === selectedSubcategory._id ||
+          thread.subcategoryId === selectedSubcategory._id
+      );
+      setThreads(filteredThreads);
     } catch (error) {
       console.error("Error loading threads:", error);
       toast.error("Failed to load threads");
@@ -485,6 +610,135 @@ export default function Forums() {
     }
   }
 
+  async function createSubcategory() {
+    if (!user?._id && !user?.id) {
+      toast.error("Please sign in to create subcategories");
+      return;
+    }
+    if (!selectedCommunity) {
+      toast.error("Please select a community first");
+      return;
+    }
+    if (!newSubcategoryName || !newSubcategoryName.trim()) {
+      toast.error("Please enter a subcategory name");
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${base}/api/communities/${selectedCommunity._id}/subcategories`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: newSubcategoryName.trim(),
+            description: newSubcategoryDescription.trim() || "",
+            tags: newSubcategoryTags,
+            createdBy: user._id || user.id,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (response.status === 409 && data.redirect) {
+          // Similar subcategory exists - redirect user
+          toast.error(
+            `Similar subcategory "${data.existingSubcategory.name}" already exists`
+          );
+          setSelectedSubcategory(data.existingSubcategory);
+          setNewSubcategoryModal(false);
+          setNewSubcategoryName("");
+          setNewSubcategoryDescription("");
+          setNewSubcategoryTags([]);
+          return;
+        }
+        throw new Error(data.error || "Failed to create subcategory");
+      }
+
+      toast.success("Subcategory created successfully!");
+      setNewSubcategoryModal(false);
+      setNewSubcategoryName("");
+      setNewSubcategoryDescription("");
+      setNewSubcategoryTags([]);
+      loadSubcategories(selectedCommunity._id);
+    } catch (error) {
+      console.error("Error creating subcategory:", error);
+      toast.error(error.message || "Failed to create subcategory");
+    }
+  }
+
+  async function fetchMeshSuggestions(term) {
+    if (!term || term.trim().length < 2) {
+      setMeshSuggestions([]);
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${base}/api/mesh/suggestions?term=${encodeURIComponent(term)}`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setMeshSuggestions(data.suggestions || []);
+      }
+    } catch (error) {
+      console.error("Error fetching MeSH suggestions:", error);
+    }
+  }
+
+  async function fetchThreadTagSuggestions(term) {
+    if (!term || term.trim().length < 1) {
+      setNewThreadMeshSuggestions([]);
+      return;
+    }
+
+    // Common tag suggestions based on input
+    const commonTags = [
+      "Treatment",
+      "Therapy",
+      "Diagnosis",
+      "Symptoms",
+      "Side Effects",
+      "Outcomes",
+      "Recovery",
+      "Prevention",
+      "Medication",
+      "Surgery",
+      "Research",
+      "Clinical Trials",
+      "Support",
+      "Coping",
+      "Lifestyle",
+      "Nutrition",
+      "Exercise",
+      "Mental Health",
+      "Pain Management",
+      "Rehabilitation",
+    ];
+
+    const normalizedTerm = term.toLowerCase().trim();
+    const suggestions = commonTags
+      .filter((tag) => tag.toLowerCase().includes(normalizedTerm))
+      .filter((tag) => !newThreadTags.includes(tag))
+      .slice(0, 8);
+
+    setNewThreadMeshSuggestions(suggestions);
+  }
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (meshInput.trim()) {
+        fetchMeshSuggestions(meshInput);
+      } else {
+        setMeshSuggestions([]);
+      }
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [meshInput]);
+
   async function postThread() {
     if (!user?._id && !user?.id) {
       toast.error("Please sign in to post");
@@ -511,6 +765,8 @@ export default function Forums() {
             authorRole: user.role,
             title: newThreadTitle,
             body: newThreadBody,
+            subcategoryId: newThreadSubcategory?._id || null,
+            tags: newThreadTags || [],
           }),
         }
       );
@@ -521,9 +777,15 @@ export default function Forums() {
       setNewThreadModal(false);
       setNewThreadTitle("");
       setNewThreadBody("");
+      setNewThreadSubcategory(null);
+      setNewThreadTags([]);
+      setNewThreadMeshInput("");
+      setNewThreadMeshSuggestions([]);
       setModalSelectedCommunity(null);
       // Reload threads based on current view
-      if (selectedCommunity) {
+      if (selectedSubcategory) {
+        loadThreadsBySubcategory();
+      } else if (selectedCommunity) {
         loadThreads();
       } else {
         loadAllThreads();
@@ -1385,7 +1647,7 @@ export default function Forums() {
                 {/* Selected Community Header - Simplified */}
                 {selectedCommunity && (
                   <div className="bg-white rounded-xl border border-[#E8E8E8] p-4 mb-6 shadow-sm">
-                    <div className="flex items-center gap-3 flex-wrap">
+                    <div className="flex items-center gap-3 flex-wrap mb-4">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           <h2 className="text-lg font-bold text-[#2F3C96]">
@@ -1401,7 +1663,10 @@ export default function Forums() {
                       </div>
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => setSelectedCommunity(null)}
+                          onClick={() => {
+                            setSelectedCommunity(null);
+                            setSelectedSubcategory(null);
+                          }}
                           className="px-3 py-1.5 rounded-lg text-sm font-medium bg-[#F5F5F5] text-[#787878] hover:bg-[#E8E8E8] transition-all"
                         >
                           Clear
@@ -1431,6 +1696,59 @@ export default function Forums() {
                         </button>
                       </div>
                     </div>
+
+                    {/* Subcategories Section */}
+                    {loadingSubcategories ? (
+                      <div className="flex items-center justify-center py-4">
+                        <Loader2 className="w-5 h-5 text-[#2F3C96] spinner" />
+                      </div>
+                    ) : subcategories.length > 0 ? (
+                      <div className="border-t border-[#E8E8E8] pt-4">
+                        <h3 className="text-sm font-semibold text-[#2F3C96] mb-3 flex items-center gap-2">
+                          <Tag className="w-4 h-4" />
+                          Subcategories
+                        </h3>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            onClick={() => setSelectedSubcategory(null)}
+                            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                              !selectedSubcategory
+                                ? "bg-[#2F3C96] text-white"
+                                : "bg-[#F5F5F5] text-[#787878] hover:bg-[#E8E8E8]"
+                            }`}
+                          >
+                            All
+                          </button>
+                          {subcategories.map((subcategory) => (
+                            <button
+                              key={subcategory._id}
+                              onClick={() =>
+                                setSelectedSubcategory(subcategory)
+                              }
+                              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                                selectedSubcategory?._id === subcategory._id
+                                  ? "bg-[#2F3C96] text-white"
+                                  : "bg-[#F5F5F5] text-[#787878] hover:bg-[#E8E8E8]"
+                              }`}
+                            >
+                              {subcategory.name}
+                              {subcategory.threadCount > 0 && (
+                                <span className="ml-2 text-xs opacity-75">
+                                  ({subcategory.threadCount})
+                                </span>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="border-t border-[#E8E8E8] pt-4">
+                        <p className="text-sm text-[#787878] text-center py-2">
+                          No subcategories yet.{" "}
+                          {user && "Click 'Add Subcategory' to create one."}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1782,6 +2100,194 @@ export default function Forums() {
               </div>
             </div>
 
+            {/* New Subcategory Modal */}
+            {newSubcategoryModal && (
+              <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-[#E8E8E8]">
+                  <div className="p-5 border-b border-[#E8E8E8]">
+                    <div className="flex items-center justify-between">
+                      <h2 className="text-lg font-semibold text-[#2F3C96]">
+                        Create New Subcategory
+                      </h2>
+                      <button
+                        onClick={() => {
+                          setNewSubcategoryModal(false);
+                          setNewSubcategoryName("");
+                          setNewSubcategoryDescription("");
+                          setNewSubcategoryTags([]);
+                          setMeshInput("");
+                          setMeshSuggestions([]);
+                        }}
+                        className="p-2 text-[#787878] hover:text-[#2F3C96] hover:bg-[#F5F5F5] rounded-lg transition-all"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="p-5 space-y-4">
+                    {selectedCommunity && (
+                      <div className="flex items-center gap-3 p-3 bg-[#F5F5F5] rounded-lg border border-[#E8E8E8]">
+                        <div
+                          className="w-8 h-8 rounded-lg flex items-center justify-center text-lg"
+                          style={{
+                            backgroundColor: `${selectedCommunity.color}15`,
+                          }}
+                        >
+                          <CommunityIcon
+                            community={selectedCommunity}
+                            size="1.25rem"
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-xs text-[#787878]">Creating in</p>
+                          <p className="font-medium text-[#2F3C96]">
+                            {selectedCommunity.name}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    <div>
+                      <label className="block text-sm font-medium text-[#2F3C96] mb-2">
+                        Subcategory Name <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={newSubcategoryName}
+                        onChange={(e) => setNewSubcategoryName(e.target.value)}
+                        placeholder="e.g., Breast Cancer, Anxiety, Type 1 Diabetes"
+                        className="w-full rounded-lg border border-[#E8E8E8] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2F3C96]/20 focus:border-[#2F3C96] text-[#484848] placeholder-[#787878]"
+                      />
+                      <p className="text-xs text-[#787878] mt-1">
+                        The system will check if a similar subcategory already
+                        exists
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-[#2F3C96] mb-2">
+                        Description (Optional)
+                      </label>
+                      <textarea
+                        value={newSubcategoryDescription}
+                        onChange={(e) =>
+                          setNewSubcategoryDescription(e.target.value)
+                        }
+                        placeholder="Brief description of this subcategory..."
+                        className="w-full rounded-lg border border-[#E8E8E8] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2F3C96]/20 focus:border-[#2F3C96] resize-none text-[#484848] placeholder-[#787878]"
+                        rows="3"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-[#2F3C96] mb-2">
+                        Tags (MeSH Terminology)
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={meshInput}
+                          onChange={(e) => setMeshInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (
+                              e.key === "Enter" &&
+                              meshInput.trim() &&
+                              !meshSuggestions.length
+                            ) {
+                              e.preventDefault();
+                              if (
+                                !newSubcategoryTags.includes(meshInput.trim())
+                              ) {
+                                setNewSubcategoryTags([
+                                  ...newSubcategoryTags,
+                                  meshInput.trim(),
+                                ]);
+                                setMeshInput("");
+                              }
+                            }
+                          }}
+                          placeholder="Type to search MeSH terms (e.g., treatment, therapy, diagnosis)..."
+                          className="w-full rounded-lg border border-[#E8E8E8] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2F3C96]/20 focus:border-[#2F3C96] text-[#484848] placeholder-[#787878]"
+                        />
+                        {meshSuggestions.length > 0 && (
+                          <div className="absolute z-10 w-full mt-1 bg-white border border-[#E8E8E8] rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                            {meshSuggestions.map((suggestion, idx) => (
+                              <button
+                                key={idx}
+                                onClick={() => {
+                                  if (
+                                    !newSubcategoryTags.includes(suggestion)
+                                  ) {
+                                    setNewSubcategoryTags([
+                                      ...newSubcategoryTags,
+                                      suggestion,
+                                    ]);
+                                  }
+                                  setMeshInput("");
+                                  setMeshSuggestions([]);
+                                }}
+                                className="w-full text-left px-3 py-2 text-sm text-[#484848] hover:bg-[#F5F5F5] transition-colors"
+                              >
+                                {suggestion}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-xs text-[#787878] mt-1">
+                        Use MeSH terms for better recommendations (e.g.,
+                        Treatment, Therapy, Diagnosis)
+                      </p>
+                      {newSubcategoryTags.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-3">
+                          {newSubcategoryTags.map((tag, idx) => (
+                            <span
+                              key={idx}
+                              className="inline-flex items-center gap-1 px-3 py-1 bg-[#2F3C96]/10 text-[#2F3C96] rounded-lg text-xs font-medium"
+                            >
+                              {tag}
+                              <button
+                                onClick={() =>
+                                  setNewSubcategoryTags(
+                                    newSubcategoryTags.filter(
+                                      (_, i) => i !== idx
+                                    )
+                                  )
+                                }
+                                className="hover:text-red-500"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex gap-3 pt-2">
+                      <button
+                        onClick={createSubcategory}
+                        disabled={!newSubcategoryName.trim()}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-[#2F3C96] text-white rounded-lg text-sm font-semibold hover:bg-[#253075] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Create Subcategory
+                      </button>
+                      <button
+                        onClick={() => {
+                          setNewSubcategoryModal(false);
+                          setNewSubcategoryName("");
+                          setNewSubcategoryDescription("");
+                          setNewSubcategoryTags([]);
+                          setMeshInput("");
+                          setMeshSuggestions([]);
+                        }}
+                        className="px-6 py-2.5 bg-[#F5F5F5] text-[#787878] rounded-lg text-sm font-medium hover:bg-[#E8E8E8] transition-all"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* New Thread Modal */}
             {newThreadModal && (
               <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -1796,6 +2302,10 @@ export default function Forums() {
                           setNewThreadModal(false);
                           setNewThreadTitle("");
                           setNewThreadBody("");
+                          setNewThreadSubcategory(null);
+                          setNewThreadTags([]);
+                          setNewThreadMeshInput("");
+                          setNewThreadMeshSuggestions([]);
                           setModalSelectedCommunity(null);
                         }}
                         className="p-2 text-[#787878] hover:text-[#2F3C96] hover:bg-[#F5F5F5] rounded-lg transition-all"
@@ -1825,7 +2335,10 @@ export default function Forums() {
                           </p>
                         </div>
                         <button
-                          onClick={() => setModalSelectedCommunity(null)}
+                          onClick={() => {
+                            setModalSelectedCommunity(null);
+                            setNewThreadSubcategory(null);
+                          }}
                           className="text-xs text-[#787878] hover:text-[#2F3C96] transition-colors"
                         >
                           Change
@@ -1843,6 +2356,7 @@ export default function Forums() {
                               (c) => c._id === value
                             );
                             setModalSelectedCommunity(community);
+                            setNewThreadSubcategory(null);
                           }}
                           options={communities
                             .filter((c) => followingIds.has(c._id))
@@ -1862,6 +2376,32 @@ export default function Forums() {
                         )}
                       </div>
                     )}
+                    {modalSelectedCommunity &&
+                      modalSubcategories.length > 0 && (
+                        <div>
+                          <label className="block text-sm font-medium text-[#2F3C96] mb-2">
+                            Subcategory (Optional)
+                          </label>
+                          <CustomSelect
+                            value={newThreadSubcategory?._id || ""}
+                            onChange={(value) => {
+                              const subcategory = modalSubcategories.find(
+                                (s) => s._id === value
+                              );
+                              setNewThreadSubcategory(subcategory || null);
+                            }}
+                            options={[
+                              { value: "", label: "None (All Subcategories)" },
+                              ...modalSubcategories.map((s) => ({
+                                value: s._id,
+                                label: s.name,
+                              })),
+                            ]}
+                            placeholder="Select a subcategory..."
+                            className="w-full"
+                          />
+                        </div>
+                      )}
                     <div>
                       <label className="block text-sm font-medium text-[#2F3C96] mb-2">
                         Title
@@ -1886,6 +2426,106 @@ export default function Forums() {
                         rows="6"
                       />
                     </div>
+                    <div>
+                      <label className="block text-sm font-medium text-[#2F3C96] mb-2">
+                        Tags
+                      </label>
+                      <div className="relative" ref={tagSuggestionsRef}>
+                        <input
+                          type="text"
+                          value={newThreadMeshInput}
+                          onChange={(e) => {
+                            setNewThreadMeshInput(e.target.value);
+                            if (e.target.value.trim()) {
+                              fetchThreadTagSuggestions(e.target.value);
+                            } else {
+                              setNewThreadMeshSuggestions([]);
+                            }
+                          }}
+                          onKeyDown={(e) => {
+                            if (
+                              e.key === "Enter" &&
+                              newThreadMeshInput.trim()
+                            ) {
+                              e.preventDefault();
+                              if (
+                                !newThreadTags.includes(
+                                  newThreadMeshInput.trim()
+                                )
+                              ) {
+                                setNewThreadTags([
+                                  ...newThreadTags,
+                                  newThreadMeshInput.trim(),
+                                ]);
+                                setNewThreadMeshInput("");
+                                setNewThreadMeshSuggestions([]);
+                              }
+                            }
+                            if (e.key === "Escape") {
+                              setNewThreadMeshSuggestions([]);
+                            }
+                          }}
+                          onFocus={() => {
+                            if (newThreadMeshInput.trim()) {
+                              fetchThreadTagSuggestions(newThreadMeshInput);
+                            }
+                          }}
+                          placeholder="Add tags (e.g., Treatment, Therapy, Diagnosis)..."
+                          className="w-full rounded-lg border border-[#E8E8E8] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2F3C96]/20 focus:border-[#2F3C96] text-[#484848] placeholder-[#787878]"
+                        />
+                        {newThreadMeshSuggestions.length > 0 && (
+                          <div className="absolute z-50 w-full bottom-full mb-1 bg-white border border-[#E8E8E8] rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                            {newThreadMeshSuggestions.map((suggestion, idx) => (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  if (!newThreadTags.includes(suggestion)) {
+                                    setNewThreadTags([
+                                      ...newThreadTags,
+                                      suggestion,
+                                    ]);
+                                  }
+                                  setNewThreadMeshInput("");
+                                  setNewThreadMeshSuggestions([]);
+                                }}
+                                className="w-full text-left px-3 py-2 text-sm text-[#484848] hover:bg-[#F5F5F5] transition-colors"
+                              >
+                                {suggestion}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-xs text-[#787878] mt-1">
+                        Add tags for better organization (e.g., Treatment,
+                        Therapy, Diagnosis)
+                      </p>
+                      {newThreadTags.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-3">
+                          {newThreadTags.map((tag, idx) => (
+                            <span
+                              key={idx}
+                              className="inline-flex items-center gap-1 px-3 py-1 bg-[#2F3C96]/10 text-[#2F3C96] rounded-lg text-xs font-medium"
+                            >
+                              {tag}
+                              <button
+                                onClick={() =>
+                                  setNewThreadTags(
+                                    newThreadTags.filter((_, i) => i !== idx)
+                                  )
+                                }
+                                className="hover:text-red-500"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     <div className="flex gap-3">
                       <button
                         onClick={postThread}
@@ -1899,6 +2539,10 @@ export default function Forums() {
                           setNewThreadModal(false);
                           setNewThreadTitle("");
                           setNewThreadBody("");
+                          setNewThreadSubcategory(null);
+                          setNewThreadTags([]);
+                          setNewThreadMeshInput("");
+                          setNewThreadMeshSuggestions([]);
                           setModalSelectedCommunity(null);
                         }}
                         className="px-6 py-2.5 bg-[#F5F5F5] text-[#787878] rounded-lg text-sm font-medium hover:bg-[#E8E8E8] transition-all"
