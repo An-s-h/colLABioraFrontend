@@ -45,8 +45,10 @@ import {
 export default function Publications() {
   const navigate = useNavigate();
   const [q, setQ] = useState("");
-  const [useMedicalInterest, setUseMedicalInterest] = useState(true); // Toggle for using medical interest
-  const [userMedicalInterest, setUserMedicalInterest] = useState(""); // User's medical interest
+  const [useMedicalInterest, setUseMedicalInterest] = useState(true); // Toggle for using medical interest (backward compatibility)
+  const [userMedicalInterest, setUserMedicalInterest] = useState(""); // User's medical interest (combined string for backward compatibility)
+  const [userMedicalInterests, setUserMedicalInterests] = useState([]); // All user's medical interests as array
+  const [enabledMedicalInterests, setEnabledMedicalInterests] = useState(new Set()); // Set of enabled medical interests
   const [isInitialLoad, setIsInitialLoad] = useState(true); // Track if it's the initial load
   const [isSignedIn, setIsSignedIn] = useState(false); // Track if user is signed in
   const [user, setUser] = useState(null); // Track user state
@@ -346,9 +348,79 @@ export default function Publications() {
     setSearchKeywords(searchKeywords.filter((k) => k !== keywordToRemove));
   };
 
+  // Remove a medical interest
+  const removeMedicalInterest = (interestToRemove) => {
+    const updated = userMedicalInterests.filter((interest) => interest !== interestToRemove);
+    setUserMedicalInterests(updated);
+    // Remove from enabled set
+    setEnabledMedicalInterests((prev) => {
+      const newSet = new Set(prev);
+      newSet.delete(interestToRemove);
+      return newSet;
+    });
+    // Update combined string
+    setUserMedicalInterest(updated.join(" "));
+  };
+
+  // Toggle individual medical interest
+  const toggleMedicalInterest = (interest) => {
+    setEnabledMedicalInterests((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(interest)) {
+        newSet.delete(interest);
+      } else {
+        newSet.add(interest);
+      }
+      // Update combined string with only enabled interests
+      const enabledArray = Array.from(newSet);
+      setUserMedicalInterest(enabledArray.join(" "));
+      return newSet;
+    });
+  };
+
   const clearAllKeywords = () => {
     setSearchKeywords([]);
     setQ("");
+  };
+
+  // Get active advanced filters
+  const getActiveAdvancedFilters = () => {
+    const filters = [];
+    
+    // Date range filter
+    if (dateRange.start || dateRange.end) {
+      let dateLabel = "";
+      if (dateRange.start && dateRange.end) {
+        dateLabel = `${dateRange.start} to ${dateRange.end}`;
+      } else if (dateRange.start) {
+        dateLabel = `from ${dateRange.start}`;
+      } else if (dateRange.end) {
+        dateLabel = `until ${dateRange.end}`;
+      }
+      filters.push({ label: dateLabel, key: "dateRange" });
+    }
+    
+    // Added terms (advanced search terms)
+    if (addedTerms.length > 0) {
+      addedTerms.forEach((term, index) => {
+        const fieldLabel = term.field === "All Fields" ? "" : `${term.field}: `;
+        filters.push({
+          label: `${fieldLabel}${term.term}`,
+          key: `addedTerm-${index}`,
+          termIndex: index,
+        });
+      });
+    }
+    
+    return filters;
+  };
+
+  // Clear all advanced filters
+  const clearAllAdvancedFilters = () => {
+    setDateRange({ start: "", end: "" });
+    setAddedTerms([]);
+    setQueryTerms([{ field: "All Fields", term: "", operator: "AND" }]);
+    setConstructedQuery("");
   };
 
   // Handle Enter key press - adds keyword instead of searching
@@ -411,14 +483,15 @@ export default function Publications() {
       setIsInitialLoad(false);
     }
 
-    // For manual searches, combine user's medical interest with search query if enabled
+    // For manual searches, combine enabled medical interests with search query
     let searchQuery = appliedQuery.trim();
-    if (useMedicalInterest && userMedicalInterest && searchQuery) {
-      // Combine: "breast cancer diet" if user searches "diet" and has "breast cancer" interest
-      searchQuery = `${userMedicalInterest} ${searchQuery}`;
-    } else if (useMedicalInterest && userMedicalInterest && !searchQuery) {
-      // If no search query but medical interest is enabled, use just the medical interest
-      searchQuery = userMedicalInterest;
+    const enabledInterests = Array.from(enabledMedicalInterests).join(" ");
+    if (enabledInterests && searchQuery) {
+      // Combine enabled interests with search query
+      searchQuery = `${enabledInterests} ${searchQuery}`;
+    } else if (enabledInterests && !searchQuery) {
+      // If no search query but medical interests are enabled, use just the enabled interests
+      searchQuery = enabledInterests;
     }
 
     if (searchQuery) params.set("q", searchQuery);
@@ -464,8 +537,12 @@ export default function Publications() {
     // Add user profile data for matching
     if (userData?._id || userData?.id) {
       params.set("userId", userData._id || userData.id);
-    } else if (useMedicalInterest && userMedicalInterest) {
-      params.set("conditions", userMedicalInterest);
+    } else {
+      // Send conditions/keywords from enabled medical interests
+      const enabledInterests = Array.from(enabledMedicalInterests).join(" ");
+      if (enabledInterests) {
+        params.set("conditions", enabledInterests);
+      }
       if (locationMode === "current" && userLocation) {
         params.set("userLocation", JSON.stringify(userLocation));
       } else if (locationMode === "custom" && location.trim()) {
@@ -759,10 +836,11 @@ export default function Publications() {
       const params = new URLSearchParams();
       const user = userData;
 
-      // Combine user's medical interest with quick search if enabled
+      // Combine enabled medical interests with quick search
       let searchQuery = filterValue;
-      if (useMedicalInterest && userMedicalInterest) {
-        searchQuery = `${userMedicalInterest} ${filterValue}`;
+      const enabledInterests = Array.from(enabledMedicalInterests).join(" ");
+      if (enabledInterests) {
+        searchQuery = `${enabledInterests} ${filterValue}`;
       }
 
       params.set("q", searchQuery);
@@ -808,8 +886,12 @@ export default function Publications() {
       // Add user profile data for matching
       if (userData?._id || userData?.id) {
         params.set("userId", userData._id || userData.id);
-      } else if (useMedicalInterest && userMedicalInterest) {
-        params.set("conditions", userMedicalInterest);
+      } else {
+        // Send conditions/keywords from enabled medical interests
+        const enabledInterests = Array.from(enabledMedicalInterests).join(" ");
+        if (enabledInterests) {
+          params.set("conditions", enabledInterests);
+        }
         if (locationMode === "current" && userLocation) {
           params.set("userLocation", JSON.stringify(userLocation));
         } else if (locationMode === "custom" && location.trim()) {
@@ -1236,6 +1318,16 @@ export default function Publications() {
             : true
         );
         setUserMedicalInterest(state.userMedicalInterest || "");
+        // Derive array from string for backward compatibility
+        if (state.userMedicalInterest) {
+          const interests = state.userMedicalInterest.split(" ").filter(Boolean);
+          setUserMedicalInterests(interests);
+          // Enable all by default when restoring
+          setEnabledMedicalInterests(new Set(interests));
+        } else {
+          setUserMedicalInterests([]);
+          setEnabledMedicalInterests(new Set());
+        }
         // Sort results by match percentage when restoring from sessionStorage
         const restoredResults = state.results || [];
         setResults(sortPublicationsByMatch(restoredResults));
@@ -1263,6 +1355,8 @@ export default function Publications() {
       setLocationMode("global");
       setUseMedicalInterest(true);
       setUserMedicalInterest("");
+      setUserMedicalInterests([]);
+      setEnabledMedicalInterests(new Set());
       setResults([]);
       setIsInitialLoad(true);
       setIsSignedIn(false);
@@ -1309,6 +1403,8 @@ export default function Publications() {
       if (!isUserSignedIn && (guestCondition || parsedGuestInfo?.condition)) {
         const condition = guestCondition || parsedGuestInfo?.condition;
         if (condition) {
+          setUserMedicalInterests([condition]);
+          setEnabledMedicalInterests(new Set([condition]));
           setUserMedicalInterest(condition);
           setUseMedicalInterest(true);
         }
@@ -1352,10 +1448,17 @@ export default function Publications() {
           Array.isArray(userData.medicalInterests) &&
           userData.medicalInterests.length > 0
         ) {
-          const medicalInterest = userData.medicalInterests[0]; // Use first medical interest
-          setUserMedicalInterest(medicalInterest);
+          // Store all medical interests
+          setUserMedicalInterests(userData.medicalInterests);
+          // Enable all interests by default
+          setEnabledMedicalInterests(new Set(userData.medicalInterests));
+          // Combine all medical interests for backward compatibility
+          const combinedInterest = userData.medicalInterests.join(" ");
+          setUserMedicalInterest(combinedInterest);
           // Don't auto-search - user must manually trigger search
         } else {
+          setUserMedicalInterests([]);
+          setEnabledMedicalInterests(new Set());
           setUseMedicalInterest(false);
         }
 
@@ -1424,32 +1527,45 @@ export default function Publications() {
             />
             <div className="flex flex-col gap-3">
               {/* Medical Interest Toggle */}
-              {userMedicalInterest && (
-                <div className="flex items-center gap-2 p-2 bg-indigo-50 rounded-lg border border-indigo-200">
-                  <input
-                    type="checkbox"
-                    id="useMedicalInterest"
-                    checked={useMedicalInterest}
-                    onChange={(e) => setUseMedicalInterest(e.target.checked)}
-                    className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
-                  />
-                  <label
-                    htmlFor="useMedicalInterest"
-                    className="text-xs text-slate-700 flex-1 cursor-pointer"
-                  >
-                    <span className="font-medium">
-                      Using your medical interest:
-                    </span>{" "}
-                    <span className="text-indigo-700 font-semibold">
-                      {userMedicalInterest}
+              {userMedicalInterests.length > 0 && (
+                <div className="flex flex-col gap-2 p-2 bg-indigo-50 rounded-lg border border-indigo-200">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-700 font-medium">
+                      Your medical interest{userMedicalInterests.length > 1 ? "s" : ""}:
                     </span>
-                    {q && useMedicalInterest && (
-                      <span className="text-slate-600 ml-1">
-                        (search queries will be combined with "
-                        {userMedicalInterest}")
+                    {q && enabledMedicalInterests.size > 0 && (
+                      <span className="text-xs text-slate-600">
+                        (enabled interests will be combined with search queries)
                       </span>
                     )}
-                  </label>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {userMedicalInterests.map((interest, index) => {
+                      const isEnabled = enabledMedicalInterests.has(interest);
+                      return (
+                        <span
+                          key={`${interest}-${index}`}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium shadow-sm transition-all group ${
+                            isEnabled
+                              ? "bg-gradient-to-r from-indigo-100 to-purple-100 border border-indigo-300 text-indigo-800 hover:shadow"
+                              : "bg-slate-100 border border-slate-300 text-slate-600 opacity-60"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isEnabled}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              toggleMedicalInterest(interest);
+                            }}
+                            className="w-3 h-3 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 cursor-pointer"
+                            aria-label={`Toggle ${interest}`}
+                          />
+                          {interest}
+                        </span>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 
@@ -1533,6 +1649,48 @@ export default function Publications() {
                 )}
               </div>
 
+              {/* Advanced Filters Applied Section */}
+              {getActiveAdvancedFilters().length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-medium text-slate-600">
+                      Filters applied:
+                    </span>
+                    {getActiveAdvancedFilters().map((filter, index) => (
+                      <span
+                        key={`${filter.key}-${index}`}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 text-purple-700 rounded-full text-xs font-medium shadow-sm hover:shadow transition-all group"
+                      >
+                        {filter.label}
+                        <button
+                          onClick={() => {
+                            if (filter.key === "dateRange") {
+                              setDateRange({ start: "", end: "" });
+                            } else if (filter.key.startsWith("addedTerm-")) {
+                              const updated = addedTerms.filter(
+                                (_, i) => i !== filter.termIndex
+                              );
+                              setAddedTerms(updated);
+                              buildQueryFromAddedTerms(updated);
+                            }
+                          }}
+                          className="hover:bg-purple-200 rounded-full p-0.5 transition-colors"
+                          aria-label={`Remove ${filter.label}`}
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                    <button
+                      onClick={clearAllAdvancedFilters}
+                      className="text-xs text-slate-500 hover:text-red-600 transition-colors underline underline-offset-2"
+                    >
+                      Clear all
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Location Options */}
               <div className="flex flex-col gap-2">
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -1540,7 +1698,10 @@ export default function Publications() {
                     Location:
                   </span>
                   <button
-                    onClick={() => {
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
                       setLocationMode("global");
                       setLocation("");
                     }}
@@ -1554,7 +1715,10 @@ export default function Publications() {
                   </button>
                   {userLocation && (
                     <button
-                      onClick={() => {
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
                         setLocationMode("current");
                         setLocation("");
                       }}
@@ -1574,7 +1738,10 @@ export default function Publications() {
                     </button>
                   )}
                   <button
-                    onClick={() => {
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
                       setLocationMode("custom");
                     }}
                     className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${

@@ -113,8 +113,10 @@ export default function Trials() {
   const [location, setLocation] = useState("");
   const [locationMode, setLocationMode] = useState("global"); // "current", "global", "custom"
   const [userLocation, setUserLocation] = useState(null);
-  const [useMedicalInterest, setUseMedicalInterest] = useState(true); // Toggle for using medical interest
-  const [userMedicalInterest, setUserMedicalInterest] = useState(""); // User's medical interest
+  const [useMedicalInterest, setUseMedicalInterest] = useState(true); // Toggle for using medical interest (backward compatibility)
+  const [userMedicalInterest, setUserMedicalInterest] = useState(""); // User's medical interest (combined string for backward compatibility)
+  const [userMedicalInterests, setUserMedicalInterests] = useState([]); // All user's medical interests as array
+  const [enabledMedicalInterests, setEnabledMedicalInterests] = useState(new Set()); // Set of enabled medical interests
   const [isInitialLoad, setIsInitialLoad] = useState(true); // Track if it's the initial load
   const [isSignedIn, setIsSignedIn] = useState(false); // Track if user is signed in
   const [user, setUser] = useState(null); // Track user state
@@ -239,9 +241,89 @@ export default function Trials() {
     setSearchKeywords(searchKeywords.filter((k) => k !== keywordToRemove));
   };
 
+  // Remove a medical interest
+  const removeMedicalInterest = (interestToRemove) => {
+    const updated = userMedicalInterests.filter((interest) => interest !== interestToRemove);
+    setUserMedicalInterests(updated);
+    // Remove from enabled set
+    setEnabledMedicalInterests((prev) => {
+      const newSet = new Set(prev);
+      newSet.delete(interestToRemove);
+      return newSet;
+    });
+    // Update combined string
+    setUserMedicalInterest(updated.join(" "));
+  };
+
+  // Toggle individual medical interest
+  const toggleMedicalInterest = (interest) => {
+    setEnabledMedicalInterests((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(interest)) {
+        newSet.delete(interest);
+      } else {
+        newSet.add(interest);
+      }
+      // Update combined string with only enabled interests
+      const enabledArray = Array.from(newSet);
+      setUserMedicalInterest(enabledArray.join(" "));
+      return newSet;
+    });
+  };
+
   const clearAllKeywords = () => {
     setSearchKeywords([]);
     setQ("");
+  };
+
+  // Get active advanced filters
+  const getActiveAdvancedFilters = () => {
+    const filters = [];
+    if (eligibilitySex && eligibilitySex !== "All") {
+      filters.push({ label: eligibilitySex, key: "sex" });
+    }
+    if (eligibilityAge) {
+      if (eligibilityAge === "custom" && (ageRange.min || ageRange.max)) {
+        filters.push({
+          label: `${ageRange.min || "?"}-${ageRange.max || "?"} years`,
+          key: "age",
+        });
+      } else if (eligibilityAge !== "custom") {
+        filters.push({ label: eligibilityAge, key: "age" });
+      }
+    }
+    if (phase) {
+      const phaseLabels = {
+        PHASE1: "Phase I",
+        PHASE2: "Phase II",
+        PHASE3: "Phase III",
+        PHASE4: "Phase IV",
+      };
+      filters.push({
+        label: phaseLabels[phase] || phase,
+        key: "phase",
+      });
+    }
+    if (otherTerms && otherTerms.trim()) {
+      filters.push({ label: otherTerms, key: "otherTerms" });
+    }
+    if (intervention && intervention.trim()) {
+      filters.push({
+        label: intervention,
+        key: "intervention",
+      });
+    }
+    return filters;
+  };
+
+  // Clear all advanced filters
+  const clearAllAdvancedFilters = () => {
+    setEligibilitySex("All");
+    setEligibilityAge("");
+    setAgeRange({ min: "", max: "" });
+    setPhase("");
+    setOtherTerms("");
+    setIntervention("");
   };
 
   // Handle Enter key press - adds keyword instead of searching
@@ -258,7 +340,7 @@ export default function Trials() {
     if (q.trim() && !searchKeywords.includes(q.trim())) {
       currentKeywords = [...searchKeywords, q.trim()];
       setSearchKeywords(currentKeywords);
-      setQ("");
+      setQ(""); // Clear search bar after adding to keywords
     }
 
     if (currentKeywords.length < MIN_KEYWORDS_REQUIRED) {
@@ -269,8 +351,10 @@ export default function Trials() {
       return;
     }
 
-    // Combine keywords for search
+    // Combine keywords for search query, but keep keywords array separate
     const combinedQuery = currentKeywords.join(" ");
+    // Ensure searchKeywords state is updated before calling search
+    setSearchKeywords(currentKeywords);
     search(combinedQuery);
   };
 
@@ -302,14 +386,15 @@ export default function Trials() {
       setIsInitialLoad(false);
     }
 
-    // For manual searches, combine user's medical interest with search query if enabled
+    // For manual searches, combine enabled medical interests with search query
     let searchQuery = appliedQuery.trim();
-    if (useMedicalInterest && userMedicalInterest && searchQuery) {
-      // Combine: "breast cancer ductal carcinoma in situ vaccine" if user searches "ductal carcinoma in situ vaccine" and has "breast cancer" interest
-      searchQuery = `${userMedicalInterest} ${searchQuery}`;
-    } else if (useMedicalInterest && userMedicalInterest && !searchQuery) {
-      // If no search query but medical interest is enabled, use just the medical interest
-      searchQuery = userMedicalInterest;
+    const enabledInterests = Array.from(enabledMedicalInterests).join(" ");
+    if (enabledInterests && searchQuery) {
+      // Combine enabled interests with search query
+      searchQuery = `${enabledInterests} ${searchQuery}`;
+    } else if (enabledInterests && !searchQuery) {
+      // If no search query but medical interests are enabled, use just the enabled interests
+      searchQuery = enabledInterests;
     }
 
     // Combine search query with advanced filters
@@ -364,9 +449,10 @@ export default function Trials() {
     setCurrentPage(1);
     setLastSearchQuery(finalQuery);
 
-    // Store search parameters for pagination
+    // Store search parameters for pagination (including searchKeywords to keep them separate)
     setLastSearchParams({
       finalQuery,
+      searchKeywords: searchKeywords, // Store keywords array separately
       status,
       phase,
       eligibilitySex,
@@ -395,9 +481,14 @@ export default function Trials() {
     // Add user profile data for matching
     if (user?._id || user?.id) {
       params.set("userId", user._id || user.id);
-    } else if (useMedicalInterest && userMedicalInterest) {
-      // Send conditions/keywords from medical interest
-      params.set("conditions", userMedicalInterest);
+    } else {
+      // Send conditions/keywords ONLY from enabled medical interests (not all interests)
+      // This ensures that if medical interests are not selected, they're not included
+      const enabledInterests = Array.from(enabledMedicalInterests).join(" ");
+      if (enabledInterests && enabledInterests.trim()) {
+        // Only send if there are actually enabled interests
+        params.set("conditions", enabledInterests.trim());
+      }
       // Send location if available
       if (locationMode === "current" && userLocation) {
         params.set("userLocation", JSON.stringify(userLocation));
@@ -485,8 +576,10 @@ export default function Trials() {
       }
 
       // Save search state to sessionStorage (including pagination)
+      // Keep search bar empty and keywords as separate chips
       const searchState = {
-        q: appliedQuery,
+        q: "", // Keep search bar empty - keywords are stored separately in searchKeywords
+        searchKeywords: searchKeywords, // Save keywords array separately
         status,
         location,
         locationMode,
@@ -498,6 +591,7 @@ export default function Trials() {
         totalCount: data.totalCount || 0,
         lastSearchParams: {
           finalQuery,
+          searchKeywords: searchKeywords, // Include keywords in lastSearchParams
           status,
           phase,
           eligibilitySex,
@@ -535,6 +629,7 @@ export default function Trials() {
     const params = new URLSearchParams();
     const {
       finalQuery: savedQuery,
+      searchKeywords: savedSearchKeywords, // Get saved keywords array
       status: savedStatus,
       phase: savedPhase,
       eligibilitySex: savedEligibilitySex,
@@ -548,8 +643,29 @@ export default function Trials() {
       user: savedUser,
     } = lastSearchParams;
 
-    // Use saved query or last search query
-    const queryToUse = savedQuery || lastSearchQuery || "";
+    // Use saved keywords array if available, otherwise reconstruct from saved query
+    // This ensures keywords stay separate and don't appear as one combined string
+    let queryToUse = "";
+    if (savedSearchKeywords && Array.isArray(savedSearchKeywords) && savedSearchKeywords.length > 0) {
+      // Use the saved keywords array - reconstruct query from keywords
+      queryToUse = savedSearchKeywords.join(" ");
+      // Restore searchKeywords state so chips display correctly
+      setSearchKeywords(savedSearchKeywords);
+      setQ(""); // Clear the search bar input
+    } else {
+      // Fallback to saved query string (for backward compatibility)
+      queryToUse = savedQuery || lastSearchQuery || "";
+      // IMPORTANT: Don't split the query by spaces - keep it as-is
+      // If searchKeywords wasn't saved, we can't reliably reconstruct it
+      // Just use the combined query for the API call but keep search bar empty
+      if (queryToUse) {
+        // Keep search bar empty - we don't have the original keyword structure
+        setQ("");
+        // Don't try to split - we can't know where one multi-word keyword ends and another begins
+        // The user will need to re-enter keywords if they want them as separate chips
+        setSearchKeywords([]);
+      }
+    }
 
     if (queryToUse) params.set("q", queryToUse);
     if (savedStatus || status) params.set("status", savedStatus || status);
@@ -603,11 +719,19 @@ export default function Trials() {
     const currentUser = savedUser || user;
     if (currentUser?._id || currentUser?.id) {
       params.set("userId", currentUser._id || currentUser.id);
-    } else if (
-      (savedUseMedicalInterest || useMedicalInterest) &&
-      (savedUserMedicalInterest || userMedicalInterest)
-    ) {
-      params.set("conditions", savedUserMedicalInterest || userMedicalInterest);
+    } else {
+      // Use enabled medical interests (from current state or saved state)
+      // Get enabled interests from current state if available, otherwise use saved
+      const currentEnabledInterests = Array.from(enabledMedicalInterests);
+      const enabledInterestsStr = currentEnabledInterests.length > 0
+        ? currentEnabledInterests.join(" ")
+        : (savedUserMedicalInterest || userMedicalInterest || "");
+      
+      // Only send conditions if there are actually enabled interests
+      if (enabledInterestsStr && enabledInterestsStr.trim()) {
+        params.set("conditions", enabledInterestsStr.trim());
+      }
+      
       if (currentLocationMode === "current" && currentUserLocation) {
         params.set("userLocation", JSON.stringify(currentUserLocation));
       } else if (currentLocationMode === "custom" && currentLocation?.trim()) {
@@ -653,7 +777,8 @@ export default function Trials() {
 
       // Save updated state to sessionStorage
       const searchState = {
-        q: lastSearchQuery || "",
+        q: "", // Keep search bar empty, keywords are in searchKeywords array
+        searchKeywords: savedSearchKeywords || searchKeywords || [], // Save keywords array
         status: savedStatus || status || "",
         location: currentLocation || "",
         locationMode: currentLocationMode || "global",
@@ -671,6 +796,7 @@ export default function Trials() {
         ageRange: currentAgeRange,
         lastSearchParams: {
           finalQuery: queryToUse,
+          searchKeywords: savedSearchKeywords || searchKeywords || [], // Include keywords in lastSearchParams
           status: savedStatus || status,
           phase: savedPhase || phase,
           eligibilitySex: currentEligibilitySex,
@@ -725,10 +851,11 @@ export default function Trials() {
       const params = new URLSearchParams();
       const user = userData;
 
-      // Combine user's medical interest with quick search if enabled
+      // Combine enabled medical interests with quick search
       let searchQuery = filterValue;
-      if (useMedicalInterest && userMedicalInterest) {
-        searchQuery = `${userMedicalInterest} ${filterValue}`;
+      const enabledInterests = Array.from(enabledMedicalInterests).join(" ");
+      if (enabledInterests) {
+        searchQuery = `${enabledInterests} ${filterValue}`;
       }
 
       params.set("q", searchQuery);
@@ -769,8 +896,12 @@ export default function Trials() {
       // Add user profile data for matching
       if (user?._id || user?.id) {
         params.set("userId", user._id || user.id);
-      } else if (useMedicalInterest && userMedicalInterest) {
-        params.set("conditions", userMedicalInterest);
+      } else {
+        // Send conditions/keywords from enabled medical interests
+        const enabledInterests = Array.from(enabledMedicalInterests).join(" ");
+        if (enabledInterests) {
+          params.set("conditions", enabledInterests);
+        }
         if (locationMode === "current" && userLocation) {
           params.set("userLocation", JSON.stringify(userLocation));
         } else if (locationMode === "custom" && location.trim()) {
@@ -1579,7 +1710,18 @@ export default function Trials() {
     if (savedState) {
       try {
         const state = JSON.parse(savedState);
-        setQ(state.q || "");
+        // Restore search keywords array separately (keep keywords as chips, not in search bar)
+        if (state.searchKeywords && Array.isArray(state.searchKeywords) && state.searchKeywords.length > 0) {
+          setSearchKeywords(state.searchKeywords);
+          setQ(""); // Keep search bar empty, keywords show as chips
+        } else {
+          // Fallback: if we have q but no searchKeywords, don't try to split it
+          // We can't reliably split multi-word phrases like "chronic fatigue syndrome" into separate keywords
+          // Just keep search bar empty and keywords empty - user can re-enter if needed
+          setQ("");
+          setSearchKeywords([]);
+        }
+        
         setStatus(state.status || "RECRUITING"); // Default to RECRUITING
         setLocation(state.location || "");
         setLocationMode(state.locationMode || "global");
@@ -1589,6 +1731,16 @@ export default function Trials() {
             : true
         );
         setUserMedicalInterest(state.userMedicalInterest || "");
+        // Derive array from string for backward compatibility
+        if (state.userMedicalInterest) {
+          const interests = state.userMedicalInterest.split(" ").filter(Boolean);
+          setUserMedicalInterests(interests);
+          // Enable all by default when restoring
+          setEnabledMedicalInterests(new Set(interests));
+        } else {
+          setUserMedicalInterests([]);
+          setEnabledMedicalInterests(new Set());
+        }
         // Sort results by match percentage when restoring from sessionStorage
         const restoredResults = state.results || [];
         setResults(sortTrialsByMatch(restoredResults));
@@ -1620,6 +1772,8 @@ export default function Trials() {
       setLocationMode("global");
       setUseMedicalInterest(true);
       setUserMedicalInterest("");
+      setUserMedicalInterests([]);
+      setEnabledMedicalInterests(new Set());
       setResults([]);
       setIsInitialLoad(true);
       setIsSignedIn(false);
@@ -1666,6 +1820,8 @@ export default function Trials() {
       if (!isUserSignedIn && (guestCondition || parsedGuestInfo?.condition)) {
         const condition = guestCondition || parsedGuestInfo?.condition;
         if (condition) {
+          setUserMedicalInterests([condition]);
+          setEnabledMedicalInterests(new Set([condition]));
           setUserMedicalInterest(condition);
           setUseMedicalInterest(true);
         }
@@ -1727,10 +1883,17 @@ export default function Trials() {
           Array.isArray(userData.medicalInterests) &&
           userData.medicalInterests.length > 0
         ) {
-          const medicalInterest = userData.medicalInterests[0]; // Use first medical interest
-          setUserMedicalInterest(medicalInterest);
+          // Store all medical interests
+          setUserMedicalInterests(userData.medicalInterests);
+          // Enable all interests by default
+          setEnabledMedicalInterests(new Set(userData.medicalInterests));
+          // Combine all medical interests for backward compatibility
+          const combinedInterest = userData.medicalInterests.join(" ");
+          setUserMedicalInterest(combinedInterest);
           // Don't auto-search - user must manually trigger search
         } else {
+          setUserMedicalInterests([]);
+          setEnabledMedicalInterests(new Set());
           setUseMedicalInterest(false);
           // Don't auto-search - user must manually trigger search
         }
@@ -1783,32 +1946,45 @@ export default function Trials() {
             />
             <div className="flex flex-col gap-3">
               {/* Medical Interest Toggle */}
-              {userMedicalInterest && (
-                <div className="flex items-center gap-2 p-2 bg-indigo-50 rounded-lg border border-indigo-200">
-                  <input
-                    type="checkbox"
-                    id="useMedicalInterest"
-                    checked={useMedicalInterest}
-                    onChange={(e) => setUseMedicalInterest(e.target.checked)}
-                    className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
-                  />
-                  <label
-                    htmlFor="useMedicalInterest"
-                    className="text-xs text-slate-700 flex-1 cursor-pointer"
-                  >
-                    <span className="font-medium">
-                      Using your medical interest:
-                    </span>{" "}
-                    <span className="text-indigo-700 font-semibold">
-                      {userMedicalInterest}
+              {userMedicalInterests.length > 0 && (
+                <div className="flex flex-col gap-2 p-2 bg-indigo-50 rounded-lg border border-indigo-200">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-700 font-medium">
+                      Your medical interest{userMedicalInterests.length > 1 ? "s" : ""}:
                     </span>
-                    {q && useMedicalInterest && (
-                      <span className="text-slate-600 ml-1">
-                        (search queries will be combined with "
-                        {userMedicalInterest}")
+                    {q && enabledMedicalInterests.size > 0 && (
+                      <span className="text-xs text-slate-600">
+                        (enabled interests will be combined with search queries)
                       </span>
                     )}
-                  </label>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {userMedicalInterests.map((interest, index) => {
+                      const isEnabled = enabledMedicalInterests.has(interest);
+                      return (
+                        <span
+                          key={`${interest}-${index}`}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium shadow-sm transition-all group ${
+                            isEnabled
+                              ? "bg-gradient-to-r from-indigo-100 to-purple-100 border border-indigo-300 text-indigo-800 hover:shadow"
+                              : "bg-slate-100 border border-slate-300 text-slate-600 opacity-60"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isEnabled}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              toggleMedicalInterest(interest);
+                            }}
+                            className="w-3 h-3 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 cursor-pointer"
+                            aria-label={`Toggle ${interest}`}
+                          />
+                          {interest}
+                        </span>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 
@@ -1887,6 +2063,51 @@ export default function Trials() {
                 )}
               </div>
 
+              {/* Advanced Filters Applied Section */}
+              {getActiveAdvancedFilters().length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-medium text-slate-600">
+                      Filters applied:
+                    </span>
+                    {getActiveAdvancedFilters().map((filter, index) => (
+                      <span
+                        key={`${filter.key}-${index}`}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 text-purple-700 rounded-full text-xs font-medium shadow-sm hover:shadow transition-all group"
+                      >
+                        {filter.label}
+                        <button
+                          onClick={() => {
+                            if (filter.key === "sex") {
+                              setEligibilitySex("All");
+                            } else if (filter.key === "age") {
+                              setEligibilityAge("");
+                              setAgeRange({ min: "", max: "" });
+                            } else if (filter.key === "phase") {
+                              setPhase("");
+                            } else if (filter.key === "otherTerms") {
+                              setOtherTerms("");
+                            } else if (filter.key === "intervention") {
+                              setIntervention("");
+                            }
+                          }}
+                          className="hover:bg-purple-200 rounded-full p-0.5 transition-colors"
+                          aria-label={`Remove ${filter.label}`}
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                    <button
+                      onClick={clearAllAdvancedFilters}
+                      className="text-xs text-slate-500 hover:text-red-600 transition-colors underline underline-offset-2"
+                    >
+                      Clear all
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Location Options */}
               <div className="flex flex-col gap-2">
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -1894,7 +2115,10 @@ export default function Trials() {
                     Location:
                   </span>
                   <button
-                    onClick={() => {
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
                       setLocationMode("global");
                       setLocation("");
                     }}
@@ -1908,7 +2132,10 @@ export default function Trials() {
                   </button>
                   {userLocation && (
                     <button
-                      onClick={() => {
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
                         setLocationMode("current");
                         setLocation("");
                       }}
@@ -1928,7 +2155,10 @@ export default function Trials() {
                     </button>
                   )}
                   <button
-                    onClick={() => {
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
                       setLocationMode("custom");
                     }}
                     className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
