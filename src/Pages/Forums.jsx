@@ -88,6 +88,128 @@ const CommunityIcon = ({ community, size = "1.125rem" }) => {
   );
 };
 
+// Deduplicate communities coming from API responses
+const dedupeCommunities = (list = []) => {
+  const seen = new Set();
+  const unique = [];
+
+  list.forEach((community) => {
+    const key =
+      community?._id || community?.slug || community?.name?.toLowerCase();
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    unique.push(community);
+  });
+
+  return unique;
+};
+
+// Default condition tags using patient-friendly taxonomy
+const DEFAULT_CONDITION_TAGS = {
+  default: ["General Health", "Preventive Care", "Sleep Health", "Stress Management"],
+  "autoimmune-conditions": [
+    "Lupus (SLE)",
+    "Rheumatoid Arthritis (RA)",
+    "Multiple Sclerosis (MS)",
+    "Psoriasis / Psoriatic Arthritis",
+    "Sjögren’s Syndrome",
+    "Crohn’s Disease / Ulcerative Colitis",
+    "Hashimoto’s Thyroiditis",
+    "Type 1 Diabetes",
+    "General Autoimmune",
+  ],
+  "cancer-support": [
+    "Breast Cancer",
+    "Lung Cancer",
+    "Prostate Cancer",
+    "Colorectal Cancer",
+    "Blood Cancers",
+    "Brain Tumors",
+    "Metastatic Cancer",
+    "Cancer Survivorship",
+  ],
+  "heart-health": [
+    "Hypertension (High BP)",
+    "Heart Disease",
+    "Arrhythmia",
+    "Heart Failure",
+    "Coronary Artery Disease",
+    "Stroke Risk",
+  ],
+  "mental-health": [
+    "Anxiety Disorders",
+    "Depression",
+    "Bipolar Disorder",
+    "PTSD",
+    "ADHD",
+    "OCD",
+  ],
+  "chronic-pain": [
+    "Fibromyalgia",
+    "Chronic Back Pain",
+    "Neuropathic Pain",
+    "Arthritis Pain",
+    "Post-Surgical Pain",
+  ],
+  "clinical-trials": [
+    "Cancer Trials",
+    "Autoimmune Trials",
+    "Neurology Trials",
+    "Cardiology Trials",
+  ],
+  "fitness-exercise": [
+    "General Fitness",
+    "Rehab & Recovery",
+    "Adaptive Exercise",
+  ],
+  "nutrition-diet": [
+    "Weight Management",
+    "Diabetes Nutrition",
+    "Heart-Healthy Diet",
+    "Autoimmune Diets",
+    "Cancer Nutrition",
+  ],
+  "general-health": [
+    "General Health",
+    "Preventive Care",
+    "Aging",
+    "Men’s Health",
+    "Women’s Health",
+    "Sleep Health",
+    "Stress Management",
+    "Vaccinations",
+  ],
+  "diabetes-management": [
+    "Type 1 Diabetes",
+    "Type 2 Diabetes",
+    "Gestational Diabetes",
+    "Prediabetes",
+  ],
+};
+
+const buildConditionTags = (community, threads = []) => {
+  const slug =
+    community?.slug ||
+    community?.name?.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const defaults = DEFAULT_CONDITION_TAGS[slug] || DEFAULT_CONDITION_TAGS.default;
+  const dynamic =
+    threads?.flatMap((t) => t.conditions || [])?.filter(Boolean) || [];
+
+  const seen = new Set();
+  const combined = [...defaults, ...dynamic];
+
+  const unique = [];
+  combined.forEach((tag) => {
+    const key = tag.trim().toLowerCase();
+    if (key && !seen.has(key)) {
+      seen.add(key);
+      unique.push(tag.trim());
+    }
+  });
+
+  return ["All", ...unique];
+};
+
 export default function Forums() {
   const [communities, setCommunities] = useState([]);
   const [selectedCommunity, setSelectedCommunity] = useState(null);
@@ -115,11 +237,15 @@ export default function Forums() {
   const [newThreadTags, setNewThreadTags] = useState([]);
   const [newThreadMeshInput, setNewThreadMeshInput] = useState("");
   const [newThreadMeshSuggestions, setNewThreadMeshSuggestions] = useState([]);
+  const [newThreadConditions, setNewThreadConditions] = useState([]);
+  const [newThreadConditionInput, setNewThreadConditionInput] = useState("");
+  const [conditionSuggestions, setConditionSuggestions] = useState([]);
   const [modalSelectedCommunity, setModalSelectedCommunity] = useState(null);
   const [modalSubcategories, setModalSubcategories] = useState([]);
   const [loadingModalSubcategories, setLoadingModalSubcategories] =
     useState(false);
   const tagSuggestionsRef = useRef(null);
+  const conditionSuggestionsRef = useRef(null);
   const [replyBody, setReplyBody] = useState({});
   const [replyingTo, setReplyingTo] = useState(null);
   const [favorites, setFavorites] = useState([]);
@@ -129,11 +255,26 @@ export default function Forums() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("all"); // all, following, forYou, involving
   const [sortBy, setSortBy] = useState("recent"); // recent, popular
-  const [showMobileSidebar, setShowMobileSidebar] = useState(false);
   const [hoveredCommunity, setHoveredCommunity] = useState(null);
-  const [isExploreCollapsed, setIsExploreCollapsed] = useState(false);
+  const [isExploreCollapsed, setIsExploreCollapsed] = useState(true);
+  const [mobileCommunityId, setMobileCommunityId] = useState("");
+  const [selectedConditionTag, setSelectedConditionTag] = useState("All");
 
   const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
+
+  const conditionTagOptions = useMemo(
+    () => buildConditionTags(selectedCommunity, threads),
+    [selectedCommunity, threads]
+  );
+
+  const modalConditionOptions = useMemo(
+    () =>
+      buildConditionTags(
+        modalSelectedCommunity || selectedCommunity,
+        threads
+      ).filter((tag) => tag !== "All"),
+    [modalSelectedCommunity, selectedCommunity, threads]
+  );
 
   useEffect(() => {
     const userData = JSON.parse(localStorage.getItem("user") || "{}");
@@ -163,6 +304,22 @@ export default function Forums() {
     }
   }, [modalSelectedCommunity]);
 
+  useEffect(() => {
+    setSelectedConditionTag("All");
+  }, [selectedCommunity?._id]);
+
+  useEffect(() => {
+    setMobileCommunityId(selectedCommunity?._id || "");
+  }, [selectedCommunity]);
+
+  const threadMatchesSelectedCondition = (thread, conditionTag) => {
+    if (!conditionTag || conditionTag === "All") return true;
+    return (thread?.conditions || []).some(
+      (condition) =>
+        condition?.toLowerCase() === conditionTag.toLowerCase()
+    );
+  };
+
   // Close tag suggestions when clicking outside
   useEffect(() => {
     function handleClickOutside(event) {
@@ -171,6 +328,12 @@ export default function Forums() {
         !tagSuggestionsRef.current.contains(event.target)
       ) {
         setNewThreadMeshSuggestions([]);
+      }
+      if (
+        conditionSuggestionsRef.current &&
+        !conditionSuggestionsRef.current.contains(event.target)
+      ) {
+        setConditionSuggestions([]);
       }
     }
 
@@ -199,7 +362,14 @@ export default function Forums() {
     } else if (activeTab === "all" && !selectedCommunity) {
       loadAllThreads();
     }
-  }, [selectedCommunity, selectedSubcategory, activeTab, sortBy, searchQuery]);
+  }, [
+    selectedCommunity,
+    selectedSubcategory,
+    activeTab,
+    sortBy,
+    searchQuery,
+    selectedConditionTag,
+  ]);
 
   async function loadFavorites() {
     const userData = JSON.parse(localStorage.getItem("user") || "{}");
@@ -232,11 +402,12 @@ export default function Forums() {
       if (!response.ok) throw new Error("Failed to fetch communities");
 
       const data = await response.json();
-      setCommunities(data.communities || []);
+      const uniqueCommunities = dedupeCommunities(data.communities || []);
+      setCommunities(uniqueCommunities);
 
       // Update following IDs
       const followingSet = new Set();
-      data.communities?.forEach((c) => {
+      uniqueCommunities.forEach((c) => {
         if (c.isFollowing) followingSet.add(c._id);
       });
       setFollowingIds(followingSet);
@@ -304,6 +475,9 @@ export default function Forums() {
     try {
       const params = new URLSearchParams();
       params.set("sort", sortBy);
+      if (selectedConditionTag && selectedConditionTag !== "All") {
+        params.set("condition", selectedConditionTag);
+      }
 
       const response = await fetch(
         `${base}/api/communities/${
@@ -313,7 +487,12 @@ export default function Forums() {
       if (!response.ok) throw new Error("Failed to fetch threads");
 
       const data = await response.json();
-      setThreads(data.threads || []);
+      const fetchedThreads = data.threads || [];
+      setThreads(
+        fetchedThreads.filter((thread) =>
+          threadMatchesSelectedCondition(thread, selectedConditionTag)
+        )
+      );
     } catch (error) {
       console.error("Error loading threads:", error);
       toast.error("Failed to load threads");
@@ -329,6 +508,9 @@ export default function Forums() {
       const params = new URLSearchParams();
       params.set("sort", sortBy);
       params.set("subcategoryId", selectedSubcategory._id);
+      if (selectedConditionTag && selectedConditionTag !== "All") {
+        params.set("condition", selectedConditionTag);
+      }
 
       // Filter threads client-side by subcategory for now
       // In production, add server-side filtering
@@ -346,7 +528,10 @@ export default function Forums() {
           thread.subcategoryId?._id === selectedSubcategory._id ||
           thread.subcategoryId === selectedSubcategory._id
       );
-      setThreads(filteredThreads);
+      const conditioned = filteredThreads.filter((thread) =>
+        threadMatchesSelectedCondition(thread, selectedConditionTag)
+      );
+      setThreads(conditioned);
     } catch (error) {
       console.error("Error loading threads:", error);
       toast.error("Failed to load threads");
@@ -437,7 +622,11 @@ export default function Forums() {
         const authorMatch = thread.authorUserId?.username
           ?.toLowerCase()
           .includes(query);
-        return titleMatch || bodyMatch || authorMatch;
+        const matchesCondition = threadMatchesSelectedCondition(
+          thread,
+          selectedConditionTag
+        );
+        return (titleMatch || bodyMatch || authorMatch) && matchesCondition;
       });
 
       setThreads(filteredThreads);
@@ -727,6 +916,36 @@ export default function Forums() {
     setNewThreadMeshSuggestions(suggestions);
   }
 
+  const addConditionTag = (tag) => {
+    if (!tag || !tag.trim()) return;
+    const normalized = tag.trim();
+    const exists = newThreadConditions.some(
+      (c) => c.toLowerCase() === normalized.toLowerCase()
+    );
+    if (!exists) {
+      setNewThreadConditions([...newThreadConditions, normalized]);
+    }
+    setNewThreadConditionInput("");
+    setConditionSuggestions([]);
+  };
+
+  const updateConditionSuggestions = (value) => {
+    setNewThreadConditionInput(value);
+    if (!value?.trim()) {
+      setConditionSuggestions(modalConditionOptions.slice(0, 6));
+      return;
+    }
+    const normalized = value.toLowerCase();
+    const filtered = modalConditionOptions.filter(
+      (tag) =>
+        tag.toLowerCase().includes(normalized) &&
+        !newThreadConditions.some(
+          (c) => c.toLowerCase() === tag.toLowerCase()
+        )
+    );
+    setConditionSuggestions(filtered.slice(0, 8));
+  };
+
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       if (meshInput.trim()) {
@@ -767,6 +986,7 @@ export default function Forums() {
             body: newThreadBody,
             subcategoryId: newThreadSubcategory?._id || null,
             tags: newThreadTags || [],
+            conditions: newThreadConditions || [],
           }),
         }
       );
@@ -779,6 +999,9 @@ export default function Forums() {
       setNewThreadBody("");
       setNewThreadSubcategory(null);
       setNewThreadTags([]);
+      setNewThreadConditions([]);
+      setNewThreadConditionInput("");
+      setConditionSuggestions([]);
       setNewThreadMeshInput("");
       setNewThreadMeshSuggestions([]);
       setModalSelectedCommunity(null);
@@ -921,6 +1144,77 @@ export default function Forums() {
     }
     return filteredCommunities;
   }, [filteredCommunities, activeTab, followingIds]);
+
+  const sortedDisplayedCommunities = useMemo(() => {
+    const list = [...displayedCommunities];
+    // Official first, then by member count (desc), then name (asc)
+    list.sort((a, b) => {
+      const aOfficial = a?.isOfficial ? 1 : 0;
+      const bOfficial = b?.isOfficial ? 1 : 0;
+      if (aOfficial !== bOfficial) return bOfficial - aOfficial;
+
+      const aMembers = Number(a?.memberCount || 0);
+      const bMembers = Number(b?.memberCount || 0);
+      if (aMembers !== bMembers) return bMembers - aMembers;
+
+      return String(a?.name || "").localeCompare(String(b?.name || ""), undefined, {
+        sensitivity: "base",
+      });
+    });
+    return list;
+  }, [displayedCommunities]);
+
+  const groupedMobileCommunities = useMemo(() => {
+    const mine = [];
+    const explore = [];
+
+    sortedDisplayedCommunities.forEach((c) => {
+      if (followingIds.has(c._id)) mine.push(c);
+      else explore.push(c);
+    });
+
+    return { mine, explore };
+  }, [sortedDisplayedCommunities, followingIds]);
+
+  const mobileCommunityOptions = useMemo(() => {
+    const opts = [{ value: "", label: "All communities" }];
+
+    if (groupedMobileCommunities.mine.length > 0) {
+      groupedMobileCommunities.mine.forEach((c) => {
+        opts.push({
+          value: c._id,
+          label: `My · ${c.name}`,
+        });
+      });
+    }
+
+    if (groupedMobileCommunities.explore.length > 0) {
+      groupedMobileCommunities.explore.forEach((c) => {
+        opts.push({
+          value: c._id,
+          label: `Explore · ${c.name}`,
+        });
+      });
+    }
+
+    return opts;
+  }, [groupedMobileCommunities]);
+
+  const handleMobileCommunityChange = (communityId) => {
+    setMobileCommunityId(communityId);
+
+    if (!communityId) {
+      setSelectedCommunity(null);
+      setSelectedSubcategory(null);
+      return;
+    }
+
+    const chosen = displayedCommunities.find((c) => c._id === communityId);
+    if (chosen) {
+      setSelectedCommunity(chosen);
+      setSelectedSubcategory(null);
+    }
+  };
 
   function renderReply(reply, threadId, depth = 0) {
     const isUpvoted = reply.upvotes?.some(
@@ -1230,14 +1524,20 @@ export default function Forums() {
                   ))}
                 </div>
 
-                {/* Mobile Community Toggle */}
-                <button
-                  onClick={() => setShowMobileSidebar(true)}
-                  className="lg:hidden flex items-center gap-2 px-3 py-2 rounded-lg font-medium bg-[#F5F5F5] text-[#787878] border border-[#E8E8E8] hover:border-[#2F3C96] hover:text-[#2F3C96] transition-all text-sm shrink-0"
-                >
-                  <Users className="w-4 h-4" />
-                  <span className="hidden sm:inline">Communities</span>
-                </button>
+                {/* Mobile Community Dropdown */}
+                <div className="lg:hidden w-full sm:w-72">
+                  <CustomSelect
+                    value={mobileCommunityId}
+                    onChange={handleMobileCommunityChange}
+                    options={mobileCommunityOptions}
+                    placeholder="All communities"
+                    disabled={
+                      loadingCommunities ||
+                      sortedDisplayedCommunities.length === 0
+                    }
+                    className="w-full text-sm"
+                  />
+                </div>
               </div>
             </div>
 
@@ -1491,157 +1791,6 @@ export default function Forums() {
                 </div>
               </div>
 
-              {/* Mobile Communities Sidebar */}
-              {showMobileSidebar && (
-                <div className="fixed inset-0 z-50 lg:hidden">
-                  <div
-                    className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-                    onClick={() => setShowMobileSidebar(false)}
-                  />
-                  <div className="absolute right-0 top-0 bottom-0 w-80 bg-white shadow-2xl overflow-y-auto">
-                    <div className="p-4 border-b border-[#E8E8E8] flex items-center justify-between sticky top-0 z-10 bg-white">
-                      <h2 className="font-semibold text-[#2F3C96]">
-                        Communities
-                      </h2>
-                      <button
-                        onClick={() => setShowMobileSidebar(false)}
-                        className="p-2 hover:bg-[#F5F5F5] rounded-lg transition-colors"
-                      >
-                        <X className="w-5 h-5 text-[#787878]" />
-                      </button>
-                    </div>
-
-                    <div>
-                      {/* My Communities */}
-                      {displayedCommunities.filter((c) =>
-                        followingIds.has(c._id)
-                      ).length > 0 && (
-                        <div className="p-3 border-b border-[#F5F5F5]">
-                          <div className="flex items-center gap-2 mb-2 px-2">
-                            <Star className="w-3.5 h-3.5 text-[#787878]" />
-                            <span className="text-xs font-semibold text-[#787878] uppercase tracking-wide">
-                              My Communities
-                            </span>
-                          </div>
-                          <div className="space-y-0.5">
-                            {displayedCommunities
-                              .filter((c) => followingIds.has(c._id))
-                              .map((community) => (
-                                <button
-                                  key={community._id}
-                                  onClick={() => {
-                                    setSelectedCommunity(community);
-                                    setShowMobileSidebar(false);
-                                  }}
-                                  className={`w-full p-3 text-left rounded-lg transition-all ${
-                                    selectedCommunity?._id === community._id
-                                      ? "bg-[#2F3C96]/5 border-l-2 border-[#2F3C96]"
-                                      : "hover:bg-[#F5F5F5]"
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-2.5">
-                                    <div
-                                      className="w-7 h-7 rounded-lg flex items-center justify-center text-sm shrink-0"
-                                      style={{
-                                        backgroundColor: `${community.color}15`,
-                                      }}
-                                    >
-                                      <CommunityIcon
-                                        community={community}
-                                        size="1rem"
-                                      />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-1.5">
-                                        <h3 className="font-medium text-[#2F3C96] text-sm truncate">
-                                          {community.name}
-                                        </h3>
-                                        {community.isOfficial && (
-                                          <CheckCircle2 className="w-3 h-3 text-[#2F3C96] shrink-0" />
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                </button>
-                              ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Explore */}
-                      {displayedCommunities.filter(
-                        (c) => !followingIds.has(c._id)
-                      ).length > 0 && (
-                        <div className="p-3">
-                          <button
-                            onClick={() =>
-                              setIsExploreCollapsed(!isExploreCollapsed)
-                            }
-                            className="flex items-center justify-between w-full gap-2 mb-2 px-2 hover:bg-[#F5F5F5] rounded-lg py-1 transition-colors group"
-                          >
-                            <div className="flex items-center gap-2">
-                              <Compass className="w-3.5 h-3.5 text-[#787878]" />
-                              <span className="text-xs font-semibold text-[#787878] uppercase tracking-wide">
-                                Explore
-                              </span>
-                            </div>
-                            <ChevronDown
-                              className={`w-3.5 h-3.5 text-[#787878] transition-transform ${
-                                isExploreCollapsed ? "" : "rotate-180"
-                              }`}
-                            />
-                          </button>
-                          {!isExploreCollapsed && (
-                            <div className="space-y-0.5">
-                              {displayedCommunities
-                                .filter((c) => !followingIds.has(c._id))
-                                .map((community) => (
-                                  <button
-                                    key={community._id}
-                                    onClick={() => {
-                                      setSelectedCommunity(community);
-                                      setShowMobileSidebar(false);
-                                    }}
-                                    className={`w-full p-3 text-left rounded-lg transition-all ${
-                                      selectedCommunity?._id === community._id
-                                        ? "bg-[#2F3C96]/5 border-l-2 border-[#2F3C96]"
-                                        : "hover:bg-[#F5F5F5]"
-                                    }`}
-                                  >
-                                    <div className="flex items-center gap-2.5">
-                                      <div
-                                        className="w-7 h-7 rounded-lg flex items-center justify-center text-sm shrink-0"
-                                        style={{
-                                          backgroundColor: `${community.color}15`,
-                                        }}
-                                      >
-                                        <CommunityIcon
-                                          community={community}
-                                          size="1rem"
-                                        />
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-1.5">
-                                          <h3 className="font-medium text-[#2F3C96] text-sm truncate">
-                                            {community.name}
-                                          </h3>
-                                          {community.isOfficial && (
-                                            <CheckCircle2 className="w-3 h-3 text-[#2F3C96] shrink-0" />
-                                          )}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </button>
-                                ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
               {/* Threads Panel - Layer 3: Content */}
               <div className="lg:col-span-9">
                 {/* Selected Community Header - Simplified */}
@@ -1697,13 +1846,40 @@ export default function Forums() {
                       </div>
                     </div>
 
+                    {/* Condition Tags Section */}
+                    <div className="border-t border-[#E8E8E8] pt-4">
+                      <h3 className="text-sm font-semibold text-[#2F3C96] mb-3 flex items-center gap-2">
+                        <IconRibbonHealth className="w-4 h-4" />
+                        Condition Tags
+                      </h3>
+                      <div className="flex flex-wrap gap-2">
+                        {conditionTagOptions.map((tag) => (
+                          <button
+                            key={tag}
+                            onClick={() => setSelectedConditionTag(tag)}
+                            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                              selectedConditionTag === tag
+                                ? "bg-[#2F3C96] text-white"
+                                : "bg-[#F5F5F5] text-[#787878] hover:bg-[#E8E8E8]"
+                            }`}
+                          >
+                            {tag}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-xs text-[#787878] mt-2">
+                        Narrow discussions to the condition that best matches
+                        your situation.
+                      </p>
+                    </div>
+
                     {/* Subcategories Section */}
                     {loadingSubcategories ? (
                       <div className="flex items-center justify-center py-4">
                         <Loader2 className="w-5 h-5 text-[#2F3C96] spinner" />
                       </div>
                     ) : subcategories.length > 0 ? (
-                      <div className="border-t border-[#E8E8E8] pt-4">
+                      <div className="mt-4">
                         <h3 className="text-sm font-semibold text-[#2F3C96] mb-3 flex items-center gap-2">
                           <Tag className="w-4 h-4" />
                           Subcategories
@@ -1763,6 +1939,17 @@ export default function Forums() {
                       <button
                         onClick={() => {
                           setModalSelectedCommunity(selectedCommunity);
+                          setNewThreadConditions(
+                            selectedConditionTag !== "All"
+                              ? [selectedConditionTag]
+                              : []
+                          );
+                          setNewThreadConditionInput("");
+                          setConditionSuggestions(
+                            buildConditionTags(selectedCommunity, threads)
+                              .filter((tag) => tag !== "All")
+                              .slice(0, 6)
+                          );
                           setNewThreadModal(true);
                         }}
                         className="flex items-center gap-2 px-3 py-1.5 bg-[#2F3C96] text-white rounded-lg font-semibold text-sm hover:bg-[#253075] transition-all shrink-0"
@@ -1894,6 +2081,20 @@ export default function Forums() {
                                 <p className="text-sm text-[#787878] leading-relaxed mb-3 line-clamp-2">
                                   {thread.body}
                                 </p>
+
+                                {thread.conditions?.length > 0 && (
+                                  <div className="flex flex-wrap gap-2 mb-3">
+                                    {thread.conditions.map((condition, idx) => (
+                                      <span
+                                        key={condition + idx}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#2F3C96]/10 text-[#2F3C96] rounded-full text-xs font-medium"
+                                      >
+                                        <IconRibbonHealth className="w-3 h-3" />
+                                        {condition}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
 
                                 {/* Meta Info - Single Muted Line with Icons */}
                                 <div className="flex items-center gap-3 text-xs text-[#787878] mb-3 flex-wrap">
@@ -2088,7 +2289,21 @@ export default function Forums() {
                     </p>
                     {user && selectedCommunity && (
                       <button
-                        onClick={() => setNewThreadModal(true)}
+                        onClick={() => {
+                          setModalSelectedCommunity(selectedCommunity);
+                          setNewThreadConditions(
+                            selectedConditionTag !== "All"
+                              ? [selectedConditionTag]
+                              : []
+                          );
+                          setNewThreadConditionInput("");
+                          setConditionSuggestions(
+                            buildConditionTags(selectedCommunity, threads)
+                              .filter((tag) => tag !== "All")
+                              .slice(0, 6)
+                          );
+                          setNewThreadModal(true);
+                        }}
                         className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-[#2F3C96] text-white rounded-lg font-semibold hover:bg-[#253075] transition-all"
                       >
                         <Plus className="w-4 h-4" />
@@ -2304,6 +2519,9 @@ export default function Forums() {
                           setNewThreadBody("");
                           setNewThreadSubcategory(null);
                           setNewThreadTags([]);
+                          setNewThreadConditions([]);
+                          setNewThreadConditionInput("");
+                          setConditionSuggestions([]);
                           setNewThreadMeshInput("");
                           setNewThreadMeshSuggestions([]);
                           setModalSelectedCommunity(null);
@@ -2357,6 +2575,17 @@ export default function Forums() {
                             );
                             setModalSelectedCommunity(community);
                             setNewThreadSubcategory(null);
+                            setNewThreadConditions(
+                              selectedConditionTag !== "All" && community
+                                ? [selectedConditionTag]
+                                : []
+                            );
+                            setNewThreadConditionInput("");
+                            setConditionSuggestions(
+                              buildConditionTags(community, threads)
+                                .filter((tag) => tag !== "All")
+                                .slice(0, 6)
+                            );
                           }}
                           options={communities
                             .filter((c) => followingIds.has(c._id))
@@ -2402,6 +2631,87 @@ export default function Forums() {
                           />
                         </div>
                       )}
+                    <div>
+                      <label className="block text-sm font-medium text-[#2F3C96] mb-2">
+                        Condition Tags (disease/condition)
+                      </label>
+                      <p className="text-xs text-[#787878] mb-2">
+                        Add the condition this discussion is about so advice is
+                        tailored.
+                      </p>
+                      {newThreadConditions.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          {newThreadConditions.map((condition, idx) => (
+                            <span
+                              key={condition + idx}
+                              className="inline-flex items-center gap-1 px-3 py-1 bg-[#2F3C96]/10 text-[#2F3C96] rounded-lg text-xs font-medium"
+                            >
+                              {condition}
+                              <button
+                                onClick={() =>
+                                  setNewThreadConditions(
+                                    newThreadConditions.filter(
+                                      (_, i) => i !== idx
+                                    )
+                                  )
+                                }
+                                className="hover:text-red-500"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div className="relative" ref={conditionSuggestionsRef}>
+                        <input
+                          type="text"
+                          value={newThreadConditionInput}
+                          onChange={(e) => updateConditionSuggestions(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (
+                              e.key === "Enter" &&
+                              newThreadConditionInput.trim()
+                            ) {
+                              e.preventDefault();
+                              addConditionTag(newThreadConditionInput);
+                            }
+                            if (e.key === "Escape") {
+                              setConditionSuggestions([]);
+                            }
+                          }}
+                          onFocus={() => {
+                            if (newThreadConditionInput.trim()) {
+                              updateConditionSuggestions(newThreadConditionInput);
+                            } else {
+                              setConditionSuggestions(
+                                modalConditionOptions.slice(0, 6)
+                              );
+                            }
+                          }}
+                          placeholder="e.g., Parkinson's, Breast Cancer, Heart Disease"
+                          className="w-full rounded-lg border border-[#E8E8E8] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2F3C96]/20 focus:border-[#2F3C96] text-[#484848] placeholder-[#787878]"
+                        />
+                        {conditionSuggestions.length > 0 && (
+                          <div className="absolute z-50 w-full bottom-full mb-1 bg-white border border-[#E8E8E8] rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                            {conditionSuggestions.map((suggestion, idx) => (
+                              <button
+                                key={suggestion + idx}
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  addConditionTag(suggestion);
+                                }}
+                                className="w-full text-left px-3 py-2 text-sm text-[#484848] hover:bg-[#F5F5F5] transition-colors"
+                              >
+                                {suggestion}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                     <div>
                       <label className="block text-sm font-medium text-[#2F3C96] mb-2">
                         Title
@@ -2541,6 +2851,9 @@ export default function Forums() {
                           setNewThreadBody("");
                           setNewThreadSubcategory(null);
                           setNewThreadTags([]);
+                          setNewThreadConditions([]);
+                          setNewThreadConditionInput("");
+                          setConditionSuggestions([]);
                           setNewThreadMeshInput("");
                           setNewThreadMeshSuggestions([]);
                           setModalSelectedCommunity(null);

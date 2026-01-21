@@ -20,6 +20,7 @@ import Experts from "./Pages/Experts.jsx";
 import ExpertProfile from "./Pages/ExpertProfile.jsx";
 import CollabioraExpertProfile from "./Pages/CuraLinkExpertProfile.jsx";
 import Forums from "./Pages/Forums.jsx";
+import Posts from "./Pages/Posts.jsx";
 import Favorites from "./Pages/Favorites.jsx";
 import ManageTrials from "./Pages/ManageTrials.jsx";
 import Insights from "./Pages/Insights.jsx";
@@ -89,6 +90,7 @@ const AppContent = () => {
           element={<CollabioraExpertProfile />}
         />
         <Route path="/forums" element={<Forums />} />
+        <Route path="/posts" element={<Posts />} />
         <Route path="/favorites" element={<Favorites />} />
         <Route path="/manage-trials" element={<ManageTrials />} />
         <Route path="/insights" element={<Insights />} />

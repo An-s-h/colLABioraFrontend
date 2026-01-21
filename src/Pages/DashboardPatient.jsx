@@ -63,6 +63,11 @@ export default function DashboardPatient() {
   const [globalExperts, setGlobalExperts] = useState([]); // Global Experts (from external search, loaded on initial page load)
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  
+  // Determine if user is a researcher to show "Collaborators" instead of "Experts"
+  const isResearcher = user?.role === "researcher";
+  const expertLabel = isResearcher ? "Collaborator" : "Expert";
+  const expertsLabel = isResearcher ? "Collaborators" : "Experts";
   const [isFirstLoad, setIsFirstLoad] = useState(true); // Track if this is the first load (cache miss)
   const [summaryModal, setSummaryModal] = useState({
     open: false,
@@ -3404,7 +3409,7 @@ export default function DashboardPatient() {
                                                 className="text-lg font-bold mb-1 leading-tight"
                                                 style={{ color: "#2F3C96" }}
                                               >
-                                                {e.name || "Unknown Expert"}
+                                                {e.name || `Unknown ${expertLabel}`}
                                               </h3>
                                               {/* Hide ORCID for on-platform experts */}
                                               {e.orcid && !isCuralinkExpert && (
@@ -4038,7 +4043,7 @@ export default function DashboardPatient() {
                                                 className="text-lg font-bold mb-1 leading-tight"
                                                 style={{ color: "#2F3C96" }}
                                               >
-                                                {e.name || "Unknown Expert"}
+                                                {e.name || `Unknown ${expertLabel}`}
                                               </h3>
                                               {/* Hide ORCID for on-platform experts */}
                                               {e.orcid && !isCuralinkExpert && (
@@ -5298,7 +5303,7 @@ export default function DashboardPatient() {
                                       className="text-2xl font-bold mb-2 flex items-center gap-2"
                                       style={{ color: "#2F3C96" }}
                                     >
-                                      Favorite Experts
+                                      Favorite {expertsLabel}
                                       <span
                                         className="text-sm font-normal px-3 py-1 rounded-full"
                                         style={{
@@ -5309,8 +5314,8 @@ export default function DashboardPatient() {
                                       >
                                         {groupedFavorites.expert.length}{" "}
                                         {groupedFavorites.expert.length === 1
-                                          ? "Expert"
-                                          : "Experts"}
+                                          ? expertLabel
+                                          : expertsLabel}
                                       </span>
                                     </h3>
                                     <p
@@ -5318,7 +5323,7 @@ export default function DashboardPatient() {
                                       style={{ color: "#787878" }}
                                     >
                                       Your saved researchers and healthcare
-                                      experts
+                                      {expertsLabel.toLowerCase()}
                                     </p>
                                   </div>
                                 </div>
@@ -5363,7 +5368,7 @@ export default function DashboardPatient() {
                                           className="font-bold text-base mb-2"
                                           style={{ color: "#2F3C96" }}
                                         >
-                                          {item.name || "Unknown Expert"}
+                                          {item.name || `Unknown ${expertLabel}`}
                                         </h4>
                                         <div className="space-y-2 mb-4">
                                           {(item.specialties ||
@@ -7881,7 +7886,7 @@ export default function DashboardPatient() {
                 </div>
                 <div className="flex-1">
                   <h4 className="font-bold text-slate-900 text-lg">
-                    {globalExpertDetailsModal.expert.name || "Unknown Expert"}
+                    {globalExpertDetailsModal.expert.name || `Unknown ${expertLabel}`}
                   </h4>
                   {globalExpertDetailsModal.expert.orcid && (
                     <p className="text-sm text-indigo-600">

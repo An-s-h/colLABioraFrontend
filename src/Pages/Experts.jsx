@@ -67,6 +67,11 @@ export default function Experts() {
     expert: null,
   });
 
+  // Determine if user is a researcher to show "Collaborators" instead of "Experts"
+  const isResearcher = user?.role === "researcher";
+  const expertLabel = isResearcher ? "Collaborator" : "Expert";
+  const expertsLabel = isResearcher ? "Collaborators" : "Experts";
+
   const sharedExpertSuggestionTerms = [];
 
   const diseaseSuggestionTerms = [
@@ -319,13 +324,13 @@ export default function Experts() {
           toast.error(data.message);
         }
         if (data.results && data.results.length === 0 && !data.message) {
-          toast.error("No experts found. Try adjusting your search criteria.");
+          toast.error(`No ${expertsLabel.toLowerCase()} found. Try adjusting your search criteria.`);
         }
       }
     } catch (error) {
       console.error("Search error:", error);
       setResults([]);
-      toast.error("Failed to search experts. Please try again later.");
+      toast.error(`Failed to search ${expertsLabel.toLowerCase()}. Please try again later.`);
     } finally {
       setLoading(false);
     }
@@ -529,7 +534,7 @@ export default function Experts() {
       } catch (error) {
         console.error("Search error:", error);
         setResults([]);
-        toast.error("Failed to search experts. Please try again later.");
+        toast.error(`Failed to search ${expertsLabel.toLowerCase()}. Please try again later.`);
       } finally {
         setLoading(false);
       }
@@ -1008,11 +1013,13 @@ export default function Experts() {
                 speed={2.5}
                 colors={["#2F3C96", "#474F97", "#757BB1", "#B8A5D5", "#D0C4E2"]}
               >
-                Explore Health Experts
+                Explore Health {expertsLabel}
               </AuroraText>
             </h1>
             <p className="text-sm text-slate-600">
-              Connect with medical professionals and researchers worldwide
+              {isResearcher && isSignedIn
+                ? "What would you like to collaborate on?"
+                : "Connect with medical professionals and researchers worldwide"}
             </p>
             {/* Free Searches Indicator */}
             <div className="mt-3 flex justify-center items-center w-full">
@@ -1161,7 +1168,7 @@ export default function Experts() {
               <div className="flex flex-col gap-2">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="text-xs font-medium text-slate-700">
-                    Expert Source:
+                    {expertsLabel} Source:
                   </span>
                   <button
                     onClick={() => {
@@ -1173,7 +1180,7 @@ export default function Experts() {
                         : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                     }`}
                   >
-                    Global Experts
+                    Global {expertsLabel}
                   </button>
                   <button
                     onClick={() => {
@@ -1185,7 +1192,7 @@ export default function Experts() {
                         : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                     }`}
                   >
-                    Platform Experts
+                    Platform {expertsLabel}
                   </button>
                 </div>
               </div>
@@ -1322,11 +1329,11 @@ export default function Experts() {
                               <div className="flex items-center gap-2 mb-1">
                                 <User className="w-4 h-4 text-indigo-600" />
                                 <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full text-xs font-medium">
-                                  Expert
+                                  {expertLabel}
                                 </span>
                               </div>
                               <h3 className="text-base font-bold text-slate-900 mb-1">
-                                {expert.name || "Unknown Expert"}
+                                {expert.name || `Unknown ${expertLabel}`}
                               </h3>
                               {expert.orcid && (
                                 <p className="text-xs text-indigo-600 mt-0.5">
@@ -1659,12 +1666,12 @@ export default function Experts() {
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-5 h-5 text-indigo-600" />
                     <h3 className="text-lg font-bold text-indigo-900">
-                      Want to see more experts?
+                      Want to see more {expertsLabel.toLowerCase()}?
                     </h3>
                   </div>
                   <p className="text-sm text-indigo-700 max-w-md">
                     Sign up for free to view all {results.length} matching
-                    experts and get personalized recommendations based on your
+                    {expertsLabel.toLowerCase()} and get personalized recommendations based on your
                     medical interests.
                   </p>
                   <div className="flex gap-3 mt-2">
@@ -1690,7 +1697,7 @@ export default function Experts() {
             <div className="text-center py-12 bg-white rounded-lg shadow-md border border-slate-200 animate-fade-in">
               <User className="w-12 h-12 text-slate-300 mx-auto mb-3" />
               <h3 className="text-lg font-semibold text-slate-800 mb-1">
-                No Experts Found
+                No {expertsLabel} Found
               </h3>
               <p className="text-sm text-slate-600 max-w-md mx-auto">
                 Try adjusting your search criteria or browse different
@@ -1721,7 +1728,7 @@ export default function Experts() {
         <Modal
           isOpen={detailsModal.open}
           onClose={closeDetailsModal}
-          title="Expert Details"
+          title={`${expertLabel} Details`}
         >
           {detailsModal.expert && (
             <div className="space-y-6">
@@ -1733,7 +1740,7 @@ export default function Experts() {
                   </div>
                   <div className="flex-1">
                     <h4 className="font-bold text-slate-900 text-lg">
-                      {detailsModal.expert.name || "Unknown Expert"}
+                      {detailsModal.expert.name || `Unknown ${expertLabel}`}
                     </h4>
                     {detailsModal.expert.orcid && (
                       <p className="text-sm text-indigo-600">

@@ -107,6 +107,11 @@ export default function Favorites() {
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const navigate = useNavigate();
 
+  // Determine if user is a researcher to show "Collaborators" instead of "Experts"
+  const isResearcher = user?.role === "researcher";
+  const expertLabel = isResearcher ? "Collaborator" : "Expert";
+  const expertsLabel = isResearcher ? "Collaborators" : "Experts";
+
   // Check authentication on mount
   useEffect(() => {
     const userData = JSON.parse(localStorage.getItem("user") || "{}");
@@ -143,7 +148,7 @@ export default function Favorites() {
     { value: "all", label: "All Favorites", icon: "⭐" },
     { value: "trial", label: "Trials", icon: "🔬" },
     { value: "publication", label: "Publications", icon: "📄" },
-    { value: "expert", label: "Experts", icon: "👤" },
+    { value: "expert", label: expertsLabel, icon: "👤" },
     { value: "collaborator", label: "Collaborators", icon: "🤝" },
     { value: "thread", label: "Forum Threads", icon: "💬" },
     { value: "addedByUrl", label: "Added by URL", icon: "🔗" },
@@ -1365,11 +1370,11 @@ export default function Favorites() {
                 <div className="flex items-center gap-2 mb-1">
                   <User className="w-4 h-4 text-indigo-600" />
                   <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full text-xs font-medium">
-                    Expert
+                    {expertLabel}
                   </span>
                 </div>
                 <h3 className="font-bold text-slate-900 text-base">
-                  {e.name || "Unknown Expert"}
+                  {e.name || `Unknown ${expertLabel}`}
                 </h3>
                 {e.orcid && (
                   <p className="text-xs text-indigo-600 mt-0.5">
@@ -1653,7 +1658,7 @@ export default function Favorites() {
               </AuroraText>
             </h1>
             <p className="text-sm text-slate-600 mb-4">
-              All your saved trials, publications, experts, and forum threads
+              All your saved trials, publications, {expertsLabel.toLowerCase()}, and forum threads
             </p>
           </div>
 
@@ -3070,7 +3075,7 @@ export default function Favorites() {
                       <div>
                         <h2 className="text-2xl font-bold mb-4 flex items-center gap-2" style={{ color: '#2F3C96' }}>
                           <Users className="w-6 h-6" />
-                          Experts Selected ({reportModal.report.experts.length})
+                          {expertsLabel} Selected ({reportModal.report.experts.length})
                         </h2>
                         <div className="space-y-4">
                           {reportModal.report.experts.map((expert, idx) => (
@@ -3160,13 +3165,16 @@ export default function Favorites() {
                             >
                               <h3 className="text-lg font-bold mb-2" style={{ color: '#2F3C96' }}>
                                 {pub.title}
-                                {pub.referenceNumber && (
-                                  <span className="text-sm font-normal ml-2" style={{ color: '#787878' }}>
-                                    [DOI: {pub.referenceNumber}]
-                                  </span>
-                                )}
                               </h3>
                               <div className="space-y-2 text-sm" style={{ color: '#787878' }}>
+                                {pub.referenceNumber && (
+                                  <p>
+                                    <span className="font-semibold" style={{ color: '#2F3C96' }}>
+                                      Reference:
+                                    </span>{" "}
+                                    {pub.referenceNumber}
+                                  </p>
+                                )}
                                 <p>
                                   <span className="font-semibold" style={{ color: '#2F3C96' }}>
                                     Authors:
@@ -3211,9 +3219,6 @@ export default function Favorites() {
                           <Beaker className="w-6 h-6" />
                           Clinical Trials Selected (
                           {reportModal.report.trials.length})
-                          <span className="text-sm font-normal ml-2" style={{ color: '#787878' }}>
-                            [{reportModal.report.trials.map(t => t.trialNumber || t.id || t._id).filter(Boolean).join(", ")}]
-                          </span>
                         </h2>
                         <div className="space-y-4">
                           {reportModal.report.trials.map((trial, idx) => (
@@ -3224,13 +3229,22 @@ export default function Favorites() {
                             >
                               <h3 className="text-lg font-bold mb-2" style={{ color: '#2F3C96' }}>
                                 {trial.title}
-                                {(trial.referenceNumber || trial.trialNumber || trial.id || trial._id) && (
-                                  <span className="text-sm font-normal ml-2" style={{ color: '#787878' }}>
-                                    [NCT: {trial.referenceNumber || trial.trialNumber || trial.id || trial._id}]
-                                  </span>
-                                )}
                               </h3>
                               <div className="space-y-2 text-sm" style={{ color: '#787878' }}>
+                                {(trial.referenceNumber ||
+                                  trial.trialNumber ||
+                                  trial.id ||
+                                  trial._id) && (
+                                  <p>
+                                    <span className="font-semibold" style={{ color: '#2F3C96' }}>
+                                      Trial ID:
+                                    </span>{" "}
+                                    {trial.referenceNumber ||
+                                      trial.trialNumber ||
+                                      trial.id ||
+                                      trial._id}
+                                  </p>
+                                )}
                                 <div className="grid grid-cols-2 gap-4">
                                   <p>
                                     <span className="font-semibold" style={{ color: '#2F3C96' }}>

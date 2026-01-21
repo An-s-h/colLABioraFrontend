@@ -59,6 +59,10 @@ export default function DashboardResearcher() {
   const [globalExperts, setGlobalExperts] = useState([]); // Global Experts (from external search, loaded on initial page load)
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  
+  // Researcher dashboard always shows "Collaborators" instead of "Experts"
+  const expertLabel = "Collaborator";
+  const expertsLabel = "Collaborators";
   const [isFirstLoad, setIsFirstLoad] = useState(true); // Track if this is the first load (cache miss)
   const [selectedCategory, setSelectedCategory] = useState("profile"); // "profile", "collaborators", "forums", "publications", "trials", "favorites"
   const [trialFilter, setTrialFilter] = useState("RECRUITING"); // Status filter for trials - default to RECRUITING
@@ -3986,7 +3990,7 @@ export default function DashboardResearcher() {
                                       className="text-2xl font-bold mb-2 flex items-center gap-2"
                                       style={{ color: "#2F3C96" }}
                                     >
-                                      Experts on Platform
+                                      Collaborators on Platform
                                       <span
                                         className="text-sm font-normal px-3 py-1 rounded-full"
                                         style={{
@@ -3997,8 +4001,8 @@ export default function DashboardResearcher() {
                                       >
                                         {collabioraExperts.length}{" "}
                                         {collabioraExperts.length === 1
-                                          ? "Expert"
-                                          : "Experts"}
+                                          ? "Collaborator"
+                                          : "Collaborators"}
                                       </span>
                                     </h3>
                                     <p
@@ -4006,7 +4010,7 @@ export default function DashboardResearcher() {
                                       style={{ color: "#787878" }}
                                     >
                                       Connect with leading researchers and
-                                      experts in your field. Explore their
+                                      collaborators in your field. Explore their
                                       profiles, publications, and research
                                       interests.
                                     </p>
@@ -4204,7 +4208,7 @@ export default function DashboardResearcher() {
                                                       color: "#2F3C96",
                                                     }}
                                                   >
-                                                    {e.name || "Unknown Expert"}
+                                                    {e.name || `Unknown ${expertLabel}`}
                                                   </h3>
                                                   {/* Hide ORCID for on-platform experts */}
                                                   {e.orcid &&
@@ -4664,7 +4668,7 @@ export default function DashboardResearcher() {
                                                       color: "#2F3C96",
                                                     }}
                                                   >
-                                                    {e.name || "Unknown Expert"}
+                                                    {e.name || `Unknown ${expertLabel}`}
                                                   </h3>
                                                   {/* Hide ORCID for on-platform experts */}
                                                   {e.orcid &&
@@ -5772,7 +5776,7 @@ export default function DashboardResearcher() {
                                           className="font-bold text-base mb-2"
                                           style={{ color: "#2F3C96" }}
                                         >
-                                          {item.name || "Unknown Expert"}
+                                          {item.name || `Unknown ${expertLabel}`}
                                         </h4>
                                         <div className="space-y-2 mb-4">
                                           {(item.specialties ||
@@ -8295,7 +8299,7 @@ export default function DashboardResearcher() {
                 </div>
                 <div className="flex-1">
                   <h4 className="font-bold text-slate-900 text-lg">
-                    {globalExpertDetailsModal.expert.name || "Unknown Expert"}
+                    {globalExpertDetailsModal.expert.name || `Unknown ${expertLabel}`}
                   </h4>
                   {globalExpertDetailsModal.expert.orcid && (
                     <p className="text-sm text-indigo-600">
