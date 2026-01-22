@@ -318,6 +318,16 @@ export default function EditProfile() {
             >
               <ArrowLeft className="w-4 h-4" />
             </button>
+            {/* Profile Avatar with First Letter */}
+            <div
+              className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-md shrink-0"
+              style={{
+                backgroundColor: "#2F3C96",
+                border: "2px solid rgba(47, 60, 150, 0.3)",
+              }}
+            >
+              {user?.username?.charAt(0)?.toUpperCase() || "U"}
+            </div>
             <div>
               <h1 className="text-xl font-bold text-slate-900">Edit Profile</h1>
               <p className="text-xs text-slate-600 mt-0.5">

@@ -17,10 +17,18 @@ import {
   Globe,
   Tag,
   Sparkles,
+  Home,
+  Bell,
+  ChevronDown,
+  ChevronUp,
+  Paperclip,
+  Video,
+  Upload,
 } from "lucide-react";
 import Layout from "../components/Layout.jsx";
 import AnimatedBackground from "../components/ui/AnimatedBackground.jsx";
 import CustomSelect from "../components/ui/CustomSelect.jsx";
+import { AuroraText } from "../components/ui/aurora-text";
 import {
   IconHospital,
   IconRibbonHealth,
@@ -75,8 +83,6 @@ const CommunityIcon = ({ community, size = "1.125rem" }) => {
   );
 };
 
-const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || "dtgmjvfms";
-const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || "ml_default";
 
 export default function Posts() {
   const [posts, setPosts] = useState([]);
@@ -85,12 +91,18 @@ export default function Posts() {
   const [selectedPostType, setSelectedPostType] = useState("patient"); // "patient" or "researcher"
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerContent, setComposerContent] = useState("");
-  const [composerPostType, setComposerPostType] = useState("patient");
+  const [filtersExpanded, setFiltersExpanded] = useState(true);
+  const [composerPostType, setComposerPostType] = useState(() => {
+    // Set initial post type based on user role
+    const userData = JSON.parse(localStorage.getItem("user") || "null");
+    return userData?.role === "researcher" ? "researcher" : "patient";
+  });
   const [composerCommunity, setComposerCommunity] = useState(null);
   const [composerSubcategory, setComposerSubcategory] = useState(null);
   const [composerAttachments, setComposerAttachments] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [communities, setCommunities] = useState([]);
+  const [followingCommunities, setFollowingCommunities] = useState([]);
   const [subcategories, setSubcategories] = useState([]);
   const [loadingSubcategories, setLoadingSubcategories] = useState(false);
   const [isOfficial, setIsOfficial] = useState(false);
@@ -99,6 +111,7 @@ export default function Posts() {
   const [loadingMore, setLoadingMore] = useState(false);
   const fileInputRef = useRef(null);
   const imageInputRef = useRef(null);
+  const loadingPostsRef = useRef(false); // Prevent multiple simultaneous loads
 
   const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
   const navigate = useNavigate();
@@ -106,13 +119,29 @@ export default function Posts() {
   useEffect(() => {
     const userData = JSON.parse(localStorage.getItem("user") || "null");
     setUser(userData);
+    // Set composer post type based on user role - ensure it always matches
+    if (userData?.role) {
+      const correctPostType = userData.role === "researcher" ? "researcher" : "patient";
+      setComposerPostType(correctPostType);
+    }
     loadCommunities();
     loadPosts();
   }, []);
 
   useEffect(() => {
-    loadPosts();
+    // Reset and load posts when post type changes
+    loadPosts(true);
   }, [selectedPostType]);
+
+  // Ensure composerPostType always matches user role
+  useEffect(() => {
+    if (user?.role) {
+      const correctPostType = user.role === "researcher" ? "researcher" : "patient";
+      if (composerPostType !== correctPostType) {
+        setComposerPostType(correctPostType);
+      }
+    }
+  }, [user?.role, composerPostType]);
 
   useEffect(() => {
     if (composerCommunity) {
@@ -134,9 +163,26 @@ export default function Posts() {
       if (!response.ok) throw new Error("Failed to fetch communities");
       const data = await response.json();
       setCommunities(data.communities || []);
+      
+      // Load following communities if user is logged in
+      if (userId) {
+        loadFollowingCommunities(userId);
+      }
     } catch (error) {
       console.error("Error loading communities:", error);
       toast.error("Failed to load communities");
+    }
+  }
+
+  async function loadFollowingCommunities(userId) {
+    try {
+      const response = await fetch(`${base}/api/communities/user/${userId}/following`);
+      if (response.ok) {
+        const data = await response.json();
+        setFollowingCommunities(data.communities || []);
+      }
+    } catch (error) {
+      console.error("Error loading following communities:", error);
     }
   }
 
@@ -156,6 +202,13 @@ export default function Posts() {
   }
 
   async function loadPosts(reset = false) {
+    // Prevent multiple simultaneous calls
+    if (loadingPostsRef.current) {
+      return;
+    }
+
+    loadingPostsRef.current = true;
+
     if (reset) {
       setPage(1);
       setPosts([]);
@@ -178,10 +231,17 @@ export default function Posts() {
       if (!response.ok) throw new Error("Failed to fetch posts");
       const data = await response.json();
 
+      const newPosts = data.posts || [];
+
       if (reset) {
-        setPosts(data.posts || []);
+        setPosts(newPosts);
       } else {
-        setPosts((prev) => [...prev, ...(data.posts || [])]);
+        // Deduplicate posts by _id to prevent duplicates
+        setPosts((prev) => {
+          const existingIds = new Set(prev.map((p) => p._id));
+          const uniqueNewPosts = newPosts.filter((p) => !existingIds.has(p._id));
+          return [...prev, ...uniqueNewPosts];
+        });
       }
 
       setHasMore(data.hasMore || false);
@@ -192,6 +252,7 @@ export default function Posts() {
     } finally {
       setLoading(false);
       setLoadingMore(false);
+      loadingPostsRef.current = false;
     }
   }
 
@@ -228,48 +289,123 @@ export default function Posts() {
     }
   }
 
-  async function uploadToCloudinary(file, type) {
-    return new Promise((resolve, reject) => {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-      formData.append("cloud_name", CLOUDINARY_CLOUD_NAME);
+  async function handleDeletePost(postId) {
+    if (!user) {
+      toast.error("Please sign in to delete posts");
+      return;
+    }
 
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${type === "image" ? "image" : "raw"}/upload`);
+    if (!window.confirm("Are you sure you want to delete this post?")) {
+      return;
+    }
 
-      xhr.onload = () => {
-        if (xhr.status === 200) {
-          const response = JSON.parse(xhr.responseText);
-          resolve({
-            type: type,
-            url: response.secure_url,
-            name: file.name,
-            size: file.size,
-          });
-        } else {
-          reject(new Error("Upload failed"));
-        }
-      };
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${base}/api/posts/${postId}`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
-      xhr.onerror = () => reject(new Error("Upload failed"));
-      xhr.send(formData);
-    });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to delete post");
+      }
+
+      toast.success("Post deleted successfully");
+      // Remove post from list
+      setPosts((prev) => prev.filter((post) => post._id !== postId));
+    } catch (error) {
+      console.error("Error deleting post:", error);
+      toast.error(error.message || "Failed to delete post");
+    }
   }
 
-  async function handleFileUpload(event, type) {
+  async function uploadToBackend(files) {
+    const formData = new FormData();
+    files.forEach((file) => {
+      formData.append("files", file);
+    });
+
+    const token = localStorage.getItem("token");
+    
+    // Check if user is logged in
+    if (!token) {
+      toast.error("Please sign in to upload files");
+      navigate("/signin");
+      throw new Error("Not authenticated");
+    }
+
+    const response = await fetch(`${base}/api/upload`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        // Don't set Content-Type - let browser set it with boundary for FormData
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      
+      // Handle token expiration
+      if (response.status === 401) {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        toast.error("Session expired. Please sign in again.");
+        navigate("/signin");
+        throw new Error("Token expired");
+      }
+      
+      throw new Error(error.error || "Upload failed");
+    }
+
+    const data = await response.json();
+    return data.files;
+  }
+
+  async function handleFileUpload(event) {
+    // Check if user is logged in
+    if (!user) {
+      toast.error("Please sign in to upload files");
+      navigate("/signin");
+      if (event.target) event.target.value = "";
+      return;
+    }
+
     const files = Array.from(event.target.files);
     if (files.length === 0) return;
 
+    // Validate file types
+    const validFiles = files.filter((file) => {
+      const isImage = file.type.startsWith("image/");
+      const isPDF = file.type === "application/pdf";
+      return isImage || isPDF;
+    });
+
+    if (validFiles.length === 0) {
+      toast.error("Please select only images or PDF files");
+      if (event.target) event.target.value = "";
+      return;
+    }
+
+    if (validFiles.length < files.length) {
+      toast.error("Some files were skipped. Only images and PDFs are allowed.");
+    }
+
     setUploading(true);
     try {
-      const uploadPromises = files.map((file) => uploadToCloudinary(file, type));
-      const uploadedFiles = await Promise.all(uploadPromises);
+      const uploadedFiles = await uploadToBackend(validFiles);
       setComposerAttachments((prev) => [...prev, ...uploadedFiles]);
-      toast.success(`${files.length} file(s) uploaded successfully`);
+      toast.success(`${uploadedFiles.length} file(s) uploaded successfully`);
     } catch (error) {
       console.error("Error uploading files:", error);
-      toast.error("Failed to upload files");
+      // Don't show error toast if it's a redirect (token expired/not authenticated)
+      if (error.message !== "Token expired" && error.message !== "Not authenticated") {
+        toast.error(error.message || "Failed to upload files");
+      }
     } finally {
       setUploading(false);
       // Reset input
@@ -293,6 +429,13 @@ export default function Posts() {
       return;
     }
 
+    // Ensure postType matches user role - critical validation
+    const finalPostType = user.role === "researcher" ? "researcher" : "patient";
+    if (composerPostType !== finalPostType) {
+      console.warn(`Post type mismatch: composerPostType=${composerPostType}, user.role=${user.role}. Correcting to ${finalPostType}`);
+      setComposerPostType(finalPostType);
+    }
+
     try {
       const token = localStorage.getItem("token");
       const response = await fetch(`${base}/api/posts`, {
@@ -303,7 +446,7 @@ export default function Posts() {
         },
         body: JSON.stringify({
           content: composerContent,
-          postType: composerPostType,
+          postType: finalPostType, // Use validated postType, not composerPostType
           communityId: composerCommunity?._id || null,
           subcategoryId: composerSubcategory?._id || null,
           attachments: composerAttachments,
@@ -350,83 +493,220 @@ export default function Posts() {
 
   return (
     <Layout>
-      <div className="min-h-screen bg-gradient-to-br from-white via-purple-50/30 to-blue-50/30">
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50 to-slate-100 relative overflow-hidden">
+        <AnimatedBackground />
 
-        <div className="container mx-auto px-4 py-8 max-w-4xl">
-          {/* Header */}
-          <div className="mb-8">
-            <h1 className="text-4xl font-bold text-brand-royal-blue mb-2">Posts</h1>
-            <p className="text-brand-gray">Share your thoughts, experiences, and work</p>
+        <div className="relative pt-24 px-4 md:px-8 mx-auto max-w-6xl pb-8">
+          {/* Header - Same style as Trials and Experts */}
+          <div className="text-center mb-6 animate-fade-in">
+            <h1 className="text-3xl md:text-5xl font-bold bg-gradient-to-r from-[#2F3C96] via-[#474F97] to-[#D0C4E2] bg-clip-text text-transparent mb-1">
+              <AuroraText
+                speed={2.5}
+                colors={["#2F3C96", "#474F97", "#757BB1", "#B8A5D5", "#D0C4E2"]}
+              >
+                Posts
+              </AuroraText>
+            </h1>
+            <p className="text-sm text-slate-600">
+              Share your thoughts, experiences, and work
+            </p>
           </div>
 
-          {/* Post Type Selector - Big Options */}
-          <div className="mb-6 grid grid-cols-2 gap-4">
-            <button
-              onClick={() => {
-                setSelectedPostType("patient");
-                loadPosts(true);
-              }}
-              className={`p-6 rounded-xl border-2 transition-all ${
-                selectedPostType === "patient"
-                  ? "border-brand-royal-blue bg-brand-purple/20 shadow-lg"
-                  : "border-gray-200 bg-white hover:border-brand-purple/50"
-              }`}
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <User className="w-6 h-6 text-brand-royal-blue" />
-                <h3 className="text-xl font-semibold text-brand-royal-blue">Patient Posts</h3>
+          {/* Sidebar and Posts Layout */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Left Sidebar - Only Post Filters */}
+            <div className="lg:col-span-3">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                {/* Post Filters - Collapsible */}
+                <div>
+                  <button
+                    onClick={() => setFiltersExpanded(!filtersExpanded)}
+                    className="w-full flex items-center justify-between mb-3"
+                  >
+                    <span className="font-semibold text-gray-900">Post Filters</span>
+                    {filtersExpanded ? (
+                      <ChevronUp className="w-4 h-4 text-gray-500" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4 text-gray-500" />
+                    )}
+                  </button>
+                  {filtersExpanded && (
+                    <div className="space-y-3">
+                      {/* Patient Posts */}
+                      <button
+                        onClick={() => {
+                          if (selectedPostType !== "patient") {
+                            setSelectedPostType("patient");
+                            loadPosts(true);
+                          }
+                        }}
+                        className={`w-full p-4 rounded-xl border-2 transition-all text-left ${
+                          selectedPostType === "patient"
+                            ? "border-[#2F3C96] bg-purple-50 shadow-md"
+                            : "border-gray-200 bg-white hover:border-purple-300"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <MessageCircle className={`w-5 h-5 ${selectedPostType === "patient" ? "text-[#2F3C96]" : "text-gray-500"}`} />
+                          <span className={`font-semibold ${selectedPostType === "patient" ? "text-[#2F3C96]" : "text-gray-700"}`}>
+                            Patient Posts
+                          </span>
+                          {selectedPostType === "patient" && (
+                            <CheckCircle2 className="w-4 h-4 text-[#2F3C96] ml-auto" />
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-600">
+                          Share your experiences and connect with others
+                        </p>
+                      </button>
+                      
+                      {/* Researcher Posts */}
+                      <button
+                        onClick={() => {
+                          if (selectedPostType !== "researcher") {
+                            setSelectedPostType("researcher");
+                            loadPosts(true);
+                          }
+                        }}
+                        className={`w-full p-4 rounded-xl border-2 transition-all text-left ${
+                          selectedPostType === "researcher"
+                            ? "border-[#2F3C96] bg-purple-50 shadow-md"
+                            : "border-gray-200 bg-white hover:border-purple-300"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <Sparkles className={`w-5 h-5 ${selectedPostType === "researcher" ? "text-[#2F3C96]" : "text-gray-500"}`} />
+                          <span className={`font-semibold ${selectedPostType === "researcher" ? "text-[#2F3C96]" : "text-gray-700"}`}>
+                            Researcher Posts
+                          </span>
+                          {selectedPostType === "researcher" && (
+                            <CheckCircle2 className="w-4 h-4 text-[#2F3C96] ml-auto" />
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-600">
+                          Share your work, findings, and research
+                        </p>
+                      </button>
+
+                      {/* Following Communities */}
+                      <div className="border-t border-gray-200 pt-3">
+                        <h3 className="text-sm font-semibold text-gray-900 mb-2">Following Communities</h3>
+                        {followingCommunities.length === 0 ? (
+                          <p className="text-xs text-gray-500">No communities followed yet</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {followingCommunities.map((community) => (
+                              <button
+                                key={community._id}
+                                onClick={() => {
+                                  // Filter posts by community
+                                  // You can implement this functionality later
+                                }}
+                                className="w-full text-left p-2 rounded-lg hover:bg-gray-50 transition-colors"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <CommunityIcon community={community} size="1rem" />
+                                  <span className="text-sm font-medium text-gray-700 truncate">
+                                    {community.name}
+                                  </span>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
-              <p className="text-sm text-brand-gray">Share your experiences and connect with others</p>
-            </button>
-
-            <button
-              onClick={() => {
-                setSelectedPostType("researcher");
-                loadPosts(true);
-              }}
-              className={`p-6 rounded-xl border-2 transition-all ${
-                selectedPostType === "researcher"
-                  ? "border-brand-royal-blue bg-brand-purple/20 shadow-lg"
-                  : "border-gray-200 bg-white hover:border-brand-purple/50"
-              }`}
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <Sparkles className="w-6 h-6 text-brand-royal-blue" />
-                <h3 className="text-xl font-semibold text-brand-royal-blue">Researcher Posts</h3>
-              </div>
-              <p className="text-sm text-brand-gray">Share your work, findings, and research</p>
-            </button>
-          </div>
-
-          {/* Composer Button */}
-          {user && (
-            <button
-              onClick={() => setComposerOpen(true)}
-              className="w-full mb-6 p-4 bg-brand-royal-blue text-white rounded-xl font-semibold hover:bg-opacity-90 transition-all shadow-lg hover:shadow-xl"
-            >
-              Share your work
-            </button>
-          )}
-
-          {/* Posts Feed */}
-          {loading && posts.length === 0 ? (
-            <div className="flex justify-center items-center py-12">
-              <Loader2 className="w-8 h-8 animate-spin text-brand-royal-blue" />
             </div>
-          ) : posts.length === 0 ? (
-            <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
-              <p className="text-brand-gray">No posts yet. Be the first to share!</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {posts.map((post) => (
-                <div
-                  key={post._id}
-                  className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-all"
-                >
+
+            {/* Central Feed */}
+            <div className="lg:col-span-9">
+              {/* Post Composer - Inline */}
+              {user && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-full bg-[#2F3C96] flex items-center justify-center text-white font-semibold text-sm shrink-0">
+                      {user?.username?.charAt(0)?.toUpperCase() || "U"}
+                    </div>
+                    <div className="flex-1">
+                      <textarea
+                        value={composerContent}
+                        onChange={(e) => setComposerContent(e.target.value)}
+                        placeholder="What's on your mind? Share your thoughts, experiences, or research..."
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2F3C96] focus:border-transparent resize-none mb-3 cursor-text"
+                        rows={3}
+                        onFocus={() => setComposerOpen(true)}
+                      />
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              setComposerOpen(true);
+                              setTimeout(() => imageInputRef.current?.click(), 100);
+                            }}
+                            className="p-2 text-gray-500 hover:text-[#2F3C96] hover:bg-gray-50 rounded-lg transition-colors"
+                            title="Add Image"
+                          >
+                            <ImageIcon className="w-5 h-5" />
+                          </button>
+                          <button
+                            onClick={() => setComposerOpen(true)}
+                            className="p-2 text-gray-500 hover:text-[#2F3C96] hover:bg-gray-50 rounded-lg transition-colors"
+                            title="Add Video"
+                          >
+                            <Video className="w-5 h-5" />
+                          </button>
+                          <button
+                            className="p-2 text-gray-500 hover:text-[#2F3C96] hover:bg-gray-50 rounded-lg transition-colors"
+                            title="Upload"
+                          >
+                            <Upload className="w-5 h-5" />
+                          </button>
+                          <button
+                            onClick={() => fileInputRef.current?.click()}
+                            className="p-2 text-gray-500 hover:text-[#2F3C96] hover:bg-gray-50 rounded-lg transition-colors"
+                            title="Attach File"
+                          >
+                            <Paperclip className="w-5 h-5" />
+                          </button>
+                          <button className="p-2 text-gray-500 hover:text-[#2F3C96] hover:bg-gray-50 rounded-lg transition-colors">
+                            <MoreHorizontal className="w-5 h-5" />
+                          </button>
+                        </div>
+                        <button
+                          onClick={handleCreatePost}
+                          disabled={!composerContent.trim() || uploading}
+                          className="px-6 py-2 bg-[#2F3C96] text-white rounded-lg font-semibold hover:bg-opacity-90 disabled:opacity-50 transition-colors"
+                        >
+                          Post
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Posts Feed */}
+              {loading && posts.length === 0 ? (
+                <div className="flex justify-center items-center py-12 bg-white rounded-xl border border-gray-200">
+                  <Loader2 className="w-8 h-8 animate-spin text-[#2F3C96]" />
+                </div>
+              ) : posts.length === 0 ? (
+                <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
+                  <p className="text-gray-600">No posts yet. Be the first to share!</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {posts.map((post) => (
+                    <div
+                      key={post._id}
+                      className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-all"
+                    >
                   {/* Post Header */}
                   <div className="flex items-start gap-4 mb-4">
-                    <div className="w-12 h-12 rounded-full bg-brand-purple/20 flex items-center justify-center flex-shrink-0">
+                    <div className="w-12 h-12 rounded-full bg-[#2F3C96] flex items-center justify-center flex-shrink-0 text-white font-semibold text-lg">
                       {post.authorUserId?.picture ? (
                         <img
                           src={post.authorUserId.picture}
@@ -434,20 +714,34 @@ export default function Posts() {
                           className="w-12 h-12 rounded-full object-cover"
                         />
                       ) : (
-                        <User className="w-6 h-6 text-brand-royal-blue" />
+                        <span>
+                          {post.authorUserId?.username?.charAt(0)?.toUpperCase() || "U"}
+                        </span>
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-semibold text-brand-royal-blue">
-                          {post.authorUserId?.username || "Anonymous"}
-                        </h3>
-                        {post.isOfficial && (
-                          <CheckCircle2 className="w-4 h-4 text-blue-500" />
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <h3 className="font-semibold text-[#2F3C96]">
+                            {post.authorUserId?.username || "Anonymous"}
+                          </h3>
+                          {post.isOfficial && (
+                            <CheckCircle2 className="w-4 h-4 text-blue-500" />
+                          )}
+                          <span className="text-sm text-gray-500">
+                            · {formatTimeAgo(post.createdAt)}
+                          </span>
+                        </div>
+                        {/* Delete button for post owner */}
+                        {user && (user._id === post.authorUserId?._id || user.id === post.authorUserId?._id) && (
+                          <button
+                            onClick={() => handleDeletePost(post._id)}
+                            className="text-gray-400 hover:text-red-500 transition-colors p-1 rounded hover:bg-red-50"
+                            title="Delete post"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
                         )}
-                        <span className="text-sm text-brand-gray">
-                          · {formatTimeAgo(post.createdAt)}
-                        </span>
                       </div>
                       {(post.communityId || post.subcategoryId) && (
                         <div className="flex items-center gap-2 text-sm text-brand-gray">
@@ -475,24 +769,40 @@ export default function Posts() {
 
                   {/* Attachments */}
                   {post.attachments && post.attachments.length > 0 && (
-                    <div className="mb-4 grid grid-cols-2 gap-2">
+                    <div className="mb-4 space-y-3">
                       {post.attachments.map((att, idx) => (
                         <div key={idx} className="relative">
                           {att.type === "image" ? (
-                            <img
-                              src={att.url}
-                              alt={att.name || `Attachment ${idx + 1}`}
-                              className="w-full h-48 object-cover rounded-lg"
-                            />
+                            <div className="relative group">
+                              <img
+                                src={att.url}
+                                alt={att.name || `Image ${idx + 1}`}
+                                className="w-full max-h-96 object-contain rounded-lg border border-gray-200 bg-gray-50 cursor-pointer hover:opacity-90 transition-opacity"
+                                onClick={() => window.open(att.url, '_blank')}
+                              />
+                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors rounded-lg pointer-events-none" />
+                            </div>
                           ) : (
                             <a
                               href={att.url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="flex items-center gap-2 p-3 bg-gray-100 rounded-lg hover:bg-gray-200"
+                              className="flex items-center gap-3 p-4 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 hover:border-brand-royal-blue/50 transition-all group"
                             >
-                              <FileText className="w-5 h-5 text-brand-royal-blue" />
-                              <span className="text-sm truncate">{att.name || "File"}</span>
+                              <div className="w-12 h-12 bg-brand-royal-blue/10 rounded-lg flex items-center justify-center group-hover:bg-brand-royal-blue/20 transition-colors">
+                                <FileText className="w-6 h-6 text-brand-royal-blue" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-900 truncate">
+                                  {att.name || "Document"}
+                                </p>
+                                {att.size && (
+                                  <p className="text-xs text-gray-500">
+                                    {(att.size / 1024).toFixed(1)} KB
+                                  </p>
+                                )}
+                              </div>
+                              <span className="text-xs text-brand-royal-blue font-medium">View</span>
                             </a>
                           )}
                         </div>
@@ -500,44 +810,47 @@ export default function Posts() {
                     </div>
                   )}
 
-                  {/* Post Actions */}
-                  <div className="flex items-center gap-6 pt-4 border-t border-gray-100">
-                    <button
-                      onClick={() => handleLike(post._id, post.isLiked)}
-                      className={`flex items-center gap-2 transition-colors ${
-                        post.isLiked ? "text-red-500" : "text-gray-500 hover:text-red-500"
-                      }`}
-                    >
-                      <Heart className={`w-5 h-5 ${post.isLiked ? "fill-current" : ""}`} />
-                      <span className="text-sm">{post.likeCount || 0}</span>
-                    </button>
-                    <button className="flex items-center gap-2 text-gray-500 hover:text-brand-royal-blue transition-colors">
-                      <MessageCircle className="w-5 h-5" />
-                      <span className="text-sm">{post.replyCount || 0}</span>
-                    </button>
-                    <button className="flex items-center gap-2 text-gray-500 hover:text-brand-royal-blue transition-colors">
-                      <Share2 className="w-5 h-5" />
-                    </button>
-                  </div>
-                </div>
-              ))}
+                      {/* Post Actions */}
+                      <div className="flex items-center gap-6 pt-4 border-t border-gray-100">
+                        <button
+                          onClick={() => handleLike(post._id, post.isLiked)}
+                          className={`flex items-center gap-2 transition-colors ${
+                            post.isLiked ? "text-red-500" : "text-gray-500 hover:text-red-500"
+                          }`}
+                        >
+                          <Heart className={`w-5 h-5 ${post.isLiked ? "fill-current" : ""}`} />
+                          <span className="text-sm">{post.likeCount || 0}</span>
+                        </button>
+                        <button className="flex items-center gap-2 text-gray-500 hover:text-[#2F3C96] transition-colors">
+                          <MessageCircle className="w-5 h-5" />
+                          <span className="text-sm">{post.replyCount || 0}</span>
+                        </button>
+                        <button className="flex items-center gap-2 text-gray-500 hover:text-[#2F3C96] transition-colors">
+                          <Share2 className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
 
-              {/* Load More */}
-              {hasMore && (
-                <button
-                  onClick={() => loadPosts()}
-                  disabled={loadingMore}
-                  className="w-full py-3 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50"
-                >
-                  {loadingMore ? (
-                    <Loader2 className="w-5 h-5 animate-spin mx-auto text-brand-royal-blue" />
-                  ) : (
-                    "Load More"
+                  {/* Load More */}
+                  {hasMore && (
+                    <button
+                      onClick={() => loadPosts()}
+                      disabled={loadingMore}
+                      className="w-full py-3 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50"
+                    >
+                      {loadingMore ? (
+                        <Loader2 className="w-5 h-5 animate-spin mx-auto text-[#2F3C96]" />
+                      ) : (
+                        "Load More"
+                      )}
+                    </button>
                   )}
-                </button>
+                </div>
               )}
             </div>
-          )}
+
+          </div>
         </div>
 
         {/* Composer Modal */}
@@ -555,33 +868,66 @@ export default function Posts() {
               </div>
 
               <div className="p-6 space-y-4">
-                {/* Post Type Selector */}
+                {/* Post Type Selector - Restricted by role */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Post Type
                   </label>
                   <div className="grid grid-cols-2 gap-3">
                     <button
-                      onClick={() => setComposerPostType("patient")}
+                      onClick={() => {
+                        if (user?.role === "patient") {
+                          setComposerPostType("patient");
+                        }
+                      }}
+                      disabled={user?.role !== "patient"}
                       className={`p-3 rounded-lg border-2 ${
                         composerPostType === "patient"
                           ? "border-brand-royal-blue bg-brand-purple/20"
                           : "border-gray-200"
+                      } ${
+                        user?.role !== "patient"
+                          ? "opacity-50 cursor-not-allowed"
+                          : "hover:border-brand-royal-blue/50"
                       }`}
                     >
                       Patient Post
+                      {user?.role !== "patient" && (
+                        <span className="block text-xs text-gray-500 mt-1">
+                          (Patients only)
+                        </span>
+                      )}
                     </button>
                     <button
-                      onClick={() => setComposerPostType("researcher")}
+                      onClick={() => {
+                        if (user?.role === "researcher") {
+                          setComposerPostType("researcher");
+                        }
+                      }}
+                      disabled={user?.role !== "researcher"}
                       className={`p-3 rounded-lg border-2 ${
                         composerPostType === "researcher"
                           ? "border-brand-royal-blue bg-brand-purple/20"
                           : "border-gray-200"
+                      } ${
+                        user?.role !== "researcher"
+                          ? "opacity-50 cursor-not-allowed"
+                          : "hover:border-brand-royal-blue/50"
                       }`}
                     >
                       Researcher Post
+                      {user?.role !== "researcher" && (
+                        <span className="block text-xs text-gray-500 mt-1">
+                          (Researchers only)
+                        </span>
+                      )}
                     </button>
                   </div>
+                  {user?.role && (
+                    <p className="text-xs text-gray-500 mt-2">
+                      You can only create {user.role} posts based on your role.
+                    </p>
+                  )}
                 </div>
 
                 {/* Community Selection */}
@@ -690,18 +1036,26 @@ export default function Posts() {
                   <button
                     onClick={() => imageInputRef.current?.click()}
                     disabled={uploading}
-                    className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                    className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
                   >
-                    <ImageIcon className="w-5 h-5" />
+                    {uploading ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <ImageIcon className="w-5 h-5" />
+                    )}
                     {uploading ? "Uploading..." : "Add Image"}
                   </button>
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     disabled={uploading}
-                    className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                    className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
                   >
-                    <FileText className="w-5 h-5" />
-                    {uploading ? "Uploading..." : "Add File"}
+                    {uploading ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <FileText className="w-5 h-5" />
+                    )}
+                    {uploading ? "Uploading..." : "Add PDF"}
                   </button>
                 </div>
 
@@ -710,14 +1064,15 @@ export default function Posts() {
                   type="file"
                   accept="image/*"
                   multiple
-                  onChange={(e) => handleFileUpload(e, "image")}
+                  onChange={handleFileUpload}
                   className="hidden"
                 />
                 <input
                   ref={fileInputRef}
                   type="file"
+                  accept="application/pdf"
                   multiple
-                  onChange={(e) => handleFileUpload(e, "file")}
+                  onChange={handleFileUpload}
                   className="hidden"
                 />
 
