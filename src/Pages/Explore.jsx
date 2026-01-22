@@ -18,7 +18,6 @@ import {
   Star,
   Zap,
   ChevronDown,
-  X,
   Edit2,
   User,
   CheckCircle,
@@ -37,7 +36,6 @@ import {
 
 const FREE_SEARCHES_TOTAL = 6;
 const GUEST_INFO_KEY = "guest_user_info"; // Store guest condition/location
-const COOKIE_CONSENT_KEY = "cookie_consent_accepted";
 
 export default function Explore() {
   const navigate = useNavigate();
@@ -56,7 +54,6 @@ export default function Explore() {
   const [guestCondition, setGuestCondition] = useState("");
   const [guestLocation, setGuestLocation] = useState("");
   const [hasShownModal, setHasShownModal] = useState(false);
-  const [showCookieConsent, setShowCookieConsent] = useState(false);
 
   useEffect(() => {
     // Check if user is signed in
@@ -104,12 +101,6 @@ export default function Explore() {
 
     // Initial fetch on mount
     fetchRemainingSearches();
-
-    // Check cookie consent
-    const cookieConsent = localStorage.getItem(COOKIE_CONSENT_KEY);
-    if (!cookieConsent) {
-      setShowCookieConsent(true);
-    }
 
     // Check if guest info already exists
     const guestInfo = localStorage.getItem(GUEST_INFO_KEY);
@@ -211,11 +202,6 @@ export default function Explore() {
     window.addEventListener("login", handleLogin);
     return () => window.removeEventListener("login", handleLogin);
   }, []);
-
-  const handleAcceptCookies = () => {
-    localStorage.setItem(COOKIE_CONSENT_KEY, "true");
-    setShowCookieConsent(false);
-  };
 
   const handleSearch = (searchValue = null) => {
     // Use provided value or fallback to state
@@ -936,114 +922,6 @@ export default function Explore() {
           </div>
         </div>
       </Modal>
-
-      {/* Cookie Consent Popup */}
-      {showCookieConsent && (
-        <motion.div
-          initial={{ opacity: 0, x: 100 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: 100 }}
-          className="fixed bottom-4 right-4 z-50 max-w-sm sm:max-w-md"
-        >
-          <div
-            className="rounded-xl p-4 sm:p-5 border-2 shadow-2xl"
-            style={{
-              backgroundColor: "#FFFFFF",
-              borderColor: "#D0C4E2",
-            }}
-          >
-            <div className="flex items-start gap-3 mb-3">
-              <div
-                className="p-2 rounded-lg shrink-0"
-                style={{ backgroundColor: "#F5F2F8" }}
-              >
-                <Lock className="w-5 h-5" style={{ color: "#2F3C96" }} />
-              </div>
-              <div className="flex-1">
-                <h3
-                  className="text-sm font-bold mb-1"
-                  style={{ color: "#2F3C96" }}
-                >
-                  We Use Cookies
-                </h3>
-                <p
-                  className="text-xs leading-relaxed mb-3"
-                  style={{ color: "#787878" }}
-                >
-                  We use cookies to track your search usage and provide a better
-                  experience. By continuing, you agree to our use of cookies.
-                </p>
-              </div>
-              <button
-                onClick={() => setShowCookieConsent(false)}
-                className="p-1 rounded-lg hover:bg-gray-100 transition-colors shrink-0"
-                style={{ color: "#787878" }}
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <Button
-                onClick={handleAcceptCookies}
-                className="flex-1 px-4 py-2 text-white font-semibold text-xs rounded-lg transition-all shadow-sm hover:shadow-md"
-                style={{
-                  backgroundColor: "#2F3C96",
-                }}
-              >
-                Accept Cookies
-              </Button>
-              <button
-                onClick={() => {
-                  // Navigate to privacy policy if it exists, or just accept
-                  // You can add a privacy policy route later
-                  handleAcceptCookies();
-                }}
-                className="px-4 py-2 text-xs font-semibold rounded-lg transition-all border-2"
-                style={{
-                  borderColor: "#E8E8E8",
-                  color: "#787878",
-                  backgroundColor: "#FFFFFF",
-                }}
-              >
-                Learn More
-              </button>
-            </div>
-            <p
-              className="text-xs mt-3 pt-3 border-t"
-              style={{
-                color: "#787878",
-                borderColor: "#E8E8E8",
-              }}
-            >
-              <a
-                href="#"
-                onClick={(e) => {
-                  e.preventDefault();
-                  // Add privacy policy link here when available
-                  handleAcceptCookies();
-                }}
-                className="underline hover:no-underline"
-                style={{ color: "#2F3C96" }}
-              >
-                Privacy Policy
-              </a>{" "}
-              •{" "}
-              <a
-                href="#"
-                onClick={(e) => {
-                  e.preventDefault();
-                  // Add terms link here when available
-                  handleAcceptCookies();
-                }}
-                className="underline hover:no-underline"
-                style={{ color: "#2F3C96" }}
-              >
-                Terms of Service
-              </a>
-            </p>
-          </div>
-        </motion.div>
-      )}
     </div>
   );
 }
