@@ -40,10 +40,10 @@ export default function Navbar() {
     } else {
       // When signed in, show new navigation structure
       if (user) {
-        return ["Dashboard", "Explore", "Forums"];
+        return ["Dashboard", "Explore", "Forums", "Posts"];
       }
       // Filter out Trials, Publications, Experts on dashboard pages (when not signed in)
-      const allNavItems = ["Trials", "Publications", "Experts", "Forums"];
+      const allNavItems = ["Trials", "Publications", "Experts", "Forums", "Posts"];
       return isDashboardPage
         ? allNavItems.filter(
             (item) => !["Trials", "Publications", "Experts"].includes(item)
@@ -320,6 +320,21 @@ export default function Navbar() {
           />
         </svg>
       ),
+      Posts: (
+        <svg
+          className="w-5 h-5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+          />
+        </svg>
+      ),
       Explore: (
         <svg
           className="w-5 h-5"
@@ -421,6 +436,7 @@ export default function Navbar() {
               // Regular navigation routes
               Dashboard: getDashboardPath(),
               Forums: "/forums",
+              Posts: "/posts",
             };
             const route =
               routeMap[item] || `/${item.toLowerCase().replace(/\s+/g, "-")}`;
@@ -1186,6 +1202,7 @@ export default function Navbar() {
                     // Regular navigation routes
                     Dashboard: getDashboardPath(),
                     Forums: "/forums",
+                    Posts: "/posts",
                   };
                   const route =
                     routeMap[item] ||
