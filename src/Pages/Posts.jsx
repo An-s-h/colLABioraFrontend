@@ -130,7 +130,8 @@ export default function Posts() {
 
   useEffect(() => {
     // Reset and load posts when post type changes
-    loadPosts(true);
+    // Use the current selectedPostType value directly
+    loadPosts(true, selectedPostType);
   }, [selectedPostType]);
 
   // Ensure composerPostType always matches user role
@@ -201,7 +202,7 @@ export default function Posts() {
     }
   }
 
-  async function loadPosts(reset = false) {
+  async function loadPosts(reset = false, postType = null) {
     // Prevent multiple simultaneous calls
     if (loadingPostsRef.current) {
       return;
@@ -215,6 +216,8 @@ export default function Posts() {
     }
 
     const currentPage = reset ? 1 : page;
+    // Use provided postType or fall back to current selectedPostType state
+    const postTypeToUse = postType !== null ? postType : selectedPostType;
     setLoading(reset);
     setLoadingMore(!reset);
 
@@ -222,7 +225,7 @@ export default function Posts() {
       const userData = JSON.parse(localStorage.getItem("user") || "{}");
       const userId = userData?._id || userData?.id || "";
       const params = new URLSearchParams();
-      params.set("postType", selectedPostType);
+      params.set("postType", postTypeToUse);
       params.set("page", currentPage.toString());
       params.set("pageSize", "20");
       if (userId) params.set("userId", userId);
@@ -537,7 +540,8 @@ export default function Posts() {
                         onClick={() => {
                           if (selectedPostType !== "patient") {
                             setSelectedPostType("patient");
-                            loadPosts(true);
+                            // Pass the new post type directly to avoid stale closure issue
+                            loadPosts(true, "patient");
                           }
                         }}
                         className={`w-full p-4 rounded-xl border-2 transition-all text-left ${
@@ -565,7 +569,8 @@ export default function Posts() {
                         onClick={() => {
                           if (selectedPostType !== "researcher") {
                             setSelectedPostType("researcher");
-                            loadPosts(true);
+                            // Pass the new post type directly to avoid stale closure issue
+                            loadPosts(true, "researcher");
                           }
                         }}
                         className={`w-full p-4 rounded-xl border-2 transition-all text-left ${
@@ -706,17 +711,24 @@ export default function Posts() {
                     >
                   {/* Post Header */}
                   <div className="flex items-start gap-4 mb-4">
-                    <div className="w-12 h-12 rounded-full bg-[#2F3C96] flex items-center justify-center flex-shrink-0 text-white font-semibold text-lg">
-                      {post.authorUserId?.picture ? (
+                    <div className="relative w-12 h-12 flex-shrink-0">
+                      {/* Fallback avatar with first letter - always rendered */}
+                      <div className="w-12 h-12 rounded-full bg-[#2F3C96] flex items-center justify-center text-white font-semibold text-lg absolute inset-0">
+                        <span>
+                          {post.authorUserId?.username?.charAt(0)?.toUpperCase() || post.authorUserId?.name?.charAt(0)?.toUpperCase() || "U"}
+                        </span>
+                      </div>
+                      {/* Profile picture - overlays the fallback if available */}
+                      {post.authorUserId?.picture && (
                         <img
                           src={post.authorUserId.picture}
                           alt={post.authorUserId.username}
-                          className="w-12 h-12 rounded-full object-cover"
+                          className="w-12 h-12 rounded-full object-cover absolute inset-0"
+                          onError={(e) => {
+                            // Hide image on error to show fallback
+                            e.target.style.display = 'none';
+                          }}
                         />
-                      ) : (
-                        <span>
-                          {post.authorUserId?.username?.charAt(0)?.toUpperCase() || "U"}
-                        </span>
                       )}
                     </div>
                     <div className="flex-1 min-w-0">

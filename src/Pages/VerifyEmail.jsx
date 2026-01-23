@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { CheckCircle, XCircle, Loader2, Mail } from "lucide-react";
 import { broadcastEmailVerified } from "../utils/crossTabSync.js";
 
-const logoUrl = "https://res.cloudinary.com/dtgmjvfms/image/upload/logo_mh2rpv.png";
+const logoUrl = import.meta.env.VITE_LOGO_URL || "https://res.cloudinary.com/dtgmjvfms/image/upload/logo_mh2rpv.png";
 
 export default function VerifyEmail() {
   const [searchParams] = useSearchParams();
