@@ -11,6 +11,7 @@ import EmailVerificationStep from "../components/EmailVerificationStep.jsx";
 import { SMART_SUGGESTION_KEYWORDS } from "../utils/smartSuggestions.js";
 import { useAuth0Social } from "../hooks/useAuth0Social.js";
 import icd11Dataset from "../data/icd11Dataset.json";
+import { generateUniqueUsernames } from "../utils/usernameSuggestions.js";
 import {
   User,
   Heart,
@@ -22,6 +23,7 @@ import {
   X,
   ChevronDown,
   AlertCircle,
+  RefreshCw,
 } from "lucide-react";
 
 export default function OnboardPatient() {
@@ -51,7 +53,35 @@ export default function OnboardPatient() {
   const [socialLoginLoading, setSocialLoginLoading] = useState(null); // Track which social login is loading
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [showTermsDialog, setShowTermsDialog] = useState(false);
+  const [showUsernameSuggestions, setShowUsernameSuggestions] = useState(false);
   const navigate = useNavigate();
+  
+  // Generate 3 unique username suggestions (numbers used sparingly - only 30% chance)
+  const [usernameSuggestions, setUsernameSuggestions] = useState(() => 
+    generateUniqueUsernames(3, false)
+  );
+  
+  // Function to refresh username suggestions
+  const refreshUsernameSuggestions = () => {
+    setUsernameSuggestions(generateUniqueUsernames(3, false));
+  };
+
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showUsernameSuggestions && !event.target.closest('[data-username-suggestions]')) {
+        setShowUsernameSuggestions(false);
+      }
+    };
+
+    if (showUsernameSuggestions) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showUsernameSuggestions]);
 
   // Debug: Log step changes
   useEffect(() => {
@@ -772,29 +802,93 @@ export default function OnboardPatient() {
                           (Optional)
                         </span>
                       </label>
-                      <Input
-                        placeholder="@username"
-                        value={handle}
-                        onChange={(e) => {
-                          // Remove @ if user types it, we'll add it for display
-                          let value = e.target.value.replace(/^@+/, "");
-                          setHandle(value);
-                        }}
-                        onKeyPress={(e) =>
-                          e.key === "Enter" &&
-                          firstName &&
-                          lastName &&
-                          setStep(2)
-                        }
-                        className="w-full py-1.5 px-2.5 text-sm border rounded-lg transition-all focus:outline-none focus:ring-2"
-                        style={{
-                          borderColor: "#E8E8E8",
-                          color: "#2F3C96",
-                          "--tw-ring-color": "#D0C4E2",
-                        }}
-                      />
+                      <div className="relative" data-username-suggestions>
+                        <Input
+                          placeholder="@username or choose from suggestions"
+                          value={handle}
+                          onChange={(e) => {
+                            // Remove @ if user types it, we'll add it for display
+                            let value = e.target.value.replace(/^@+/, "");
+                            setHandle(value);
+                            setShowUsernameSuggestions(value.length === 0);
+                          }}
+                          onFocus={() => setShowUsernameSuggestions(true)}
+                          onKeyPress={(e) =>
+                            e.key === "Enter" &&
+                            firstName &&
+                            lastName &&
+                            setStep(2)
+                          }
+                          className="w-full py-1.5 px-2.5 text-sm border rounded-lg transition-all focus:outline-none focus:ring-2"
+                          style={{
+                            borderColor: "#E8E8E8",
+                            color: "#2F3C96",
+                            "--tw-ring-color": "#D0C4E2",
+                          }}
+                        />
+                        {showUsernameSuggestions && usernameSuggestions.length > 0 && (
+                          <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg" style={{ borderColor: "#E8E8E8" }}>
+                            <div className="p-3">
+                              <div className="flex items-center justify-between mb-2">
+                                <p className="text-xs font-semibold" style={{ color: "#2F3C96" }}>
+                                  Suggested usernames:
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={refreshUsernameSuggestions}
+                                  className="flex items-center gap-1 text-xs transition-colors"
+                                  style={{ color: "#2F3C96" }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.color = "#253075";
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.color = "#2F3C96";
+                                  }}
+                                  title="Refresh suggestions"
+                                >
+                                  <RefreshCw className="w-3 h-3" />
+                                  <span>Refresh</span>
+                                </button>
+                              </div>
+                              <div className="flex flex-wrap gap-2 mb-2">
+                                {usernameSuggestions.map((suggestion, idx) => (
+                                  <button
+                                    key={idx}
+                                    type="button"
+                                    onClick={() => {
+                                      setHandle(suggestion);
+                                      setShowUsernameSuggestions(false);
+                                    }}
+                                    className="px-3 py-1.5 text-xs font-medium rounded-lg transition-all"
+                                    style={{
+                                      backgroundColor: "#2F3C961A",
+                                      color: "#2F3C96",
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      e.currentTarget.style.backgroundColor = "#2F3C9633";
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      e.currentTarget.style.backgroundColor = "#2F3C961A";
+                                    }}
+                                  >
+                                    @{suggestion}
+                                  </button>
+                                ))}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setShowUsernameSuggestions(false)}
+                                className="text-xs hover:underline"
+                                style={{ color: "#787878" }}
+                              >
+                                Hide suggestions
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                       <p className="text-xs mt-1" style={{ color: "#787878" }}>
-                        Your unique handle (optional)
+                        Your unique handle (optional) - Choose from suggestions or type your own
                       </p>
                     </div>
 

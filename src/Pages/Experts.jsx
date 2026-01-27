@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
@@ -39,6 +39,8 @@ import {
   setLocalSearchCount,
   MAX_FREE_SEARCHES,
 } from "../utils/searchLimit.js";
+import { SMART_SUGGESTION_KEYWORDS } from "../utils/smartSuggestions.js";
+import icd11Dataset from "../data/icd11Dataset.json";
 
 export default function Experts() {
   const navigate = useNavigate();
@@ -75,12 +77,90 @@ export default function Experts() {
   const expertLabel = isResearcher ? "Collaborator" : "Expert";
   const expertsLabel = isResearcher ? "Collaborators" : "Experts";
 
+  // Common medical conditions (same as onboarding)
+  const commonConditions = [
+    "Diabetes",
+    "Hypertension",
+    "Heart Disease",
+    "Prostate Cancer",
+    "Breast Cancer",
+    "Lung Cancer",
+    "Asthma",
+    "Arthritis",
+    "Depression",
+    "Anxiety",
+    "Chronic Pain",
+    "Migraine",
+    "Obesity",
+    "High Cholesterol",
+    "Thyroid Disorder",
+    "Sleep Apnea",
+    "COPD",
+    "Epilepsy",
+    "Parkinson's Disease",
+    "Alzheimer's Disease",
+    "Multiple Sclerosis",
+    "Crohn's Disease",
+    "IBD",
+    "Osteoporosis",
+    "Fibromyalgia",
+    "Lupus",
+    "Rheumatoid Arthritis",
+  ];
+
+  // Extract terms from ICD11 dataset for suggestions (same as onboarding)
+  const icd11Suggestions = useMemo(() => {
+    const termsSet = new Set();
+
+    if (Array.isArray(icd11Dataset)) {
+      icd11Dataset.forEach((item) => {
+        // Add display_name
+        if (item.display_name && typeof item.display_name === "string") {
+          const displayName = item.display_name.trim();
+          if (displayName) {
+            termsSet.add(displayName);
+          }
+        }
+
+        // Add patient_terms, but filter out ICD code patterns
+        if (Array.isArray(item.patient_terms)) {
+          item.patient_terms.forEach((term) => {
+            if (typeof term === "string") {
+              const trimmedTerm = term.trim();
+              if (!trimmedTerm) return;
+
+              // Filter out terms containing ICD code patterns
+              const lowerTerm = trimmedTerm.toLowerCase();
+              // Check for patterns like "icd11 code aa00", "icd code aa00", "icd aa00", "icd11 aa00"
+              const hasIcdPattern =
+                lowerTerm.includes("icd11 code") ||
+                lowerTerm.includes("icd code") ||
+                /icd11\s+[a-z]{2}[0-9]{2}/i.test(trimmedTerm) || // "icd11 aa00"
+                /icd\s+[a-z]{2}[0-9]{2}/i.test(trimmedTerm); // "icd aa00", "icd ba20"
+
+              if (!hasIcdPattern) {
+                termsSet.add(trimmedTerm);
+              }
+            }
+          });
+        }
+      });
+    }
+
+    return Array.from(termsSet);
+  }, []);
+
   const sharedExpertSuggestionTerms = [];
 
-  const diseaseSuggestionTerms = [
-    ...sharedExpertSuggestionTerms,
-    userMedicalInterest,
-  ].filter(Boolean);
+  const diseaseSuggestionTerms = useMemo(() => {
+    return [
+      ...sharedExpertSuggestionTerms,
+      userMedicalInterest,
+      ...commonConditions,
+      ...SMART_SUGGESTION_KEYWORDS,
+      ...icd11Suggestions,
+    ].filter(Boolean);
+  }, [userMedicalInterest, icd11Suggestions]);
 
   async function search(overrides = {}) {
     const userData = JSON.parse(localStorage.getItem("user") || "{}");
@@ -1089,19 +1169,19 @@ export default function Experts() {
               {/* Main Search Inputs */}
               <div className="flex flex-col md:flex-row gap-2">
                 <SmartSearchInput
-                  value={researchArea}
-                  onChange={setResearchArea}
-                  onSubmit={(value) => search({ researchArea: value })}
-                  placeholder="Research Area / Specialty"
-                  extraTerms={sharedExpertSuggestionTerms}
-                  className="flex-1"
-                />
-                <SmartSearchInput
                   value={diseaseOfInterest}
                   onChange={setDiseaseOfInterest}
                   onSubmit={(value) => search({ diseaseOfInterest: value })}
-                  placeholder="Disease of Interest"
+                  placeholder="Condition of Interest"
                   extraTerms={diseaseSuggestionTerms}
+                  className="flex-1"
+                />
+                <SmartSearchInput
+                  value={researchArea}
+                  onChange={setResearchArea}
+                  onSubmit={(value) => search({ researchArea: value })}
+                  placeholder="What expertise are you looking for?"
+                  extraTerms={sharedExpertSuggestionTerms}
                   className="flex-1"
                 />
                 <Button
@@ -1228,7 +1308,7 @@ export default function Experts() {
                       className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 focus:ring-2"
                     />
                     <span className="text-xs text-slate-700 font-medium">
-                      Experts available on platform
+                      On Platform
                     </span>
                   </label>
                   <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-200 hover:bg-slate-100 cursor-pointer transition-all">
@@ -1244,7 +1324,7 @@ export default function Experts() {
                       className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 focus:ring-2"
                     />
                     <span className="text-xs text-slate-700 font-medium">
-                      Global {expertsLabel}
+                      Global
                     </span>
                   </label>
                 </div>

@@ -8,8 +8,9 @@ import AnimatedBackground from "../components/ui/AnimatedBackground.jsx";
 import SmartSearchInput from "../components/SmartSearchInput.jsx";
 import { SMART_SUGGESTION_KEYWORDS } from "../utils/smartSuggestions.js";
 import icd11Dataset from "../data/icd11Dataset.json";
-import { Sparkles, Info, X } from "lucide-react";
+import { Sparkles, Info, X, RefreshCw } from "lucide-react";
 import { motion } from "framer-motion";
+import { generateUniqueUsernames } from "../utils/usernameSuggestions.js";
 
 export default function EditProfile() {
   const navigate = useNavigate();
@@ -40,6 +41,34 @@ export default function EditProfile() {
   const [available, setAvailable] = useState(false); // For researchers
   const [gender, setGender] = useState(""); // Optional for both
   const [showInfoTooltip, setShowInfoTooltip] = useState(false);
+  const [showUsernameSuggestions, setShowUsernameSuggestions] = useState(false);
+  
+  // Generate 3 unique username suggestions (numbers used sparingly - only 30% chance)
+  const [usernameSuggestions, setUsernameSuggestions] = useState(() => 
+    generateUniqueUsernames(3, false)
+  );
+  
+  // Function to refresh username suggestions
+  const refreshUsernameSuggestions = () => {
+    setUsernameSuggestions(generateUniqueUsernames(3, false));
+  };
+
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showUsernameSuggestions && !event.target.closest('[data-username-suggestions]')) {
+        setShowUsernameSuggestions(false);
+      }
+    };
+
+    if (showUsernameSuggestions) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showUsernameSuggestions]);
 
   useEffect(() => {
     const userData = JSON.parse(localStorage.getItem("user") || "{}");
@@ -688,15 +717,62 @@ export default function EditProfile() {
             <label className="block text-sm font-semibold text-slate-700 mb-2">
               Handle / Username
             </label>
-            <input
-              type="text"
-              value={handle}
-              onChange={(e) => setHandle(e.target.value)}
-              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              placeholder="e.g., @username"
-            />
+            <div className="relative" data-username-suggestions>
+              <input
+                type="text"
+                value={handle}
+                onChange={(e) => {
+                  let value = e.target.value.replace(/^@+/, "");
+                  setHandle(value);
+                  setShowUsernameSuggestions(value.length === 0);
+                }}
+                onFocus={() => setShowUsernameSuggestions(true)}
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="e.g., @username or choose from suggestions below"
+              />
+              {showUsernameSuggestions && usernameSuggestions.length > 0 && (
+                <div className="absolute z-10 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg">
+                  <div className="p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-semibold text-slate-600">Suggested usernames:</p>
+                      <button
+                        type="button"
+                        onClick={refreshUsernameSuggestions}
+                        className="flex items-center gap-1 text-xs text-[#2F3C96] hover:text-[#253075] transition-colors"
+                        title="Refresh suggestions"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        <span>Refresh</span>
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {usernameSuggestions.map((suggestion, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => {
+                            setHandle(suggestion);
+                            setShowUsernameSuggestions(false);
+                          }}
+                          className="px-3 py-1.5 text-xs font-medium bg-[#2F3C96]/10 text-[#2F3C96] rounded-lg hover:bg-[#2F3C96]/20 transition-all"
+                        >
+                          @{suggestion}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowUsernameSuggestions(false)}
+                      className="text-xs text-slate-500 hover:text-slate-700"
+                    >
+                      Hide suggestions
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
             <p className="text-xs text-slate-500 mt-1">
-              Your unique handle (optional)
+              Your unique handle (optional) - Choose from suggestions or type your own
             </p>
           </div>
 

@@ -620,10 +620,10 @@ export default function Forums() {
         const authorMatch = thread.authorUserId?.username
           ?.toLowerCase()
           .includes(query);
-        const matchesCondition = threadMatchesSelectedCondition(
-          thread,
-          selectedConditionTag
-        );
+        // Only filter by tag if viewing a community
+        const matchesCondition = selectedCommunity 
+          ? threadMatchesSelectedTag(thread, selectedConditionTag)
+          : true;
         return (titleMatch || bodyMatch || authorMatch) && matchesCondition;
       });
 
@@ -1456,6 +1456,7 @@ export default function Forums() {
               </p>
             </div>
 
+
             {/* Posts/Communities Tabs - HealthUnlocked Style */}
             <div className="max-w-7xl mx-auto mb-6">
               <div className="flex items-center gap-0 border-b border-[#E8E8E8]">
@@ -1485,9 +1486,9 @@ export default function Forums() {
             {/* Unified Control Bar - HealthUnlocked Style */}
             {viewMode === "posts" && (
               <div className="max-w-7xl mx-auto mb-6">
-                <div className="bg-white rounded-lg border border-[#E8E8E8] p-4 flex items-center gap-4 flex-wrap shadow-sm">
-                  {/* Search */}
-                  <div className="relative flex-1 min-w-[200px]">
+                <div className="bg-white rounded-lg border border-[#E8E8E8] p-4 flex items-center gap-4 shadow-sm">
+                  {/* Search Bar - Left Half */}
+                  <div className="relative flex-1 min-w-0">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#787878]" />
                     <input
                       type="text"
@@ -1518,55 +1519,80 @@ export default function Forums() {
                     )}
                   </div>
 
-                  {/* Filter Dropdown */}
-                  <div className="w-36 shrink-0">
-                    <CustomSelect
-                      value={activeTab}
-                      onChange={(value) => {
-                        setActiveTab(value);
-                        setSelectedCommunity(null);
-                      }}
-                      options={[
-                        { value: "all", label: "All" },
-                        { value: "following", label: "Following" },
-                        { value: "forYou", label: "For You" },
-                        { value: "involving", label: "Your Posts" },
-                      ]}
-                      placeholder="Filter..."
-                      className="w-full"
-                    />
-                  </div>
+                  {/* Filter Options - Right Half */}
+                  <div className="flex items-center gap-3 shrink-0">
+                    {/* Filter Dropdown */}
+                    <div className="w-36 shrink-0">
+                      <CustomSelect
+                        value={activeTab}
+                        onChange={(value) => {
+                          setActiveTab(value);
+                          setSelectedCommunity(null);
+                          setSelectedConditionTag("All");
+                        }}
+                        options={[
+                          { value: "all", label: "All" },
+                          { value: "following", label: "Following" },
+                          { value: "forYou", label: "For You" },
+                          { value: "involving", label: "Your Posts" },
+                        ]}
+                        placeholder="Filter..."
+                        className="w-full"
+                      />
+                    </div>
 
-                  {/* Sort Options */}
-                  <div className="flex items-center gap-0 bg-[#F5F5F5] rounded-md p-0.5 shrink-0 border border-[#E8E8E8]">
-                    {["recent", "popular"].map((sort, idx) => (
+                    {/* Sort Options */}
+                    <div className="flex items-center gap-0 bg-[#F5F5F5] rounded-md p-0.5 shrink-0 border border-[#E8E8E8]">
+                      {["recent", "popular"].map((sort, idx) => (
+                        <button
+                          key={sort}
+                          onClick={() => setSortBy(sort)}
+                          className={`px-3 py-1.5 rounded text-xs font-medium transition-all ${
+                            sortBy === sort
+                              ? "bg-white text-[#2F3C96] shadow-sm"
+                              : "text-[#787878] hover:text-[#484848]"
+                          }`}
+                        >
+                          {sort.charAt(0).toUpperCase() + sort.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Create Post Button */}
+                    {user && (
                       <button
-                        key={sort}
-                        onClick={() => setSortBy(sort)}
-                        className={`px-3 py-1.5 rounded text-xs font-medium transition-all ${
-                          sortBy === sort
-                            ? "bg-white text-[#2F3C96] shadow-sm"
-                            : "text-[#787878] hover:text-[#484848]"
-                        }`}
+                        onClick={() => {
+                          setModalSelectedCommunity(selectedCommunity);
+                          // Pre-select tag if one is selected in filter
+                          if (selectedConditionTag !== "All" && MANDATORY_TAGS.includes(selectedConditionTag)) {
+                            setNewThreadTags([selectedConditionTag]);
+                          } else {
+                            setNewThreadTags([]);
+                          }
+                          setNewThreadConditions([]);
+                          setNewThreadModal(true);
+                        }}
+                        className="flex items-center gap-2 px-4 py-2 bg-[#2F3C96] text-white rounded-md font-semibold text-sm hover:bg-[#253075] transition-all shrink-0"
                       >
-                        {sort.charAt(0).toUpperCase() + sort.slice(1)}
+                        <Plus className="w-4 h-4" />
+                        <span>Create Post</span>
                       </button>
-                    ))}
-                  </div>
+                    )}
 
-                  {/* Mobile Community Dropdown */}
-                  <div className="lg:hidden w-full sm:w-72">
-                    <CustomSelect
-                      value={mobileCommunityId}
-                      onChange={handleMobileCommunityChange}
-                      options={mobileCommunityOptions}
-                      placeholder="All communities"
-                      disabled={
-                        loadingCommunities ||
-                        sortedDisplayedCommunities.length === 0
-                      }
-                      className="w-full text-sm"
-                    />
+                    {/* Mobile Community Dropdown */}
+                    <div className="lg:hidden w-full sm:w-72">
+                      <CustomSelect
+                        value={mobileCommunityId}
+                        onChange={handleMobileCommunityChange}
+                        options={mobileCommunityOptions}
+                        placeholder="All communities"
+                        disabled={
+                          loadingCommunities ||
+                          sortedDisplayedCommunities.length === 0
+                        }
+                        className="w-full text-sm"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1575,9 +1601,8 @@ export default function Forums() {
             {/* Communities Search Bar */}
             {viewMode === "communities" && (
               <div className="max-w-7xl mx-auto mb-6">
-                <div className="bg-white rounded-lg border border-[#E8E8E8] p-4 flex items-center gap-4 flex-wrap shadow-sm">
-                  {/* Search */}
-                  <div className="relative flex-1 min-w-[200px]">
+                <div className="bg-white rounded-lg border border-[#E8E8E8] p-4 shadow-sm">
+                  <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#787878]" />
                     <input
                       type="text"
@@ -1598,23 +1623,6 @@ export default function Forums() {
                         <X className="w-4 h-4" />
                       </button>
                     )}
-                  </div>
-
-                  {/* Sort Options */}
-                  <div className="flex items-center gap-0 bg-[#F5F5F5] rounded-md p-0.5 shrink-0 border border-[#E8E8E8]">
-                    {["recent", "popular"].map((sort, idx) => (
-                      <button
-                        key={sort}
-                        onClick={() => setSortBy(sort)}
-                        className={`px-3 py-1.5 rounded text-xs font-medium transition-all ${
-                          sortBy === sort
-                            ? "bg-white text-[#2F3C96] shadow-sm"
-                            : "text-[#787878] hover:text-[#484848]"
-                        }`}
-                      >
-                        {sort.charAt(0).toUpperCase() + sort.slice(1)}
-                      </button>
-                    ))}
                   </div>
                 </div>
               </div>
@@ -1647,28 +1655,11 @@ export default function Forums() {
                         {/* Community Image/Header - HealthUnlocked Style */}
                         <div className="relative h-40 bg-gradient-to-br from-[#2F3C96]/10 to-[#D0C4E2]/10 overflow-hidden">
                           {community.image ? (
-                            <>
-                              <img
-                                src={community.image}
-                                alt={community.name}
-                                className="w-full h-full object-cover"
-                              />
-                              {/* Overlay Icon - Bottom Left */}
-                              <div className="absolute bottom-3 left-3">
-                                <div
-                                  className="w-12 h-12 rounded-full flex items-center justify-center shadow-lg"
-                                  style={{
-                                    backgroundColor: community.color || "#2F3C96",
-                                  }}
-                                >
-                                  <CommunityIcon
-                                    community={community}
-                                    size="1.5rem"
-                                    style={{ color: "#FFFFFF" }}
-                                  />
-                                </div>
-                              </div>
-                            </>
+                            <img
+                              src={community.image}
+                              alt={community.name}
+                              className="w-full h-full object-cover"
+                            />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center relative">
                               <div
@@ -1682,18 +1673,6 @@ export default function Forums() {
                                   size="2.5rem"
                                   style={{ color: "#FFFFFF" }}
                                 />
-                              </div>
-                              {/* Icon overlay for no-image communities */}
-                              <div className="absolute bottom-3 left-3">
-                                <div
-                                  className="w-12 h-12 rounded-full flex items-center justify-center shadow-lg bg-white/90"
-                                >
-                                  <CommunityIcon
-                                    community={community}
-                                    size="1.5rem"
-                                    style={{ color: community.color || "#2F3C96" }}
-                                  />
-                                </div>
                               </div>
                             </div>
                           )}
@@ -1814,34 +1793,28 @@ export default function Forums() {
 
                     {/* Tags/Keywords Filter Section */}
                     <div className="border-t border-[#E8E8E8] pt-4">
-                      <h3 className="text-sm font-semibold text-[#2F3C96] mb-3 flex items-center gap-2">
-                        <Tag className="w-4 h-4" />
-                        Filter by Tags/Keywords
-                      </h3>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          onClick={() => setSelectedConditionTag("All")}
-                          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                            selectedConditionTag === "All"
-                              ? "bg-[#2F3C96] text-white"
-                              : "bg-[#F5F5F5] text-[#787878] hover:bg-[#E8E8E8]"
-                          }`}
-                        >
-                          All
-                        </button>
-                        {MANDATORY_TAGS.map((tag) => (
-                          <button
-                            key={tag}
-                            onClick={() => setSelectedConditionTag(tag)}
-                            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                              selectedConditionTag === tag
-                                ? "bg-[#2F3C96] text-white"
-                                : "bg-[#F5F5F5] text-[#787878] hover:bg-[#E8E8E8]"
-                            }`}
-                          >
-                            {tag}
-                          </button>
-                        ))}
+                      <div className="flex items-center gap-3">
+                        <Tag className="w-4 h-4 text-[#2F3C96]" />
+                        <label className="text-sm font-semibold text-[#2F3C96]">
+                          Filter by Tags/Keywords:
+                        </label>
+                        <div className="flex-1 max-w-xs">
+                          <CustomSelect
+                            value={selectedConditionTag}
+                            onChange={(value) => {
+                              setSelectedConditionTag(value);
+                            }}
+                            options={[
+                              { value: "All", label: "All Tags" },
+                              ...MANDATORY_TAGS.map((tag) => ({
+                                value: tag,
+                                label: tag,
+                              })),
+                            ]}
+                            placeholder="Select a tag..."
+                            className="w-full"
+                          />
+                        </div>
                       </div>
                       <p className="text-xs text-[#787878] mt-2">
                         Filter discussions by tags/keywords for better findability.
@@ -1903,31 +1876,6 @@ export default function Forums() {
                   </div>
                 )}
 
-                {/* Section Header - HealthUnlocked Style */}
-                <div className="bg-white rounded-lg border border-[#E8E8E8] px-5 py-4 mb-6 shadow-sm flex items-center justify-between">
-                  <h3 className="text-lg font-semibold text-[#484848]">
-                    {getTabTitle()}
-                  </h3>
-                  {user && (
-                    <button
-                      onClick={() => {
-                        setModalSelectedCommunity(selectedCommunity);
-                        // Pre-select tag if one is selected in filter
-                        if (selectedConditionTag !== "All" && MANDATORY_TAGS.includes(selectedConditionTag)) {
-                          setNewThreadTags([selectedConditionTag]);
-                        } else {
-                          setNewThreadTags([]);
-                        }
-                        setNewThreadConditions([]);
-                        setNewThreadModal(true);
-                      }}
-                      className="flex items-center gap-2 px-4 py-2 bg-[#2F3C96] text-white rounded-md font-semibold text-sm hover:bg-[#253075] transition-all shrink-0"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span>Create Post</span>
-                    </button>
-                  )}
-                </div>
 
                 {/* Threads List - HealthUnlocked Style */}
                 {loading ? (
@@ -2633,33 +2581,31 @@ export default function Forums() {
                           (mandatory at least one)
                         </span>
                       </label>
-                      <div className="flex flex-wrap gap-2 mb-3">
-                        {MANDATORY_TAGS.map((tag) => {
-                          const isSelected = newThreadTags.includes(tag);
-                          return (
-                            <button
-                              key={tag}
-                              type="button"
-                              onClick={() => {
-                                if (isSelected) {
-                                  setNewThreadTags(
-                                    newThreadTags.filter((t) => t !== tag)
-                                  );
-                                } else {
-                                  setNewThreadTags([...newThreadTags, tag]);
-                                }
-                              }}
-                              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                                isSelected
-                                  ? "bg-[#2F3C96] text-white shadow-sm"
-                                  : "bg-[#F5F5F5] text-[#787878] hover:bg-[#E8E8E8] hover:text-[#2F3C96]"
-                              }`}
-                            >
-                              {tag}
-                            </button>
-                          );
-                        })}
-                      </div>
+                      <CustomSelect
+                        value=""
+                        onChange={(value) => {
+                          if (value && !newThreadTags.includes(value)) {
+                            setNewThreadTags([...newThreadTags, value]);
+                          }
+                        }}
+                        options={MANDATORY_TAGS.filter(
+                          (tag) => !newThreadTags.includes(tag)
+                        ).map((tag) => ({
+                          value: tag,
+                          label: tag,
+                        }))}
+                        placeholder={
+                          newThreadTags.length === 0
+                            ? "Select a tag/keyword..."
+                            : "Add another tag/keyword..."
+                        }
+                        className="w-full mb-3"
+                        disabled={
+                          MANDATORY_TAGS.filter(
+                            (tag) => !newThreadTags.includes(tag)
+                          ).length === 0
+                        }
+                      />
                       {newThreadTags.length === 0 && (
                         <p className="text-xs text-red-500 mt-1">
                           Please select at least one tag/keyword
