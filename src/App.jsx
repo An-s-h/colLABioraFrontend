@@ -20,10 +20,8 @@ import Experts from "./Pages/Experts.jsx";
 import ExpertProfile from "./Pages/ExpertProfile.jsx";
 import CollabioraExpertProfile from "./Pages/CuraLinkExpertProfile.jsx";
 import Forums from "./Pages/Forums.jsx";
-import Posts from "./Pages/Posts.jsx";
 import Favorites from "./Pages/Favorites.jsx";
 import ManageTrials from "./Pages/ManageTrials.jsx";
-import Insights from "./Pages/Insights.jsx";
 import EditProfile from "./Pages/EditProfile.jsx";
 import AdminLogin from "./Pages/AdminLogin.jsx";
 import AdminDashboard from "./Pages/AdminDashboard.jsx";
@@ -37,6 +35,8 @@ import "./App.css";
 import Navbar from "./components/Navbar.jsx";
 import { ProfileProvider } from "./contexts/ProfileContext.jsx";
 import Auth0ProviderWithNavigate from "./contexts/Auth0ProviderWithNavigate.jsx";
+import Discovery from "./Pages/Discovery.jsx";
+import Notifications from "./Pages/Notifications.jsx";
 
 const AppContent = () => {
   const location = useLocation();
@@ -47,26 +47,68 @@ const AppContent = () => {
       {!isVerifyEmailPage && <Navbar />}
       <Toaster
         position="top-right"
+        reverseOrder={false}
+        gutter={12}
+        containerClassName=""
+        containerStyle={{}}
         toastOptions={{
-          duration: 3000,
+          // Default options
+          className: "toast-notification",
+          duration: 4000,
           style: {
-            background: "#fff",
-            color: "#92400e",
-            border: "1px solid #fbbf24",
+            background: "#ffffff",
+            color: "#2F3C96",
+            padding: "16px 20px",
+            borderRadius: "12px",
+            boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
+            border: "1px solid rgba(47, 60, 150, 0.1)",
+            fontSize: "14px",
+            fontWeight: "500",
+            maxWidth: "420px",
+            minWidth: "300px",
           },
+          // Success toast
           success: {
-            duration: 3000,
-            iconTheme: {
-              primary: "#10b981",
-              secondary: "#fff",
-            },
-          },
-          error: {
             duration: 4000,
             iconTheme: {
-              primary: "#ef4444",
-              secondary: "#fff",
+              primary: "#10b981",
+              secondary: "#ffffff",
             },
+            style: {
+              background: "#ffffff",
+              color: "#065f46",
+              border: "1px solid rgba(16, 185, 129, 0.2)",
+              boxShadow: "0 10px 25px -5px rgba(16, 185, 129, 0.15), 0 8px 10px -6px rgba(16, 185, 129, 0.1)",
+            },
+            className: "toast-success",
+          },
+          // Error toast
+          error: {
+            duration: 5000,
+            iconTheme: {
+              primary: "#ef4444",
+              secondary: "#ffffff",
+            },
+            style: {
+              background: "#ffffff",
+              color: "#991b1b",
+              border: "1px solid rgba(239, 68, 68, 0.2)",
+              boxShadow: "0 10px 25px -5px rgba(239, 68, 68, 0.15), 0 8px 10px -6px rgba(239, 68, 68, 0.1)",
+            },
+            className: "toast-error",
+          },
+          // Loading toast
+          loading: {
+            iconTheme: {
+              primary: "#2F3C96",
+              secondary: "#ffffff",
+            },
+            style: {
+              background: "#ffffff",
+              color: "#2F3C96",
+              border: "1px solid rgba(47, 60, 150, 0.2)",
+            },
+            className: "toast-loading",
           },
         }}
       />
@@ -79,7 +121,7 @@ const AppContent = () => {
         <Route path="/onboard/researcher" element={<OnboardResearcher />} />
         <Route path="/dashboard/patient" element={<DashboardPatient />} />
         <Route path="/dashboard/researcher" element={<DashboardResearcher />} />
-        <Route path="/trials" element={<Trials />} />
+        <Route path="/discovery" element={<Trials />} />
         <Route path="/trial/:nctId" element={<TrialDetails />} />
         <Route path="/publications" element={<Publications />} />
         <Route path="/publication/:pmid" element={<PublicationDetails />} />
@@ -90,10 +132,10 @@ const AppContent = () => {
           element={<CollabioraExpertProfile />}
         />
         <Route path="/forums" element={<Forums />} />
-        <Route path="/posts" element={<Posts />} />
+        <Route path="/posts" element={<Discovery />} />
         <Route path="/favorites" element={<Favorites />} />
         <Route path="/manage-trials" element={<ManageTrials />} />
-        <Route path="/insights" element={<Insights />} />
+        <Route path="/notifications" element={<Notifications />} />
         <Route path="/profile" element={<EditProfile />} />
         <Route path="/admin/login" element={<AdminLogin />} />
         <Route path="/admin/dashboard" element={<AdminDashboard />} />

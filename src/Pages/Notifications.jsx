@@ -26,7 +26,7 @@ import AnimatedBackgroundDiff from "../components/ui/AnimatedBackgroundDiff.jsx"
 import { BorderBeam } from "@/components/ui/border-beam";
 import { AuroraText } from "@/components/ui/aurora-text";
 
-export default function Insights() {
+export default function Notifications() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("activity");
@@ -721,7 +721,7 @@ export default function Insights() {
           <div className="relative pt-24 px-4 md:px-8 mx-auto max-w-6xl pb-8">
             <div className="text-center py-16">
               <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-              <p className="text-slate-700">Loading insights...</p>
+              <p className="text-slate-700">Loading notifications...</p>
             </div>
           </div>
         </div>
@@ -752,7 +752,7 @@ export default function Insights() {
                     speed={2.5}
                     colors={["#38bdf8", "#6366F1", "#818CF8", "#9333EA", "#C084FC"]}
                   >
-                    Insights & Activity
+                    Notifications & Activity
                   </AuroraText>
                 </h1>
                 {isPolling && (

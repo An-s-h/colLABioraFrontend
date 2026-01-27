@@ -51,7 +51,10 @@ export default function Experts() {
   const [useMedicalInterest, setUseMedicalInterest] = useState(true); // Toggle for using medical interest
   const [userMedicalInterest, setUserMedicalInterest] = useState(""); // User's medical interest
   const [isInitialLoad, setIsInitialLoad] = useState(true); // Track if it's the initial load
-  const [expertSource, setExpertSource] = useState("platform"); // "global" or "platform"
+  const [expertSources, setExpertSources] = useState({
+    global: false,
+    platform: true,
+  }); // Track which sources are selected
   const [isSignedIn, setIsSignedIn] = useState(false); // Track if user is signed in
   const [user, setUser] = useState(null); // Track user state
   const [results, setResults] = useState([]);
@@ -128,150 +131,176 @@ export default function Experts() {
       currentDiseaseOfInterest = userMedicalInterest;
     }
 
-    // Determine which endpoint to use based on expertSource
-    const endpoint = expertSource === "platform" 
-      ? "/api/search/experts/platform"
-      : "/api/search/experts";
+    // Determine which sources to search
+    const sourcesToSearch = [];
+    if (expertSources.platform) sourcesToSearch.push("platform");
+    if (expertSources.global) sourcesToSearch.push("global");
 
-    // For platform experts, use different query structure
-    if (expertSource === "platform") {
-      // Allow browsing all experts if no search terms provided
-      if (currentResearchArea) {
-        params.set("researchArea", currentResearchArea);
-      }
-      if (currentDiseaseOfInterest) {
-        params.set("diseaseOfInterest", currentDiseaseOfInterest);
-      }
-      
-      // Add location
-      let locationStr = null;
-      if (locationMode === "current" && userLocation) {
-        locationStr = [userLocation.city, userLocation.country]
-          .filter(Boolean)
-          .join(", ");
-        if (locationStr) {
-          params.set("location", locationStr);
-        }
-      } else if (locationMode === "custom" && location.trim()) {
-        params.set("location", location.trim());
-        locationStr = location.trim();
-      }
-
-      // Add user profile data for matching
-      if (userData?._id || userData?.id) {
-        params.set("userId", userData._id || userData.id);
-      } else if (currentDiseaseOfInterest || locationStr) {
-        if (currentDiseaseOfInterest) {
-          params.set("conditions", currentDiseaseOfInterest);
-        }
-        if (locationMode === "current" && userLocation) {
-          params.set("userLocation", JSON.stringify(userLocation));
-        } else if (locationMode === "custom" && location.trim()) {
-          params.set(
-            "userLocation",
-            JSON.stringify({ country: location.trim() })
-          );
-        }
-      }
-    } else {
-      // For global experts, use the existing query structure
-      // Build search query: "researchArea in diseaseOfInterest in location"
-      const searchQueryParts = [];
-
-      if (currentResearchArea) {
-        searchQueryParts.push(currentResearchArea);
-      }
-
-      if (currentDiseaseOfInterest) {
-        if (searchQueryParts.length > 0) {
-          searchQueryParts.push(`in ${currentDiseaseOfInterest}`);
-        } else {
-          searchQueryParts.push(currentDiseaseOfInterest);
-        }
-      }
-
-      // Add location
-      let locationStr = null;
-      if (locationMode === "current" && userLocation) {
-        locationStr = [userLocation.city, userLocation.country]
-          .filter(Boolean)
-          .join(", ");
-        if (locationStr) {
-          searchQueryParts.push(`in ${locationStr}`);
-          params.set("location", locationStr);
-        }
-      } else if (locationMode === "custom" && location.trim()) {
-        searchQueryParts.push(`in ${location.trim()}`);
-        params.set("location", location.trim());
-        locationStr = location.trim();
-      } else if (locationMode === "global") {
-        searchQueryParts.push("global");
-      }
-
-      const searchQuery = searchQueryParts.join(" ");
-
-      if (searchQuery) params.set("q", searchQuery);
-
-      // Add user profile data for matching
-      if (userData?._id || userData?.id) {
-        params.set("userId", userData._id || userData.id);
-      } else if (currentDiseaseOfInterest || locationStr) {
-        if (currentDiseaseOfInterest) {
-          params.set("conditions", currentDiseaseOfInterest);
-        }
-        if (locationMode === "current" && userLocation) {
-          params.set("userLocation", JSON.stringify(userLocation));
-        } else if (locationMode === "custom" && location.trim()) {
-          params.set(
-            "userLocation",
-            JSON.stringify({ country: location.trim() })
-          );
-        }
-      }
+    // If no sources selected, default to platform
+    if (sourcesToSearch.length === 0) {
+      sourcesToSearch.push("platform");
     }
 
-    try {
-      const response = await apiFetch(
-        `${endpoint}?${params.toString()}`
-      );
+    // Helper function to build params for a specific source
+    const buildParamsForSource = (source) => {
+      const sourceParams = new URLSearchParams();
+      let locationStr = null;
 
-      // Handle case where apiFetch returns undefined (401 redirect)
-      if (!response) {
-        setLoading(false);
-        return;
+      if (locationMode === "current" && userLocation) {
+        locationStr = [userLocation.city, userLocation.country]
+          .filter(Boolean)
+          .join(", ");
+      } else if (locationMode === "custom" && location.trim()) {
+        locationStr = location.trim();
       }
 
-      // Handle rate limit (429)
-      if (response.status === 429) {
-        const errorData = await response.json();
-        toast.error(
-          errorData.error ||
-            "You've used all your free searches! Sign in to continue searching.",
-          { duration: 4000 }
-        );
-        setLoading(false);
-        // Sync with backend to update local storage
-        syncWithBackend().then((result) => {
-          // Update remaining searches indicator with synced value
-          window.dispatchEvent(new CustomEvent("freeSearchUsed", {
-            detail: { remaining: result.remaining }
-          }));
-        }).catch(console.error);
-        return;
-      }
+      if (source === "platform") {
+        // Platform experts query structure
+        if (currentResearchArea) {
+          sourceParams.set("researchArea", currentResearchArea);
+        }
+        if (currentDiseaseOfInterest) {
+          sourceParams.set("diseaseOfInterest", currentDiseaseOfInterest);
+        }
+        if (locationStr) {
+          sourceParams.set("location", locationStr);
+        }
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        // Handle 503 or other errors
-        const errorMsg = data.error || "Failed to search experts";
-        toast.error(errorMsg);
-        setResults([]);
+        // Add user profile data for matching
+        if (userData?._id || userData?.id) {
+          sourceParams.set("userId", userData._id || userData.id);
+        } else if (currentDiseaseOfInterest || locationStr) {
+          if (currentDiseaseOfInterest) {
+            sourceParams.set("conditions", currentDiseaseOfInterest);
+          }
+          if (locationMode === "current" && userLocation) {
+            sourceParams.set("userLocation", JSON.stringify(userLocation));
+          } else if (locationMode === "custom" && location.trim()) {
+            sourceParams.set(
+              "userLocation",
+              JSON.stringify({ country: location.trim() })
+            );
+          }
+        }
       } else {
-        // Handle remaining searches from server response
-        if (!isUserSignedIn && data.remaining !== undefined) {
-          // Update local storage to match backend (backend is source of truth)
-          const remaining = data.remaining;
+        // Global experts query structure
+        const searchQueryParts = [];
+
+        if (currentResearchArea) {
+          searchQueryParts.push(currentResearchArea);
+        }
+
+        if (currentDiseaseOfInterest) {
+          if (searchQueryParts.length > 0) {
+            searchQueryParts.push(`in ${currentDiseaseOfInterest}`);
+          } else {
+            searchQueryParts.push(currentDiseaseOfInterest);
+          }
+        }
+
+        if (locationStr) {
+          searchQueryParts.push(`in ${locationStr}`);
+          sourceParams.set("location", locationStr);
+        } else if (locationMode === "global") {
+          searchQueryParts.push("global");
+        }
+
+        const searchQuery = searchQueryParts.join(" ");
+        if (searchQuery) sourceParams.set("q", searchQuery);
+
+        // Add user profile data for matching
+        if (userData?._id || userData?.id) {
+          sourceParams.set("userId", userData._id || userData.id);
+        } else if (currentDiseaseOfInterest || locationStr) {
+          if (currentDiseaseOfInterest) {
+            sourceParams.set("conditions", currentDiseaseOfInterest);
+          }
+          if (locationMode === "current" && userLocation) {
+            sourceParams.set("userLocation", JSON.stringify(userLocation));
+          } else if (locationMode === "custom" && location.trim()) {
+            sourceParams.set(
+              "userLocation",
+              JSON.stringify({ country: location.trim() })
+            );
+          }
+        }
+      }
+
+      return sourceParams;
+    };
+
+    // Fetch from all selected sources in parallel
+    try {
+      const fetchPromises = sourcesToSearch.map(async (source) => {
+        const endpoint = source === "platform" 
+          ? "/api/search/experts/platform"
+          : "/api/search/experts";
+        const sourceParams = buildParamsForSource(source);
+        
+        const response = await apiFetch(
+          `${endpoint}?${sourceParams.toString()}`
+        );
+
+        // Handle case where apiFetch returns undefined (401 redirect)
+        if (!response) {
+          return { results: [], error: null };
+        }
+
+        // Handle rate limit (429)
+        if (response.status === 429) {
+          const errorData = await response.json();
+          return { results: [], error: errorData.error || "Rate limit exceeded" };
+        }
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          return { results: [], error: data.error || "Failed to search experts" };
+        }
+
+        return { results: data.results || [], error: null, remaining: data.remaining };
+      });
+
+      // Wait for all fetches to complete
+      const allResults = await Promise.all(fetchPromises);
+
+      // Combine results from all sources and deduplicate
+      const combinedResults = [];
+      const seenExperts = new Set(); // Track by name or ORCID to avoid duplicates
+
+      for (const result of allResults) {
+        if (result.error && result.error.includes("Rate limit")) {
+          toast.error(
+            result.error ||
+              "You've used all your free searches! Sign in to continue searching.",
+            { duration: 4000 }
+          );
+          setLoading(false);
+          syncWithBackend().then((syncResult) => {
+            window.dispatchEvent(new CustomEvent("freeSearchUsed", {
+              detail: { remaining: syncResult.remaining }
+            }));
+          }).catch(console.error);
+          return;
+        }
+
+        if (result.error) {
+          toast.error(result.error);
+          continue;
+        }
+
+        // Add results, avoiding duplicates
+        for (const expert of result.results || []) {
+          const expertKey = expert.name || expert.orcid || expert.id || expert._id;
+          if (expertKey && !seenExperts.has(expertKey)) {
+            seenExperts.add(expertKey);
+            combinedResults.push(expert);
+          }
+        }
+
+        // Handle remaining searches from first successful response
+        if (!isUserSignedIn && result.remaining !== undefined) {
+          const remaining = result.remaining;
           const backendCount = MAX_FREE_SEARCHES - remaining;
           setLocalSearchCount(backendCount);
           
@@ -288,44 +317,39 @@ export default function Experts() {
               { duration: 3000 }
             );
           }
-          // Update remaining searches indicator with the actual remaining count from backend
           window.dispatchEvent(new CustomEvent("freeSearchUsed", {
             detail: { remaining }
           }));
         }
+      }
 
-        const searchResults = data.results || [];
-        // Sort by matchPercentage in descending order (highest first)
-        const sortedResults = [...searchResults].sort((a, b) => {
-          const aMatch = a.matchPercentage ?? -1;
-          const bMatch = b.matchPercentage ?? -1;
-          return bMatch - aMatch; // Descending order
-        });
-        setResults(sortedResults);
+      // Sort by matchPercentage in descending order (highest first)
+      const sortedResults = [...combinedResults].sort((a, b) => {
+        const aMatch = a.matchPercentage ?? -1;
+        const bMatch = b.matchPercentage ?? -1;
+        return bMatch - aMatch; // Descending order
+      });
+      setResults(sortedResults);
 
-          // Save search state to sessionStorage
-          const searchState = {
-            researchArea: nextResearchArea,
-            diseaseOfInterest: nextDiseaseOfInterest,
-            location,
-            locationMode,
-            useMedicalInterest,
-            userMedicalInterest,
-            expertSource,
-            results: sortedResults,
-            isInitialLoad: false,
-          };
-          sessionStorage.setItem(
-            "experts_search_state",
-            JSON.stringify(searchState)
-          );
+      // Save search state to sessionStorage
+      const searchState = {
+        researchArea: nextResearchArea,
+        diseaseOfInterest: nextDiseaseOfInterest,
+        location,
+        locationMode,
+        useMedicalInterest,
+        userMedicalInterest,
+        expertSources,
+        results: sortedResults,
+        isInitialLoad: false,
+      };
+      sessionStorage.setItem(
+        "experts_search_state",
+        JSON.stringify(searchState)
+      );
 
-        if (data.message) {
-          toast.error(data.message);
-        }
-        if (data.results && data.results.length === 0 && !data.message) {
-          toast.error(`No ${expertsLabel.toLowerCase()} found. Try adjusting your search criteria.`);
-        }
+      if (sortedResults.length === 0) {
+        toast.error(`No ${expertsLabel.toLowerCase()} found. Try adjusting your search criteria.`);
       }
     } catch (error) {
       console.error("Search error:", error);
@@ -360,125 +384,145 @@ export default function Experts() {
     setResults([]);
     setTimeout(async () => {
       const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
-      const params = new URLSearchParams();
       const userData = JSON.parse(localStorage.getItem("user") || "{}");
 
-      // Determine which endpoint to use based on expertSource
-      const endpoint = expertSource === "platform" 
-        ? "/api/search/experts/platform"
-        : "/api/search/experts";
+      // Determine which sources to search
+      const sourcesToSearch = [];
+      if (expertSources.platform) sourcesToSearch.push("platform");
+      if (expertSources.global) sourcesToSearch.push("global");
 
-      // For platform experts, use different query structure
-      if (expertSource === "platform") {
-        params.set("researchArea", filterValue);
-        
-        // Add location
-        let locationStr = null;
-        if (locationMode === "current" && userLocation) {
-          locationStr = [userLocation.city, userLocation.country]
-            .filter(Boolean)
-            .join(", ");
-          if (locationStr) {
-            params.set("location", locationStr);
-          }
-        } else if (locationMode === "custom" && location.trim()) {
-          params.set("location", location.trim());
-          locationStr = location.trim();
-        }
-
-        // Add user profile data for matching
-        if (userData?._id || userData?.id) {
-          params.set("userId", userData._id || userData.id);
-        } else if (locationStr) {
-          if (locationMode === "current" && userLocation) {
-            params.set("userLocation", JSON.stringify(userLocation));
-          } else if (locationMode === "custom" && location.trim()) {
-            params.set(
-              "userLocation",
-              JSON.stringify({ country: location.trim() })
-            );
-          }
-        }
-      } else {
-        // For global experts, use the existing query structure
-        const searchQueryParts = [filterValue];
-        let locationStr = null;
-
-        if (locationMode === "current" && userLocation) {
-          locationStr = [userLocation.city, userLocation.country]
-            .filter(Boolean)
-            .join(", ");
-          if (locationStr) {
-            searchQueryParts.push(`in ${locationStr}`);
-            params.set("location", locationStr);
-          }
-        } else if (locationMode === "custom" && location.trim()) {
-          searchQueryParts.push(`in ${location.trim()}`);
-          params.set("location", location.trim());
-          locationStr = location.trim();
-        } else if (locationMode === "global") {
-          searchQueryParts.push("global");
-        }
-
-        const searchQuery = searchQueryParts.join(" ");
-        params.set("q", searchQuery);
-
-        // Add user profile data for matching
-        if (userData?._id || userData?.id) {
-          params.set("userId", userData._id || userData.id);
-        } else if (locationStr) {
-          if (locationMode === "current" && userLocation) {
-            params.set("userLocation", JSON.stringify(userLocation));
-          } else if (locationMode === "custom" && location.trim()) {
-            params.set(
-              "userLocation",
-              JSON.stringify({ country: location.trim() })
-            );
-          }
-        }
+      // If no sources selected, default to platform
+      if (sourcesToSearch.length === 0) {
+        sourcesToSearch.push("platform");
       }
 
-      try {
-        const response = await apiFetch(
-          `${endpoint}?${params.toString()}`
-        );
+      // Helper function to build params for a specific source
+      const buildParamsForSource = (source) => {
+        const sourceParams = new URLSearchParams();
+        let locationStr = null;
 
-        // Handle case where apiFetch returns undefined (401 redirect)
-        if (!response) {
-          setLoading(false);
-          return;
+        if (locationMode === "current" && userLocation) {
+          locationStr = [userLocation.city, userLocation.country]
+            .filter(Boolean)
+            .join(", ");
+        } else if (locationMode === "custom" && location.trim()) {
+          locationStr = location.trim();
         }
 
-        // Handle rate limit (429)
-        if (response.status === 429) {
-          const errorData = await response.json();
-          toast.error(
-            errorData.error ||
-              "You've used all your free searches! Sign in to continue searching.",
-            { duration: 4000 }
-          );
-          setLoading(false);
-          // Sync with backend to update local storage
-          syncWithBackend().then((result) => {
-            // Update remaining searches indicator with synced value
-            window.dispatchEvent(new CustomEvent("freeSearchUsed", {
-              detail: { remaining: result.remaining }
-            }));
-          }).catch(console.error);
-          return;
-        }
+        if (source === "platform") {
+          sourceParams.set("researchArea", filterValue);
+          if (locationStr) {
+            sourceParams.set("location", locationStr);
+          }
 
-        const data = await response.json();
-
-        if (!response.ok) {
-          const errorMsg = data.error || "Failed to search experts";
-          toast.error(errorMsg);
-          setResults([]);
+          if (userData?._id || userData?.id) {
+            sourceParams.set("userId", userData._id || userData.id);
+          } else if (locationStr) {
+            if (locationMode === "current" && userLocation) {
+              sourceParams.set("userLocation", JSON.stringify(userLocation));
+            } else if (locationMode === "custom" && location.trim()) {
+              sourceParams.set(
+                "userLocation",
+                JSON.stringify({ country: location.trim() })
+              );
+            }
+          }
         } else {
-          // Handle remaining searches from server response
-          if (!isUserSignedIn && data.remaining !== undefined) {
-            // Update local storage to match backend (backend is source of truth)
-            const remaining = data.remaining;
+          const searchQueryParts = [filterValue];
+          if (locationStr) {
+            searchQueryParts.push(`in ${locationStr}`);
+            sourceParams.set("location", locationStr);
+          } else if (locationMode === "global") {
+            searchQueryParts.push("global");
+          }
+
+          const searchQuery = searchQueryParts.join(" ");
+          if (searchQuery) sourceParams.set("q", searchQuery);
+
+          if (userData?._id || userData?.id) {
+            sourceParams.set("userId", userData._id || userData.id);
+          } else if (locationStr) {
+            if (locationMode === "current" && userLocation) {
+              sourceParams.set("userLocation", JSON.stringify(userLocation));
+            } else if (locationMode === "custom" && location.trim()) {
+              sourceParams.set(
+                "userLocation",
+                JSON.stringify({ country: location.trim() })
+              );
+            }
+          }
+        }
+
+        return sourceParams;
+      };
+
+      // Fetch from all selected sources in parallel
+      try {
+        const fetchPromises = sourcesToSearch.map(async (source) => {
+          const endpoint = source === "platform" 
+            ? "/api/search/experts/platform"
+            : "/api/search/experts";
+          const sourceParams = buildParamsForSource(source);
+          
+          const response = await apiFetch(
+            `${endpoint}?${sourceParams.toString()}`
+          );
+
+          if (!response) {
+            return { results: [], error: null };
+          }
+
+          if (response.status === 429) {
+            const errorData = await response.json();
+            return { results: [], error: errorData.error || "Rate limit exceeded" };
+          }
+
+          const data = await response.json();
+
+          if (!response.ok) {
+            return { results: [], error: data.error || "Failed to search experts" };
+          }
+
+          return { results: data.results || [], error: null, remaining: data.remaining };
+        });
+
+        const allResults = await Promise.all(fetchPromises);
+
+        // Combine results from all sources and deduplicate
+        const combinedResults = [];
+        const seenExperts = new Set();
+
+        for (const result of allResults) {
+          if (result.error && result.error.includes("Rate limit")) {
+            toast.error(
+              result.error ||
+                "You've used all your free searches! Sign in to continue searching.",
+              { duration: 4000 }
+            );
+            setLoading(false);
+            syncWithBackend().then((syncResult) => {
+              window.dispatchEvent(new CustomEvent("freeSearchUsed", {
+                detail: { remaining: syncResult.remaining }
+              }));
+            }).catch(console.error);
+            return;
+          }
+
+          if (result.error) {
+            toast.error(result.error);
+            continue;
+          }
+
+          for (const expert of result.results || []) {
+            const expertKey = expert.name || expert.orcid || expert.id || expert._id;
+            if (expertKey && !seenExperts.has(expertKey)) {
+              seenExperts.add(expertKey);
+              combinedResults.push(expert);
+            }
+          }
+
+          if (!isUserSignedIn && result.remaining !== undefined) {
+            const remaining = result.remaining;
             const backendCount = MAX_FREE_SEARCHES - remaining;
             setLocalSearchCount(backendCount);
             
@@ -495,42 +539,34 @@ export default function Experts() {
                 { duration: 3000 }
               );
             }
-            // Update remaining searches indicator with the actual remaining count from backend
             window.dispatchEvent(new CustomEvent("freeSearchUsed", {
               detail: { remaining }
             }));
           }
-
-          const searchResults = data.results || [];
-          // Sort by matchPercentage in descending order (highest first)
-          const sortedResults = [...searchResults].sort((a, b) => {
-            const aMatch = a.matchPercentage ?? -1;
-            const bMatch = b.matchPercentage ?? -1;
-            return bMatch - aMatch; // Descending order
-          });
-          setResults(sortedResults);
-
-          // Save search state to sessionStorage
-          const searchState = {
-            researchArea: filterValue,
-            diseaseOfInterest: "",
-            location,
-            locationMode,
-            useMedicalInterest,
-            userMedicalInterest,
-            expertSource,
-            results: sortedResults,
-            isInitialLoad: false,
-          };
-          sessionStorage.setItem(
-            "experts_search_state",
-            JSON.stringify(searchState)
-          );
-
-          if (data.message) {
-            toast.error(data.message);
-          }
         }
+
+        const sortedResults = [...combinedResults].sort((a, b) => {
+          const aMatch = a.matchPercentage ?? -1;
+          const bMatch = b.matchPercentage ?? -1;
+          return bMatch - aMatch;
+        });
+        setResults(sortedResults);
+
+        const searchState = {
+          researchArea: filterValue,
+          diseaseOfInterest: "",
+          location,
+          locationMode,
+          useMedicalInterest,
+          userMedicalInterest,
+          expertSources,
+          results: sortedResults,
+          isInitialLoad: false,
+        };
+        sessionStorage.setItem(
+          "experts_search_state",
+          JSON.stringify(searchState)
+        );
       } catch (error) {
         console.error("Search error:", error);
         setResults([]);
@@ -828,7 +864,16 @@ export default function Experts() {
             : true
         );
         setUserMedicalInterest(state.userMedicalInterest || "");
-        setExpertSource(state.expertSource || "platform");
+        // Handle both old format (expertSource) and new format (expertSources)
+        if (state.expertSources) {
+          setExpertSources(state.expertSources);
+        } else if (state.expertSource) {
+          // Convert old format to new format
+          setExpertSources({
+            global: state.expertSource === "global",
+            platform: state.expertSource === "platform",
+          });
+        }
         setResults(state.results || []);
         setIsInitialLoad(
           state.isInitialLoad !== undefined ? state.isInitialLoad : false
@@ -849,7 +894,7 @@ export default function Experts() {
       setLocationMode("global");
       setUseMedicalInterest(true);
       setUserMedicalInterest("");
-      setExpertSource("platform");
+      setExpertSources({ global: false, platform: true });
       setResults([]);
       setIsInitialLoad(true);
       setIsSignedIn(false);
@@ -1166,34 +1211,42 @@ export default function Experts() {
 
               {/* Expert Source Toggle */}
               <div className="flex flex-col gap-2">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-xs font-medium text-slate-700">
-                    {expertsLabel} Source:
-                  </span>
-                  <button
-                    onClick={() => {
-                      setExpertSource("global");
-                    }}
-                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-                      expertSource === "global"
-                        ? "bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-md"
-                        : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                    }`}
-                  >
-                    Global {expertsLabel}
-                  </button>
-                  <button
-                    onClick={() => {
-                      setExpertSource("platform");
-                    }}
-                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-                      expertSource === "platform"
-                        ? "bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-md"
-                        : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                    }`}
-                  >
-                    Platform {expertsLabel}
-                  </button>
+                <span className="text-xs font-medium text-slate-700">
+                  {expertsLabel} Source:
+                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-200 hover:bg-slate-100 cursor-pointer transition-all">
+                    <input
+                      type="checkbox"
+                      checked={expertSources.platform}
+                      onChange={(e) => {
+                        setExpertSources((prev) => ({
+                          ...prev,
+                          platform: e.target.checked,
+                        }));
+                      }}
+                      className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 focus:ring-2"
+                    />
+                    <span className="text-xs text-slate-700 font-medium">
+                      Experts available on platform
+                    </span>
+                  </label>
+                  <label className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-200 hover:bg-slate-100 cursor-pointer transition-all">
+                    <input
+                      type="checkbox"
+                      checked={expertSources.global}
+                      onChange={(e) => {
+                        setExpertSources((prev) => ({
+                          ...prev,
+                          global: e.target.checked,
+                        }));
+                      }}
+                      className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 focus:ring-2"
+                    />
+                    <span className="text-xs text-slate-700 font-medium">
+                      Global {expertsLabel}
+                    </span>
+                  </label>
                 </div>
               </div>
             </div>

@@ -6,7 +6,6 @@ import toast from "react-hot-toast";
 import {
   Heart,
   MessageCircle,
-  Share2,
   MoreHorizontal,
   Image as ImageIcon,
   FileText,
@@ -28,7 +27,7 @@ import {
 import Layout from "../components/Layout.jsx";
 import AnimatedBackground from "../components/ui/AnimatedBackground.jsx";
 import CustomSelect from "../components/ui/CustomSelect.jsx";
-import { AuroraText } from "../components/ui/aurora-text";
+import { AuroraText } from "../components/ui/aurora-text.js";
 import {
   IconHospital,
   IconRibbonHealth,
@@ -84,7 +83,7 @@ const CommunityIcon = ({ community, size = "1.125rem" }) => {
 };
 
 
-export default function Posts() {
+export default function Discovery() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
@@ -109,6 +108,11 @@ export default function Posts() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [expandedComments, setExpandedComments] = useState(new Set()); // Track which posts have comments expanded
+  const [comments, setComments] = useState({}); // Store comments by postId
+  const [loadingComments, setLoadingComments] = useState({}); // Track loading state per post
+  const [commentInputs, setCommentInputs] = useState({}); // Store comment input text by postId
+  const [submittingComment, setSubmittingComment] = useState({}); // Track submitting state per post
   const fileInputRef = useRef(null);
   const imageInputRef = useRef(null);
   const loadingPostsRef = useRef(false); // Prevent multiple simultaneous loads
@@ -326,6 +330,172 @@ export default function Posts() {
     }
   }
 
+  async function loadComments(postId) {
+    if (loadingComments[postId]) return;
+
+    setLoadingComments((prev) => ({ ...prev, [postId]: true }));
+    try {
+      const userData = JSON.parse(localStorage.getItem("user") || "{}");
+      const userId = userData?._id || userData?.id || "";
+      const params = new URLSearchParams();
+      if (userId) params.set("userId", userId);
+
+      const response = await fetch(`${base}/api/posts/${postId}/comments?${params.toString()}`);
+      if (!response.ok) throw new Error("Failed to fetch comments");
+      const data = await response.json();
+
+      setComments((prev) => ({
+        ...prev,
+        [postId]: data.comments || [],
+      }));
+
+      // Update reply count in post
+      setPosts((prev) =>
+        prev.map((post) =>
+          post._id === postId
+            ? { ...post, replyCount: data.commentCount || 0 }
+            : post
+        )
+      );
+    } catch (error) {
+      console.error("Error loading comments:", error);
+      toast.error("Failed to load comments");
+    } finally {
+      setLoadingComments((prev) => ({ ...prev, [postId]: false }));
+    }
+  }
+
+  async function handleToggleComments(postId) {
+    const isExpanded = expandedComments.has(postId);
+    if (isExpanded) {
+      // Collapse
+      setExpandedComments((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(postId);
+        return newSet;
+      });
+    } else {
+      // Expand and load comments
+      setExpandedComments((prev) => new Set(prev).add(postId));
+      if (!comments[postId]) {
+        await loadComments(postId);
+      }
+    }
+  }
+
+  async function handleSubmitComment(postId) {
+    if (!user) {
+      toast.error("Please sign in to comment");
+      navigate("/signin");
+      return;
+    }
+
+    const content = commentInputs[postId]?.trim();
+    if (!content) {
+      toast.error("Please enter a comment");
+      return;
+    }
+
+    setSubmittingComment((prev) => ({ ...prev, [postId]: true }));
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${base}/api/posts/${postId}/comments`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ content }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to create comment");
+      }
+
+      const data = await response.json();
+      
+      // Add comment to state
+      setComments((prev) => ({
+        ...prev,
+        [postId]: [...(prev[postId] || []), data.comment],
+      }));
+
+      // Clear input
+      setCommentInputs((prev) => {
+        const newInputs = { ...prev };
+        delete newInputs[postId];
+        return newInputs;
+      });
+
+      // Update reply count
+      setPosts((prev) =>
+        prev.map((post) =>
+          post._id === postId
+            ? { ...post, replyCount: (post.replyCount || 0) + 1 }
+            : post
+        )
+      );
+
+      toast.success("Comment added!");
+    } catch (error) {
+      console.error("Error creating comment:", error);
+      toast.error(error.message || "Failed to create comment");
+    } finally {
+      setSubmittingComment((prev) => ({ ...prev, [postId]: false }));
+    }
+  }
+
+  async function handleLikeComment(postId, commentId, isLiked) {
+    if (!user) {
+      toast.error("Please sign in to like comments");
+      navigate("/signin");
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${base}/api/posts/${postId}/comments/${commentId}/like`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) throw new Error("Failed to toggle like");
+      const data = await response.json();
+
+      // Update comment in state
+      const updateCommentLikes = (commentList) => {
+        return commentList.map((comment) => {
+          if (comment._id === commentId) {
+            return {
+              ...comment,
+              isLiked: data.isLiked,
+              likeCount: data.likeCount,
+            };
+          }
+          if (comment.children && comment.children.length > 0) {
+            return {
+              ...comment,
+              children: updateCommentLikes(comment.children),
+            };
+          }
+          return comment;
+        });
+      };
+
+      setComments((prev) => ({
+        ...prev,
+        [postId]: updateCommentLikes(prev[postId] || []),
+      }));
+    } catch (error) {
+      console.error("Error toggling comment like:", error);
+      toast.error("Failed to like comment");
+    }
+  }
+
   async function uploadToBackend(files) {
     const formData = new FormData();
     files.forEach((file) => {
@@ -507,7 +677,7 @@ export default function Posts() {
                 speed={2.5}
                 colors={["#2F3C96", "#474F97", "#757BB1", "#B8A5D5", "#D0C4E2"]}
               >
-                Posts
+                Discovery
               </AuroraText>
             </h1>
             <p className="text-sm text-slate-600">
@@ -515,7 +685,7 @@ export default function Posts() {
             </p>
           </div>
 
-          {/* Sidebar and Posts Layout */}
+          {/* Sidebar and Discovery Layout */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* Left Sidebar - Only Post Filters */}
             <div className="lg:col-span-3">
@@ -526,7 +696,7 @@ export default function Posts() {
                     onClick={() => setFiltersExpanded(!filtersExpanded)}
                     className="w-full flex items-center justify-between mb-3"
                   >
-                    <span className="font-semibold text-gray-900">Post Filters</span>
+                    <span className="font-semibold text-gray-900">Discovery Filters</span>
                     {filtersExpanded ? (
                       <ChevronUp className="w-4 h-4 text-gray-500" />
                     ) : (
@@ -535,7 +705,7 @@ export default function Posts() {
                   </button>
                   {filtersExpanded && (
                     <div className="space-y-3">
-                      {/* Patient Posts */}
+                      {/* Patients */}
                       <button
                         onClick={() => {
                           if (selectedPostType !== "patient") {
@@ -553,7 +723,7 @@ export default function Posts() {
                         <div className="flex items-center gap-2 mb-1">
                           <MessageCircle className={`w-5 h-5 ${selectedPostType === "patient" ? "text-[#2F3C96]" : "text-gray-500"}`} />
                           <span className={`font-semibold ${selectedPostType === "patient" ? "text-[#2F3C96]" : "text-gray-700"}`}>
-                            Patient Posts
+                            Patients
                           </span>
                           {selectedPostType === "patient" && (
                             <CheckCircle2 className="w-4 h-4 text-[#2F3C96] ml-auto" />
@@ -564,7 +734,7 @@ export default function Posts() {
                         </p>
                       </button>
                       
-                      {/* Researcher Posts */}
+                      {/* Researchers */}
                       <button
                         onClick={() => {
                           if (selectedPostType !== "researcher") {
@@ -582,7 +752,7 @@ export default function Posts() {
                         <div className="flex items-center gap-2 mb-1">
                           <Sparkles className={`w-5 h-5 ${selectedPostType === "researcher" ? "text-[#2F3C96]" : "text-gray-500"}`} />
                           <span className={`font-semibold ${selectedPostType === "researcher" ? "text-[#2F3C96]" : "text-gray-700"}`}>
-                            Researcher Posts
+                            Researchers
                           </span>
                           {selectedPostType === "researcher" && (
                             <CheckCircle2 className="w-4 h-4 text-[#2F3C96] ml-auto" />
@@ -693,7 +863,7 @@ export default function Posts() {
                 </div>
               )}
 
-              {/* Posts Feed */}
+              {/* Discovery Feed */}
               {loading && posts.length === 0 ? (
                 <div className="flex justify-center items-center py-12 bg-white rounded-xl border border-gray-200">
                   <Loader2 className="w-8 h-8 animate-spin text-[#2F3C96]" />
@@ -833,14 +1003,135 @@ export default function Posts() {
                           <Heart className={`w-5 h-5 ${post.isLiked ? "fill-current" : ""}`} />
                           <span className="text-sm">{post.likeCount || 0}</span>
                         </button>
-                        <button className="flex items-center gap-2 text-gray-500 hover:text-[#2F3C96] transition-colors">
-                          <MessageCircle className="w-5 h-5" />
+                        <button
+                          onClick={() => handleToggleComments(post._id)}
+                          className={`flex items-center gap-2 transition-colors ${
+                            expandedComments.has(post._id)
+                              ? "text-[#2F3C96]"
+                              : "text-gray-500 hover:text-[#2F3C96]"
+                          }`}
+                        >
+                          <MessageCircle className={`w-5 h-5 ${expandedComments.has(post._id) ? "fill-current" : ""}`} />
                           <span className="text-sm">{post.replyCount || 0}</span>
                         </button>
-                        <button className="flex items-center gap-2 text-gray-500 hover:text-[#2F3C96] transition-colors">
-                          <Share2 className="w-5 h-5" />
-                        </button>
                       </div>
+
+                      {/* Comments Section */}
+                      {expandedComments.has(post._id) && (
+                        <div className="mt-4 pt-4 border-t border-gray-100">
+                          {/* Comment Input */}
+                          {user && (
+                            <div className="mb-4">
+                              <div className="flex items-start gap-3">
+                                <div className="w-8 h-8 rounded-full bg-[#2F3C96] flex items-center justify-center text-white font-semibold text-xs shrink-0">
+                                  {user?.username?.charAt(0)?.toUpperCase() || "U"}
+                                </div>
+                                <div className="flex-1">
+                                  <textarea
+                                    value={commentInputs[post._id] || ""}
+                                    onChange={(e) =>
+                                      setCommentInputs((prev) => ({
+                                        ...prev,
+                                        [post._id]: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="Write a comment..."
+                                    className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#2F3C96] focus:border-transparent resize-none text-sm"
+                                    rows={2}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                                        handleSubmitComment(post._id);
+                                      }
+                                    }}
+                                  />
+                                  <div className="flex justify-end mt-2">
+                                    <button
+                                      onClick={() => handleSubmitComment(post._id)}
+                                      disabled={!commentInputs[post._id]?.trim() || submittingComment[post._id]}
+                                      className="px-4 py-1.5 bg-[#2F3C96] text-white rounded-lg text-sm font-semibold hover:bg-opacity-90 disabled:opacity-50 transition-colors"
+                                    >
+                                      {submittingComment[post._id] ? "Posting..." : "Post"}
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Comments List */}
+                          {loadingComments[post._id] ? (
+                            <div className="flex justify-center py-4">
+                              <Loader2 className="w-5 h-5 animate-spin text-[#2F3C96]" />
+                            </div>
+                          ) : comments[post._id] && comments[post._id].length > 0 ? (
+                            <div className="space-y-4">
+                              {comments[post._id].map((comment) => (
+                                <div key={comment._id} className="flex items-start gap-3">
+                                  <div className="w-8 h-8 rounded-full bg-[#2F3C96] flex items-center justify-center text-white font-semibold text-xs shrink-0">
+                                    {comment.authorUserId?.username?.charAt(0)?.toUpperCase() || "U"}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <span className="text-sm font-semibold text-[#2F3C96]">
+                                        {comment.authorUserId?.username || "Anonymous"}
+                                      </span>
+                                      <span className="text-xs text-gray-500">
+                                        {formatTimeAgo(comment.createdAt)}
+                                      </span>
+                                    </div>
+                                    <p className="text-sm text-gray-700 mb-2">{comment.content}</p>
+                                    <button
+                                      onClick={() => handleLikeComment(post._id, comment._id, comment.isLiked)}
+                                      className={`flex items-center gap-1 text-xs transition-colors ${
+                                        comment.isLiked ? "text-red-500" : "text-gray-500 hover:text-red-500"
+                                      }`}
+                                    >
+                                      <Heart className={`w-3.5 h-3.5 ${comment.isLiked ? "fill-current" : ""}`} />
+                                      <span>{comment.likeCount || 0}</span>
+                                    </button>
+                                    {/* Render nested comments */}
+                                    {comment.children && comment.children.length > 0 && (
+                                      <div className="mt-3 ml-4 pl-4 border-l-2 border-gray-200 space-y-3">
+                                        {comment.children.map((childComment) => (
+                                          <div key={childComment._id} className="flex items-start gap-2">
+                                            <div className="w-6 h-6 rounded-full bg-[#2F3C96] flex items-center justify-center text-white font-semibold text-[10px] shrink-0">
+                                              {childComment.authorUserId?.username?.charAt(0)?.toUpperCase() || "U"}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                              <div className="flex items-center gap-2 mb-1">
+                                                <span className="text-xs font-semibold text-[#2F3C96]">
+                                                  {childComment.authorUserId?.username || "Anonymous"}
+                                                </span>
+                                                <span className="text-[10px] text-gray-500">
+                                                  {formatTimeAgo(childComment.createdAt)}
+                                                </span>
+                                              </div>
+                                              <p className="text-xs text-gray-700 mb-1">{childComment.content}</p>
+                                              <button
+                                                onClick={() => handleLikeComment(post._id, childComment._id, childComment.isLiked)}
+                                                className={`flex items-center gap-1 text-[10px] transition-colors ${
+                                                  childComment.isLiked ? "text-red-500" : "text-gray-500 hover:text-red-500"
+                                                }`}
+                                              >
+                                                <Heart className={`w-3 h-3 ${childComment.isLiked ? "fill-current" : ""}`} />
+                                                <span>{childComment.likeCount || 0}</span>
+                                              </button>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-gray-500 text-center py-4">
+                              No comments yet. Be the first to comment!
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
 

@@ -74,59 +74,90 @@
   --color-brand-gray-600: #606060;
   --color-brand-gray-700: #484848;
   --animate-aurora: aurora 8s ease-in-out infinite alternate;
+
   @keyframes aurora {
-  0% {
-    background-position: 0% 50%;
-    transform: rotate(-5deg) scale(0.9);
+    0% {
+      background-position: 0% 50%;
+      transform: rotate(-5deg) scale(0.9);
     }
-  25% {
-    background-position: 50% 100%;
-    transform: rotate(5deg) scale(1.1);
+
+    25% {
+      background-position: 50% 100%;
+      transform: rotate(5deg) scale(1.1);
     }
-  50% {
-    background-position: 100% 50%;
-    transform: rotate(-3deg) scale(0.95);
+
+    50% {
+      background-position: 100% 50%;
+      transform: rotate(-3deg) scale(0.95);
     }
-  75% {
-    background-position: 50% 0%;
-    transform: rotate(3deg) scale(1.05);
+
+    75% {
+      background-position: 50% 0%;
+      transform: rotate(3deg) scale(1.05);
     }
-  100% {
-    background-position: 0% 50%;
-    transform: rotate(-5deg) scale(0.9);
+
+    100% {
+      background-position: 0% 50%;
+      transform: rotate(-5deg) scale(0.9);
     }
   }
+
   --animate-rainbow: rainbow var(--speed, 2s) infinite linear;
   --color-color-5: var(--color-5);
   --color-color-4: var(--color-4);
   --color-color-3: var(--color-3);
   --color-color-2: var(--color-2);
-  --color-color-1: var(--color-1)
-;
+  --color-color-1: var(--color-1);
+
   @keyframes rainbow {
-  0% {
-    background-position: 0%;}
-  100% {
-    background-position: 200%;}}
+    0% {
+      background-position: 0%;
+    }
+
+    100% {
+      background-position: 200%;
+    }
+  }
+
   @keyframes rainbow {
-  0% {
-    background-position: 0%;}
-  100% {
-    background-position: 200%;}}
+    0% {
+      background-position: 0%;
+    }
+
+    100% {
+      background-position: 200%;
+    }
+  }
+
   --animate-shimmer-slide: shimmer-slide var(--speed) ease-in-out infinite alternate;
   --animate-spin-around: spin-around calc(var(--speed) * 2) infinite linear;
+
   @keyframes shimmer-slide {
-  to {
-    transform: translate(calc(100cqw - 100%), 0);}}
+    to {
+      transform: translate(calc(100cqw - 100%), 0);
+    }
+  }
+
   @keyframes spin-around {
-  0% {
-    transform: translateZ(0) rotate(0);}
-  15%, 35% {
-    transform: translateZ(0) rotate(90deg);}
-  65%, 85% {
-    transform: translateZ(0) rotate(270deg);}
-  100% {
-    transform: translateZ(0) rotate(360deg);}}}
+    0% {
+      transform: translateZ(0) rotate(0);
+    }
+
+    15%,
+    35% {
+      transform: translateZ(0) rotate(90deg);
+    }
+
+    65%,
+    85% {
+      transform: translateZ(0) rotate(270deg);
+    }
+
+    100% {
+      transform: translateZ(0) rotate(360deg);
+    }
+  }
+}
 
 :root {
   --radius: 0.625rem;
@@ -218,11 +249,13 @@
     @apply border-border outline-ring/50;
     font-family: 'Inter', sans-serif;
   }
+
   body {
     @apply bg-background text-foreground;
     font-family: 'Inter', sans-serif;
   }
 }
+
 @theme inline {
   --animate-scroll: scroll var(--animation-duration, 40s) var(--animation-direction, forwards) linear infinite;
 
@@ -230,5 +263,194 @@
     to {
       transform: translate(calc(-50% - 0.5rem));
     }
+  }
+}
+
+/* Professional Toast Styling for react-hot-toast */
+.toast-notification {
+  font-family: 'Inter', sans-serif;
+  backdrop-filter: blur(10px);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: visible;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.toast-notification:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 15px 35px -5px rgba(0, 0, 0, 0.15), 0 10px 15px -6px rgba(0, 0, 0, 0.12) !important;
+}
+
+/* Success Toast */
+.toast-success {
+  position: relative;
+  overflow: visible;
+}
+
+.toast-success::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: linear-gradient(180deg, #10b981 0%, #059669 100%);
+  border-radius: 12px 0 0 12px;
+  z-index: 1;
+}
+
+.toast-success svg {
+  filter: drop-shadow(0 2px 4px rgba(16, 185, 129, 0.3));
+  position: relative;
+  z-index: 2;
+}
+
+/* Error Toast */
+.toast-error {
+  position: relative;
+  overflow: visible;
+}
+
+.toast-error::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: linear-gradient(180deg, #ef4444 0%, #dc2626 100%);
+  border-radius: 12px 0 0 12px;
+  z-index: 1;
+}
+
+.toast-error svg {
+  filter: drop-shadow(0 2px 4px rgba(239, 68, 68, 0.3));
+  position: relative;
+  z-index: 2;
+}
+
+/* Loading Toast */
+.toast-loading {
+  position: relative;
+  overflow: visible;
+}
+
+.toast-loading::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: linear-gradient(180deg, #2F3C96 0%, #1C2454 100%);
+  border-radius: 12px 0 0 12px;
+  z-index: 1;
+}
+
+.toast-loading svg {
+  filter: drop-shadow(0 2px 4px rgba(47, 60, 150, 0.3));
+  position: relative;
+  z-index: 2;
+}
+
+/* Toast Container - react-hot-toast creates a div with id */
+#react-hot-toast {
+  z-index: 9999;
+}
+
+/* Toast wrapper */
+#react-hot-toast>div {
+  animation: slideInRight 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Toast Close Button */
+.toast-notification button[aria-label] {
+  color: #787878 !important;
+  opacity: 0.6;
+  transition: all 0.2s ease;
+  border-radius: 6px;
+  padding: 4px;
+  background: transparent !important;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 2;
+}
+
+.toast-notification button[aria-label]:hover {
+  opacity: 1;
+  background: rgba(120, 120, 120, 0.1) !important;
+  color: #2F3C96 !important;
+}
+
+/* Toast Content Layout */
+.toast-notification>div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  position: relative;
+  z-index: 2;
+}
+
+/* Icon styling - react-hot-toast icons */
+.toast-notification svg {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  position: relative;
+  z-index: 2;
+}
+
+/* Toast message text */
+.toast-notification>div>div {
+  flex: 1;
+  line-height: 1.5;
+  position: relative;
+  z-index: 2;
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+  .toast-notification {
+    min-width: 280px !important;
+    max-width: calc(100vw - 32px) !important;
+    margin: 8px;
+    padding: 12px 16px !important;
+    font-size: 13px !important;
+  }
+}
+
+/* Animation for toast entrance */
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Toast exit animation */
+@keyframes slideOutRight {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+
+  to {
+    transform: translateX(100%);
+    opacity: 0;
   }
 }

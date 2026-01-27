@@ -14,6 +14,7 @@ export default function Navbar() {
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isExploreDropdownOpen, setIsExploreDropdownOpen] = useState(false);
   const [isMobileExploreOpen, setIsMobileExploreOpen] = useState(false);
+  const [imageError, setImageError] = useState(false);
   const menuRef = useRef(null);
   const notificationRef = useRef(null);
   const exploreDropdownRef = useRef(null);
@@ -40,10 +41,10 @@ export default function Navbar() {
     } else {
       // When signed in, show new navigation structure
       if (user) {
-        return ["Dashboard", "Explore", "Forums", "Posts"];
+        return ["Dashboard", "Explore", "Forums", "Discovery"];
       }
       // Filter out Trials, Publications, Experts on dashboard pages (when not signed in)
-      const allNavItems = ["Trials", "Publications", "Experts", "Forums", "Posts"];
+      const allNavItems = ["Trials", "Publications", "Experts", "Forums", "Discovery"];
       return isDashboardPage
         ? allNavItems.filter(
             (item) => !["Trials", "Publications", "Experts"].includes(item)
@@ -63,6 +64,7 @@ export default function Navbar() {
         return;
       }
       setUser(userData);
+      setImageError(false); // Reset image error when user changes
 
       // Fetch profile data if user exists
       if (userData?._id || userData?.id) {
@@ -320,7 +322,7 @@ export default function Navbar() {
           />
         </svg>
       ),
-      Posts: (
+      Discovery: (
         <svg
           className="w-5 h-5"
           fill="none"
@@ -436,7 +438,7 @@ export default function Navbar() {
               // Regular navigation routes
               Dashboard: getDashboardPath(),
               Forums: "/forums",
-              Posts: "/posts",
+              Discovery: "/posts",
             };
             const route =
               routeMap[item] || `/${item.toLowerCase().replace(/\s+/g, "-")}`;
@@ -731,7 +733,7 @@ export default function Navbar() {
                         <button
                           onClick={() => {
                             setIsNotificationOpen(false);
-                            navigate("/insights");
+                            navigate("/notifications");
                           }}
                           className="w-full px-4 py-2.5 rounded-lg font-semibold text-sm transition-all duration-200 flex items-center justify-center gap-2"
                           style={{
@@ -761,7 +763,7 @@ export default function Navbar() {
                               d="M13 10V3L4 14h7v7l9-11h-7z"
                             />
                           </svg>
-                          View All Insights and Activity
+                          View All Notifications and Activity
                         </button>
                       </div>
                     </motion.div>
@@ -786,16 +788,28 @@ export default function Navbar() {
                   }}
                   whileTap={{ scale: 0.98 }}
                 >
-                  {/* Profile Avatar with First Letter */}
-                  <div
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-md shrink-0"
-                    style={{
-                      backgroundColor: "rgba(47, 60, 150, 0.8)",
-                      border: "2px solid rgba(47, 60, 150, 0.3)",
-                    }}
-                  >
-                    {user?.username?.charAt(0)?.toUpperCase() || "U"}
-                  </div>
+                  {/* Profile Avatar with Image or First Letter */}
+                  {user?.picture && !imageError ? (
+                    <img
+                      src={user.picture}
+                      alt={user?.username || "User"}
+                      className="w-8 h-8 rounded-full object-cover shadow-md shrink-0 border-2"
+                      style={{
+                        borderColor: "rgba(47, 60, 150, 0.3)",
+                      }}
+                      onError={() => setImageError(true)}
+                    />
+                  ) : (
+                    <div
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-md shrink-0"
+                      style={{
+                        backgroundColor: "rgba(47, 60, 150, 0.8)",
+                        border: "2px solid rgba(47, 60, 150, 0.3)",
+                      }}
+                    >
+                      {user?.username?.charAt(0)?.toUpperCase() || "U"}
+                    </div>
+                  )}
 
                   {/* Name and Role/Condition */}
                   <div className="flex flex-col items-start min-w-0">
@@ -945,7 +959,7 @@ export default function Navbar() {
                         </svg>
                       </Link>
                       <Link
-                        to="/insights"
+                        to="/notifications"
                         onClick={() => setIsMenuOpen(false)}
                         className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-all duration-200"
                         style={{ color: "#2F3C96" }}
@@ -972,7 +986,7 @@ export default function Navbar() {
                             d="M13 10V3L4 14h7v7l9-11h-7z"
                           />
                         </svg>
-                        <span>Insights</span>
+                        <span>Notifications</span>
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
                           className="w-4 h-4 ml-auto"
@@ -1202,7 +1216,7 @@ export default function Navbar() {
                     // Regular navigation routes
                     Dashboard: getDashboardPath(),
                     Forums: "/forums",
-                    Posts: "/posts",
+                    Discovery: "/posts",
                   };
                   const route =
                     routeMap[item] ||
@@ -1395,7 +1409,7 @@ export default function Navbar() {
                   Favorites
                 </Link>
                 <Link
-                  to="/insights"
+                  to="/notifications"
                   onClick={() => setIsMobileMenuOpen(false)}
                   className="flex items-center gap-3 w-full text-base font-medium rounded-xl py-2 px-3 transition-all duration-200 group"
                   style={{ color: "#2F3C96" }}
@@ -1426,7 +1440,7 @@ export default function Navbar() {
                       />
                     </svg>
                   </span>
-                  Insights
+                  Notifications
                 </Link>
               </div>
             ) : null}
@@ -1515,7 +1529,7 @@ export default function Navbar() {
               <button
                 onClick={() => {
                   setIsNotificationOpen(false);
-                  navigate("/insights");
+                  navigate("/notifications");
                 }}
                 className="w-full px-4 py-2.5 rounded-lg font-semibold text-sm transition-all duration-200 flex items-center justify-center gap-2 text-white"
                 style={{
@@ -1544,7 +1558,7 @@ export default function Navbar() {
                     d="M13 10V3L4 14h7v7l9-11h-7z"
                   />
                 </svg>
-                View All Insights and Activity
+                View All Notifications and Activity
               </button>
             </div>
           </motion.div>

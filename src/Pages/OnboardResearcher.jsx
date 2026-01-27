@@ -37,6 +37,7 @@ export default function OnboardResearcher() {
   const [step, setStep] = useState(initialStep);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [handle, setHandle] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -384,6 +385,7 @@ export default function OnboardResearcher() {
           password,
           role: "researcher",
           medicalInterests,
+          handle: handle.trim() || undefined,
         }),
       });
 
@@ -746,6 +748,42 @@ export default function OnboardResearcher() {
                           }}
                         />
                       </div>
+                    </div>
+
+                    <div>
+                      <label
+                        className="block text-xs font-semibold mb-1"
+                        style={{ color: "#2F3C96" }}
+                      >
+                        Handle / Username
+                        <span className="ml-1 text-xs font-normal" style={{ color: "#787878" }}>
+                          (Optional)
+                        </span>
+                      </label>
+                      <Input
+                        placeholder="@username"
+                        value={handle}
+                        onChange={(e) => {
+                          // Remove @ if user types it, we'll add it for display
+                          let value = e.target.value.replace(/^@+/, "");
+                          setHandle(value);
+                        }}
+                        onKeyPress={(e) =>
+                          e.key === "Enter" &&
+                          firstName &&
+                          lastName &&
+                          setStep(2)
+                        }
+                        className="w-full py-1.5 px-2.5 text-sm border rounded-lg transition-all focus:outline-none focus:ring-2"
+                        style={{
+                          borderColor: "#E8E8E8",
+                          color: "#2F3C96",
+                          "--tw-ring-color": "#D0C4E2",
+                        }}
+                      />
+                      <p className="text-xs mt-1" style={{ color: "#787878" }}>
+                        Your unique handle (optional)
+                      </p>
                     </div>
 
                     <Button

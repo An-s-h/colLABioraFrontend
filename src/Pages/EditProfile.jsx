@@ -1,42 +1,45 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
-import {
-  ArrowLeft,
-  Save,
-  MapPin,
-  User,
-  FileText,
-  Link as LinkIcon,
-  Briefcase,
-  CheckCircle,
-} from "lucide-react";
+import ProfilePictureUpload from "../components/ProfilePictureUpload.jsx";
 import Layout from "../components/Layout.jsx";
-import Input from "../components/ui/Input.jsx";
-import Button from "../components/ui/Button.jsx";
+import { AuroraText } from "@/components/ui/aurora-text";
 import AnimatedBackground from "../components/ui/AnimatedBackground.jsx";
-import { useProfile } from "../contexts/ProfileContext.jsx";
+import SmartSearchInput from "../components/SmartSearchInput.jsx";
+import { SMART_SUGGESTION_KEYWORDS } from "../utils/smartSuggestions.js";
+import icd11Dataset from "../data/icd11Dataset.json";
+import { Sparkles, Info, X } from "lucide-react";
+import { motion } from "framer-motion";
 
 export default function EditProfile() {
+  const navigate = useNavigate();
+  const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const navigate = useNavigate();
-  const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
-  const { updateProfileSignature, generateProfileSignature } = useProfile();
+  const [uploadingPicture, setUploadingPicture] = useState(false);
 
-  // Form state
+  // User fields
   const [username, setUsername] = useState("");
+  const [handle, setHandle] = useState("");
+  const [nameHidden, setNameHidden] = useState(false);
+
+  // Profile fields
   const [city, setCity] = useState("");
   const [country, setCountry] = useState("");
-  const [conditions, setConditions] = useState(""); // For patients - diseases of interest
+  const [age, setAge] = useState("");
+  const [conditionInput, setConditionInput] = useState(""); // For patients - input field
+  const [selectedConditions, setSelectedConditions] = useState([]); // For patients - selected conditions
+  const [identifiedConditions, setIdentifiedConditions] = useState([]); // Track auto-identified conditions
+  const [isExtracting, setIsExtracting] = useState(false); // For condition extraction
   const [bio, setBio] = useState(""); // For researchers
   const [orcid, setOrcid] = useState(""); // For researchers
   const [specialties, setSpecialties] = useState(""); // For researchers
   const [interests, setInterests] = useState(""); // For researchers
   const [available, setAvailable] = useState(false); // For researchers
   const [gender, setGender] = useState(""); // Optional for both
+  const [showInfoTooltip, setShowInfoTooltip] = useState(false);
 
   useEffect(() => {
     const userData = JSON.parse(localStorage.getItem("user") || "{}");
@@ -47,13 +50,230 @@ export default function EditProfile() {
       return;
     }
 
-    // Set username from userData
+    // Set username and handle from userData
     if (userData?.username) {
       setUsername(userData.username);
+    }
+    // Handle can be empty string, so check for undefined/null specifically
+    if (userData?.handle !== undefined && userData?.handle !== null) {
+      setHandle(userData.handle);
+    } else {
+      setHandle(""); // Initialize as empty string if not set
+    }
+    if (userData?.nameHidden !== undefined) {
+      setNameHidden(userData.nameHidden);
+    } else {
+      setNameHidden(false); // Default to false
     }
 
     loadProfile(userData._id || userData.id);
   }, [navigate]);
+
+  // Common medical conditions
+  const commonConditions = [
+    "Diabetes",
+    "Hypertension",
+    "Heart Disease",
+    "Prostate Cancer",
+    "Breast Cancer",
+    "Lung Cancer",
+    "Asthma",
+    "Arthritis",
+    "Depression",
+    "Anxiety",
+    "Chronic Pain",
+    "Migraine",
+    "Obesity",
+    "High Cholesterol",
+    "Thyroid Disorder",
+    "Sleep Apnea",
+    "COPD",
+    "Epilepsy",
+    "Parkinson's Disease",
+    "Alzheimer's Disease",
+    "Multiple Sclerosis",
+    "Crohn's Disease",
+    "IBD",
+    "Osteoporosis",
+    "Fibromyalgia",
+    "Lupus",
+    "Rheumatoid Arthritis",
+  ];
+
+  // Extract terms from ICD11 dataset for suggestions
+  const icd11Suggestions = useMemo(() => {
+    const termsSet = new Set();
+
+    if (Array.isArray(icd11Dataset)) {
+      icd11Dataset.forEach((item) => {
+        // Add display_name
+        if (item.display_name && typeof item.display_name === "string") {
+          const displayName = item.display_name.trim();
+          if (displayName) {
+            termsSet.add(displayName);
+          }
+        }
+
+        // Add patient_terms, but filter out ICD code patterns
+        if (Array.isArray(item.patient_terms)) {
+          item.patient_terms.forEach((term) => {
+            if (typeof term === "string") {
+              const trimmedTerm = term.trim();
+              if (!trimmedTerm) return;
+
+              // Filter out terms containing ICD code patterns
+              const lowerTerm = trimmedTerm.toLowerCase();
+              const hasIcdPattern =
+                lowerTerm.includes("icd11 code") ||
+                lowerTerm.includes("icd code") ||
+                /icd11\s+[a-z]{2}[0-9]{2}/i.test(trimmedTerm) ||
+                /icd\s+[a-z]{2}[0-9]{2}/i.test(trimmedTerm);
+
+              if (!hasIcdPattern) {
+                termsSet.add(trimmedTerm);
+              }
+            }
+          });
+        }
+      });
+    }
+
+    return Array.from(termsSet);
+  }, []);
+
+  function capitalizeMedicalCondition(condition) {
+    if (!condition || typeof condition !== "string") return condition;
+    condition = condition.trim();
+    if (!condition) return condition;
+
+    const words = condition.split(/\s+/);
+    const capitalizedWords = words.map((word) => {
+      if (!word) return word;
+      if (word.includes("'")) {
+        const parts = word.split("'");
+        return parts
+          .map((part) => {
+            if (!part) return part;
+            return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+          })
+          .join("'");
+      }
+      if (word.length <= 4 && word === word.toUpperCase()) {
+        return word;
+      }
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    });
+
+    return capitalizedWords.join(" ");
+  }
+
+  async function extractConditions(text) {
+    if (!text || text.length < 5) return;
+    setIsExtracting(true);
+    const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
+    try {
+      const res = await fetch(`${base}/api/ai/extract-conditions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      }).then((r) => r.json());
+      if (res.conditions?.length > 0) {
+        const capitalizedConditions = res.conditions.map(
+          capitalizeMedicalCondition
+        );
+        // Add to identified conditions (for display)
+        setIdentifiedConditions((prev) => {
+          const newConditions = capitalizedConditions.filter(
+            (c) => !prev.includes(c)
+          );
+          return [...prev, ...newConditions];
+        });
+        // Also add to selected conditions
+        setSelectedConditions((prev) => {
+          const newConditions = capitalizedConditions.filter(
+            (c) => !prev.includes(c)
+          );
+          return [...prev, ...newConditions];
+        });
+        setConditionInput("");
+        toast.success(`Identified ${capitalizedConditions.length} condition(s)`);
+      } else {
+        toast.error("Could not identify conditions from your description");
+      }
+    } catch (e) {
+      console.error("Condition extraction failed", e);
+      toast.error("Failed to extract conditions. Please try again.");
+    } finally {
+      setIsExtracting(false);
+    }
+  }
+
+  function toggleCondition(condition) {
+    setSelectedConditions((prev) => {
+      if (prev.includes(condition)) {
+        return prev.filter((c) => c !== condition);
+      } else {
+        return [...prev, condition];
+      }
+    });
+    // If removing, also remove from identified if it was there
+    if (selectedConditions.includes(condition)) {
+      setIdentifiedConditions((prev) => prev.filter((c) => c !== condition));
+    }
+  }
+
+  function handleConditionSubmit(value) {
+    if (value && value.trim()) {
+      const trimmed = value.trim();
+      // Check if it's a direct condition match
+      const exactMatch = commonConditions.find(
+        (c) => c.toLowerCase() === trimmed.toLowerCase()
+      );
+      if (exactMatch) {
+        const capitalized = capitalizeMedicalCondition(exactMatch);
+        if (capitalized && !selectedConditions.includes(capitalized)) {
+          setSelectedConditions((prev) => [...prev, capitalized]);
+          setConditionInput("");
+          setIdentifiedConditions((prev) => prev.filter((c) => c !== capitalized));
+        }
+      } else {
+        // Check if it looks like symptoms
+        const symptomKeywords = [
+          "pain",
+          "ache",
+          "pressure",
+          "high",
+          "low",
+          "difficulty",
+          "trouble",
+          "issue",
+          "problem",
+          "feeling",
+          "symptom",
+          "bp",
+          "blood pressure",
+          "breathing",
+          "chest",
+          "headache",
+        ];
+        const looksLikeSymptom =
+          symptomKeywords.some((keyword) =>
+            trimmed.toLowerCase().includes(keyword)
+          ) || trimmed.length > 15;
+
+        if (looksLikeSymptom) {
+          extractConditions(trimmed);
+        } else {
+          const capitalized = capitalizeMedicalCondition(trimmed);
+          if (capitalized && !selectedConditions.includes(capitalized)) {
+            setSelectedConditions((prev) => [...prev, capitalized]);
+            setConditionInput("");
+            setIdentifiedConditions((prev) => prev.filter((c) => c !== capitalized));
+          }
+        }
+      }
+    }
+  }
 
   async function loadProfile(userId) {
     try {
@@ -69,8 +289,9 @@ export default function EditProfile() {
           // Patient fields
           setCity(profileObj.patient.location?.city || "");
           setCountry(profileObj.patient.location?.country || "");
-          setConditions((profileObj.patient.conditions || []).join(", "));
+          setSelectedConditions(profileObj.patient.conditions || []);
           setGender(profileObj.patient.gender || "");
+          setAge(profileObj.patient.age?.toString() || "");
         } else if (profileObj.researcher) {
           // Researcher fields
           setCity(profileObj.researcher.location?.city || "");
@@ -81,6 +302,7 @@ export default function EditProfile() {
           setInterests((profileObj.researcher.interests || []).join(", "));
           setAvailable(profileObj.researcher.available || false);
           setGender(profileObj.researcher.gender || "");
+          setAge(profileObj.researcher.age?.toString() || "");
         }
       }
     } catch (error) {
@@ -91,79 +313,147 @@ export default function EditProfile() {
     }
   }
 
+  async function handlePictureUpload(file) {
+    if (!file) return;
+    
+    setUploadingPicture(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("type", "profile-picture");
+
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${base}/api/upload/profile-picture`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to upload picture");
+      }
+
+      const data = await response.json();
+      
+      // Update user picture
+      const userId = user._id || user.id;
+      const userUpdateResponse = await fetch(
+        `${base}/api/auth/update-user/${userId}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ picture: data.url }),
+        }
+      );
+
+      if (userUpdateResponse.ok) {
+        const userData = await userUpdateResponse.json();
+        const updatedUser = { ...user, ...userData.user, picture: data.url };
+        localStorage.setItem("user", JSON.stringify(updatedUser));
+        setUser(updatedUser);
+        window.dispatchEvent(new Event("login"));
+        toast.success("Profile picture updated!");
+      } else {
+        throw new Error("Failed to update user with new picture");
+      }
+    } catch (error) {
+      console.error("Error uploading picture:", error);
+      toast.error(error.message || "Failed to upload picture");
+      throw error; // Re-throw so component knows upload failed
+    } finally {
+      setUploadingPicture(false);
+    }
+  }
+
   async function handleSave() {
     if (!user?._id && !user?.id) {
       toast.error("Please sign in");
       return;
     }
 
+    // Validation: Name and conditions are mandatory
+    if (!username.trim()) {
+      toast.error("Full name is required");
+      return;
+    }
+
+    if (user.role === "patient" && selectedConditions.length === 0) {
+      toast.error("At least one medical condition is required");
+      return;
+    }
+
     setSaving(true);
     const userId = user._id || user.id;
 
-    // Store old profile signature before saving
-    const oldSignature = profile 
-      ? generateProfileSignature(
-          profile.patient?.conditions || profile.researcher?.interests || [],
-          profile.patient?.location || profile.researcher?.location
-        )
-      : '';
-
     try {
-      // Update username if changed
+      // Track if there are any changes
+      let hasUserChanges = false;
+      let hasProfileChanges = false;
+
+      // Check for user field changes
+      const userUpdateData = {};
       if (username && username !== user.username) {
-        const userUpdateResponse = await fetch(
-          `${base}/api/auth/update-user/${userId}`,
-          {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ username }),
-          }
-        );
-
-        if (!userUpdateResponse.ok) {
-          const errorData = await userUpdateResponse.json();
-          throw new Error(errorData.error || "Failed to update username");
-        }
-
-        const userData = await userUpdateResponse.json();
-        // Update local storage
-        const updatedUser = { ...user, username: userData.user.username };
-        localStorage.setItem("user", JSON.stringify(updatedUser));
-        setUser(updatedUser);
-        window.dispatchEvent(new Event("login")); // Update navbar
+        userUpdateData.username = username;
+        hasUserChanges = true;
+      }
+      // Handle comparison: treat empty string and undefined as the same
+      const currentHandle = user.handle || "";
+      const newHandle = handle.trim();
+      if (newHandle !== currentHandle) {
+        userUpdateData.handle = newHandle || undefined;
+        hasUserChanges = true;
+      }
+      if (nameHidden !== (user.nameHidden || false)) {
+        userUpdateData.nameHidden = nameHidden;
+        hasUserChanges = true;
       }
 
-      // Update profile
-      const profileData = {
-        role: user.role,
-      };
+      // Check for profile field changes
+      const profileObj = profile || {};
+      let profileData = { role: user.role };
 
       if (user.role === "patient") {
-        const conditionsArray = conditions
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean);
+        const conditionsArray = [...selectedConditions];
+        
+        const originalConditions = profileObj.patient?.conditions || [];
+        const originalCity = profileObj.patient?.location?.city || "";
+        const originalCountry = profileObj.patient?.location?.country || "";
+        const originalGender = profileObj.patient?.gender || "";
+        const originalAge = profileObj.patient?.age?.toString() || "";
+
+        const newCity = city.trim();
+        const newCountry = country.trim();
+        const newGender = gender.trim();
+        const newAge = age ? parseInt(age).toString() : "";
+
+        // Check if conditions changed (compare arrays)
+        const conditionsChanged = 
+          conditionsArray.length !== originalConditions.length ||
+          conditionsArray.some((c, i) => c !== originalConditions[i]);
+
+        // Check if any profile fields changed
+        if (
+          conditionsChanged ||
+          newCity !== originalCity ||
+          newCountry !== originalCountry ||
+          newGender !== originalGender ||
+          newAge !== originalAge
+        ) {
+          hasProfileChanges = true;
+        }
 
         profileData.patient = {
           conditions: conditionsArray,
           location: {
-            city: city.trim() || undefined,
-            country: country.trim() || undefined,
+            city: newCity || undefined,
+            country: newCountry || undefined,
           },
-          gender: gender.trim() || undefined,
+          gender: newGender || undefined,
+          age: age ? parseInt(age) : undefined,
         };
-
-        // Also update medicalInterests in User model
-        if (conditionsArray.length > 0) {
-          await fetch(`${base}/api/auth/update-profile`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              userId,
-              medicalInterests: conditionsArray,
-            }),
-          });
-        }
       } else if (user.role === "researcher") {
         const specialtiesArray = specialties
           .split(",")
@@ -173,6 +463,36 @@ export default function EditProfile() {
           .split(",")
           .map((s) => s.trim())
           .filter(Boolean);
+
+        const originalSpecialties = (profileObj.researcher?.specialties || []).join(", ");
+        const originalInterests = (profileObj.researcher?.interests || []).join(", ");
+        const originalOrcid = profileObj.researcher?.orcid || "";
+        const originalBio = profileObj.researcher?.bio || "";
+        const originalAvailable = profileObj.researcher?.available || false;
+        const originalCity = profileObj.researcher?.location?.city || "";
+        const originalCountry = profileObj.researcher?.location?.country || "";
+        const originalGender = profileObj.researcher?.gender || "";
+        const originalAge = profileObj.researcher?.age?.toString() || "";
+
+        const newCity = city.trim();
+        const newCountry = country.trim();
+        const newGender = gender.trim();
+        const newAge = age ? parseInt(age).toString() : "";
+
+        // Check if any profile fields changed
+        if (
+          specialties !== originalSpecialties ||
+          interests !== originalInterests ||
+          orcid.trim() !== originalOrcid ||
+          bio.trim() !== originalBio ||
+          available !== originalAvailable ||
+          newCity !== originalCity ||
+          newCountry !== originalCountry ||
+          newGender !== originalGender ||
+          newAge !== originalAge
+        ) {
+          hasProfileChanges = true;
+        }
 
         profileData.researcher = {
           specialties: specialtiesArray,
@@ -181,104 +501,126 @@ export default function EditProfile() {
           bio: bio.trim() || undefined,
           available,
           location: {
-            city: city.trim() || undefined,
-            country: country.trim() || undefined,
+            city: newCity || undefined,
+            country: newCountry || undefined,
           },
-          gender: gender.trim() || undefined,
+          gender: newGender || undefined,
+          age: age ? parseInt(age) : undefined,
         };
+      }
 
-        // Also update medicalInterests in User model (combined specialties + interests)
-        const medicalInterests = [...specialtiesArray, ...interestsArray];
-        if (medicalInterests.length > 0) {
-          await fetch(`${base}/api/auth/update-profile`, {
-            method: "POST",
+      // If no changes detected, show message and return
+      if (!hasUserChanges && !hasProfileChanges) {
+        toast.success("All changes are up to date!");
+        setSaving(false);
+        return;
+      }
+
+      // Update user fields if there are changes
+      if (hasUserChanges && Object.keys(userUpdateData).length > 0) {
+        const userUpdateResponse = await fetch(
+          `${base}/api/auth/update-user/${userId}`,
+          {
+            method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              userId,
-              medicalInterests,
-            }),
-          });
+            body: JSON.stringify(userUpdateData),
+          }
+        );
+
+        if (!userUpdateResponse.ok) {
+          const errorData = await userUpdateResponse.json();
+          throw new Error(errorData.error || "Failed to update user information");
         }
+
+        const userData = await userUpdateResponse.json();
+        // Update local storage with all user fields including handle
+        const updatedUser = { ...user, ...userData.user };
+        localStorage.setItem("user", JSON.stringify(updatedUser));
+        setUser(updatedUser);
+        // Update form state with the saved handle - handle can be empty string
+        if (userData.user.handle !== undefined && userData.user.handle !== null) {
+          setHandle(userData.user.handle);
+        } else {
+          setHandle(""); // Clear handle if it was removed
+        }
+        // Update nameHidden in form state
+        if (userData.user.nameHidden !== undefined) {
+          setNameHidden(userData.user.nameHidden);
+        }
+        window.dispatchEvent(new Event("login")); // Update navbar
       }
 
-      const profileResponse = await fetch(`${base}/api/profile/${userId}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-        body: JSON.stringify(profileData),
-      });
+      // Update profile if there are changes
+      if (hasProfileChanges) {
+        if (user.role === "patient") {
+          const conditionsArray = [...selectedConditions];
 
-      if (!profileResponse.ok) {
-        const errorData = await profileResponse.json();
-        throw new Error(errorData.error || "Failed to update profile");
-      }
+          // Also update medicalInterests in User model
+          if (conditionsArray.length > 0) {
+            await fetch(`${base}/api/auth/update-profile`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                userId,
+                medicalInterests: conditionsArray,
+              }),
+            });
+          }
+        } else if (user.role === "researcher") {
+          const specialtiesArray = specialties
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean);
+          const interestsArray = interests
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean);
 
-      // Calculate new profile signature
-      let newConditions = [];
-      let newLocation = null;
+          // Also update medicalInterests in User model (combined specialties + interests)
+          const medicalInterests = [...specialtiesArray, ...interestsArray];
+          if (medicalInterests.length > 0) {
+            await fetch(`${base}/api/auth/update-profile`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                userId,
+                medicalInterests,
+              }),
+            });
+          }
+        }
 
-      if (user.role === "patient") {
-        newConditions = conditions
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean);
-        newLocation = {
-          city: city.trim() || undefined,
-          country: country.trim() || undefined,
+        // Update profile in database
+        const profileResponse = await fetch(`${base}/api/profile/${userId}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+          body: JSON.stringify(profileData),
+        });
+
+        if (!profileResponse.ok) {
+          const errorData = await profileResponse.json();
+          throw new Error(errorData.error || "Failed to update profile");
+        }
+
+        // Update user object in localStorage with new medicalInterests
+        const updatedUserData = {
+          ...user,
+          medicalInterests: user.role === "patient" 
+            ? [...selectedConditions]
+            : [...specialties.split(",").map((s) => s.trim()).filter(Boolean), ...interests.split(",").map((s) => s.trim()).filter(Boolean)],
         };
-      } else if (user.role === "researcher") {
-        const specialtiesArray = specialties
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean);
-        const interestsArray = interests
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean);
-        newConditions = [...specialtiesArray, ...interestsArray];
-        newLocation = {
-          city: city.trim() || undefined,
-          country: country.trim() || undefined,
-        };
+        localStorage.setItem("user", JSON.stringify(updatedUserData));
+        setUser(updatedUserData);
       }
 
-      const newSignature = generateProfileSignature(newConditions, newLocation);
-
-      // Update profile context with new signature
-      updateProfileSignature(newConditions, newLocation);
-
-      // Update user object in localStorage with new medicalInterests
-      const updatedUserData = {
-        ...user,
-        medicalInterests: newConditions,
-      };
-      localStorage.setItem("user", JSON.stringify(updatedUserData));
-      setUser(updatedUserData);
-      
       // Trigger login event to update Navbar and other components
       window.dispatchEvent(new Event("login"));
 
-      // Only clear cache if profile actually changed
-      if (oldSignature !== newSignature) {
-        // Clear the backend cache so new recommendations are fetched
-        try {
-          await fetch(`${base}/api/recommendations/cache/${userId}`, {
-            method: "DELETE",
-            headers: {
-              Authorization: `Bearer ${localStorage.getItem("token")}`,
-            },
-          });
-          console.log("Backend cache cleared due to profile change");
-        } catch (cacheError) {
-          console.error("Error clearing cache:", cacheError);
-          // Don't fail the save if cache clear fails
-        }
-      }
-
       toast.success("Profile updated successfully!");
-      navigate(`/dashboard/${user.role}`);
+      // Don't redirect - stay on edit page
     } catch (error) {
       console.error("Error saving profile:", error);
       toast.error(error.message || "Failed to update profile");
@@ -290,291 +632,352 @@ export default function EditProfile() {
   if (loading) {
     return (
       <Layout>
-        <div className="relative min-h-screen">
-          <AnimatedBackground />
-          <div className="flex justify-center items-center min-h-screen relative z-10">
-            <div className="text-center">
-              <div className="w-16 h-16 border-4 border-indigo-200 rounded-full"></div>
-              <div className="absolute top-0 left-0 w-16 h-16 border-4 border-transparent border-t-indigo-600 rounded-full animate-spin"></div>
-              <p className="mt-6 text-indigo-700 font-medium">
-                Loading profile...
-              </p>
-            </div>
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-slate-700">Loading profile...</p>
           </div>
         </div>
       </Layout>
     );
   }
 
+  const currentPicture = user?.picture || user?.profilePicture || null;
+
   return (
-    <div className="min-h-screen pt-20">
-      {/* Header */}
-      <div className="border-b border-slate-200 bg-white">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => navigate(`/dashboard/${user?.role || "patient"}`)}
-              className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors text-slate-600 hover:text-slate-900"
+    <Layout>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50 to-slate-100 relative overflow-hidden">
+        <AnimatedBackground />
+        <div className="max-w-4xl mx-auto px-4 py-8 relative z-10">
+        <div className="text-center mb-8 animate-fade-in pt-15">
+          <h1 className="text-3xl md:text-5xl font-bold bg-gradient-to-r from-[#2F3C96] via-[#474F97] to-[#D0C4E2] bg-clip-text text-transparent mb-1">
+            <AuroraText
+              speed={2.5}
+              colors={["#2F3C96", "#474F97", "#757BB1", "#B8A5D5", "#D0C4E2"]}
             >
-              <ArrowLeft className="w-4 h-4" />
-            </button>
-            {/* Profile Avatar with First Letter */}
-            <div
-              className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-md shrink-0"
-              style={{
-                backgroundColor: "#2F3C96",
-                border: "2px solid rgba(47, 60, 150, 0.3)",
-              }}
+              Edit Profile
+            </AuroraText>
+          </h1>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6 space-y-6">
+          {/* Profile Picture Upload */}
+          <ProfilePictureUpload
+            currentPicture={currentPicture}
+            onUpload={handlePictureUpload}
+            uploading={uploadingPicture}
+          />
+
+          {/* Full Name - Mandatory */}
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">
+              Full Name <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="Enter your full name"
+              required
+            />
+          </div>
+
+          {/* Handle/Username */}
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">
+              Handle / Username
+            </label>
+            <input
+              type="text"
+              value={handle}
+              onChange={(e) => setHandle(e.target.value)}
+              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="e.g., @username"
+            />
+            <p className="text-xs text-slate-500 mt-1">
+              Your unique handle (optional)
+            </p>
+          </div>
+
+          {/* Hide Name Option */}
+          <div>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="nameHidden"
+                checked={nameHidden}
+                onChange={(e) => setNameHidden(e.target.checked)}
+                className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+              />
+              <label htmlFor="nameHidden" className="text-sm text-slate-700">
+                Hide my name from others
+              </label>
+            </div>
+            <p className="text-xs text-slate-500 mt-1 ml-6">
+              Only the username will be visible
+            </p>
+          </div>
+
+          {/* Age - Optional */}
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">
+              Age
+              <span className="ml-2 text-xs font-normal text-slate-500">
+                (Optional - helps improve search results for trials and publications)
+              </span>
+            </label>
+            <input
+              type="number"
+              value={age}
+              onChange={(e) => setAge(e.target.value)}
+              min="0"
+              max="120"
+              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="Enter your age"
+            />
+          </div>
+
+          {/* Gender/Sex - Optional */}
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">
+              Gender / Sex
+              <span className="ml-2 text-xs font-normal text-slate-500">
+                (Optional - helps improve search results for trials and publications)
+              </span>
+            </label>
+            <select
+              value={gender}
+              onChange={(e) => setGender(e.target.value)}
+              className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
-              {user?.username?.charAt(0)?.toUpperCase() || "U"}
+              <option value="">Select gender</option>
+              <option value="male">Male</option>
+              <option value="female">Female</option>
+              <option value="other">Other</option>
+              <option value="prefer-not-to-say">Prefer not to say</option>
+            </select>
+          </div>
+
+          {/* Location - Optional */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
+                City
+                <span className="ml-2 text-xs font-normal text-slate-500">
+                  (Optional - helps improve search results)
+                </span>
+              </label>
+              <input
+                type="text"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Enter city"
+              />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-slate-900">Edit Profile</h1>
-              <p className="text-xs text-slate-600 mt-0.5">
-                Update your profile information
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
+                Country
+                <span className="ml-2 text-xs font-normal text-slate-500">
+                  (Optional - helps improve search results)
+                </span>
+              </label>
+              <input
+                type="text"
+                value={country}
+                onChange={(e) => setCountry(e.target.value)}
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Enter country"
+              />
+            </div>
+          </div>
+
+          {/* Role-specific fields */}
+          {user?.role === "patient" ? (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <label className="block text-sm font-semibold text-slate-700">
+                  Your medical conditions/Symptoms <span className="text-red-500">*</span>
+                </label>
+                <div className="relative group">
+                  <Info
+                    size={16}
+                    className="text-slate-400 hover:text-slate-600 cursor-help transition-colors"
+                    onMouseEnter={() => setShowInfoTooltip(true)}
+                    onMouseLeave={() => setShowInfoTooltip(false)}
+                  />
+                  {showInfoTooltip && (
+                    <div className="absolute left-0 top-6 z-50 w-72 p-3 bg-white border border-slate-200 rounded-lg shadow-xl text-xs text-slate-700 pointer-events-none">
+                      <p className="font-semibold mb-2 text-slate-900">Enter symptoms in your own words</p>
+                      <p className="leading-relaxed">
+                        You can describe symptoms naturally, like <span className="font-medium">"I have high BP"</span> or <span className="font-medium">"chest pain"</span>. Our system will automatically identify the medical condition (e.g., <span className="font-medium">"Hypertension"</span> or <span className="font-medium">"Cardiac issues"</span>) and add it to your profile.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              {/* Search Input */}
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <SmartSearchInput
+                    value={conditionInput}
+                    onChange={setConditionInput}
+                    onSubmit={handleConditionSubmit}
+                    placeholder="Search or describe symptoms..."
+                    extraTerms={[
+                      ...commonConditions,
+                      ...SMART_SUGGESTION_KEYWORDS,
+                      ...icd11Suggestions,
+                    ]}
+                    maxSuggestions={8}
+                    autoSubmitOnSelect={true}
+                    inputClassName="w-full px-4 py-2 pr-10 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  {isExtracting && (
+                    <div className="absolute right-3 top-2.5 flex items-center gap-1">
+                      <Sparkles
+                        size={14}
+                        className="animate-pulse text-blue-600"
+                      />
+                    </div>
+                  )}
+                </div>
+                {conditionInput && conditionInput.trim().length >= 1 && (
+                  <button
+                    type="button"
+                    onClick={() => handleConditionSubmit(conditionInput)}
+                    disabled={isExtracting}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                  >
+                    Add
+                  </button>
+                )}
+              </div>
+
+              {/* Selected Conditions Chips */}
+              {selectedConditions.length > 0 && (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {selectedConditions.map((condition, idx) => {
+                    const isIdentified = identifiedConditions.includes(condition);
+                    return (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center gap-1 px-3 py-1 rounded-md text-sm font-medium bg-blue-50 text-blue-700 border border-blue-200"
+                      >
+                        {isIdentified && (
+                          <Sparkles
+                            size={12}
+                            className="text-blue-600"
+                          />
+                        )}
+                        {condition}
+                        <button
+                          type="button"
+                          onClick={() => toggleCondition(condition)}
+                          className="ml-1 hover:opacity-70 transition-opacity text-blue-600"
+                        >
+                          <X size={14} />
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Helper text */}
+              <p className="text-xs text-slate-500 flex items-center gap-1">
+                <Sparkles size={10} className="text-slate-400" />
+                You can describe symptoms if you're unsure of the condition...
               </p>
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-        <div className="space-y-4">
-          {/* Basic Information Section */}
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
-                <User className="w-4 h-4 text-blue-600" />
-              </div>
-              <h2 className="text-base font-semibold text-slate-900">
-                Basic Information
-              </h2>
-            </div>
-
-            <div className="space-y-3">
-              {/* Name */}
+          ) : (
+            <>
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Full Name
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Specialties <span className="text-red-500">*</span>
+                  <span className="ml-2 text-xs font-normal text-slate-500">
+                    (Comma-separated)
+                  </span>
                 </label>
-                <Input
+                <input
                   type="text"
-                  placeholder="Enter your full name"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-slate-900"
+                  value={specialties}
+                  onChange={(e) => setSpecialties(e.target.value)}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="e.g., Cardiology, Neurology"
+                  required
                 />
               </div>
-
-              {/* Location */}
               <div>
-                <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 mb-1.5">
-                  <MapPin className="w-3.5 h-3.5" />
-                  Location
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Research Interests <span className="text-red-500">*</span>
+                  <span className="ml-2 text-xs font-normal text-slate-500">
+                    (Comma-separated)
+                  </span>
                 </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <Input
-                    placeholder="City"
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
-                    className="px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-slate-900"
-                  />
-                  <Input
-                    placeholder="Country"
-                    value={country}
-                    onChange={(e) => setCountry(e.target.value)}
-                    className="px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-slate-900"
-                  />
-                </div>
+                <input
+                  type="text"
+                  value={interests}
+                  onChange={(e) => setInterests(e.target.value)}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="e.g., Clinical Trials, Drug Development"
+                  required
+                />
               </div>
-
-              {/* Gender */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Gender{" "}
-                  <span className="text-slate-400 font-normal">(Optional)</span>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  ORCID ID
                 </label>
-                <select
-                  value={gender}
-                  onChange={(e) => setGender(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-slate-900"
-                >
-                  <option value="">Select gender</option>
-                  <option>Male</option>
-                  <option>Female</option>
-                  <option>Non-binary</option>
-                  <option>Prefer not to say</option>
-                </select>
+                <input
+                  type="text"
+                  value={orcid}
+                  onChange={(e) => setOrcid(e.target.value)}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="0000-0000-0000-0000"
+                />
               </div>
-            </div>
-          </div>
-
-          {/* Patient-specific Section */}
-          {user?.role === "patient" && (
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center">
-                  <Briefcase className="w-4 h-4 text-green-600" />
-                </div>
-                <h2 className="text-base font-semibold text-slate-900">
-                  Health Profile
-                </h2>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Bio
+                </label>
+                <textarea
+                  value={bio}
+                  onChange={(e) => setBio(e.target.value)}
+                  rows={4}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Tell us about yourself..."
+                />
               </div>
-
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                    Diseases/Conditions of Interest
-                  </label>
-                  <Input
-                    type="text"
-                    placeholder="e.g., Diabetes, Heart Disease, Cancer"
-                    value={conditions}
-                    onChange={(e) => setConditions(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-slate-900"
-                  />
-                  <p className="text-xs text-slate-500 mt-1">
-                    Separate multiple conditions with commas
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Researcher-specific Section */}
-          {user?.role === "researcher" && (
-            <>
-              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5">
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center">
-                    <FileText className="w-4 h-4 text-purple-600" />
-                  </div>
-                  <h2 className="text-base font-semibold text-slate-900">
-                    Research Profile
-                  </h2>
-                </div>
-
-                <div className="space-y-3">
-                  {/* ORCID */}
-                  <div>
-                    <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 mb-1.5">
-                      <LinkIcon className="w-3.5 h-3.5" />
-                      ORCID ID{" "}
-                      <span className="text-slate-400 text-xs font-normal">
-                        (Optional)
-                      </span>
-                    </label>
-                    <Input
-                      type="text"
-                      placeholder="e.g., 0000-0000-0000-0000"
-                      value={orcid}
-                      onChange={(e) => setOrcid(e.target.value)}
-                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-slate-900"
-                    />
-                  </div>
-
-                  {/* Specialties */}
-                  <div>
-                    <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 mb-1.5">
-                      <Briefcase className="w-3.5 h-3.5" />
-                      Specialties
-                    </label>
-                    <Input
-                      type="text"
-                      placeholder="e.g., Oncology, Neurology, Cardiology"
-                      value={specialties}
-                      onChange={(e) => setSpecialties(e.target.value)}
-                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-slate-900"
-                    />
-                    <p className="text-xs text-slate-500 mt-1">
-                      Separate multiple specialties with commas
-                    </p>
-                  </div>
-
-                  {/* Research Interests */}
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                      Research Interests
-                    </label>
-                    <Input
-                      type="text"
-                      placeholder="e.g., Immunotherapy, Clinical AI, Drug Discovery"
-                      value={interests}
-                      onChange={(e) => setInterests(e.target.value)}
-                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-slate-900"
-                    />
-                    <p className="text-xs text-slate-500 mt-1">
-                      Separate multiple interests with commas
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Biography & Availability */}
-              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5">
-                <h2 className="text-base font-semibold text-slate-900 mb-4">
-                  Additional Information
-                </h2>
-
-                <div className="space-y-3">
-                  {/* Biography */}
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                      Biography{" "}
-                      <span className="text-slate-400 text-xs font-normal">
-                        (Optional)
-                      </span>
-                    </label>
-                    <textarea
-                      placeholder="Tell us about your research background and expertise..."
-                      value={bio}
-                      onChange={(e) => setBio(e.target.value)}
-                      rows={3}
-                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-slate-900 resize-none"
-                    />
-                  </div>
-
-                  {/* Availability */}
-                  <div className="flex items-center gap-2 pt-1">
-                    <input
-                      type="checkbox"
-                      id="available"
-                      checked={available}
-                      onChange={(e) => setAvailable(e.target.checked)}
-                      className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
-                    />
-                    <label
-                      htmlFor="available"
-                      className="text-xs font-medium text-slate-700 cursor-pointer"
-                    >
-                      Available for research meetings and collaboration
-                    </label>
-                  </div>
-                </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="available"
+                  checked={available}
+                  onChange={(e) => setAvailable(e.target.checked)}
+                  className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                />
+                <label htmlFor="available" className="text-sm text-slate-700">
+                  Available for collaboration
+                </label>
               </div>
             </>
           )}
 
-          {/* Action Buttons */}
-          <div className="flex gap-3 pt-2">
-            <Button
-              onClick={() => navigate(`/dashboard/${user?.role || "patient"}`)}
-              className="flex-1 text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
-            >
-              Cancel
-            </Button>
-            <Button
+          {/* Save Button */}
+          <div className="pt-4 border-t border-slate-200">
+            <button
               onClick={handleSave}
               disabled={saving}
-              className="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full md:w-auto px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Save className="w-4 h-4" />
               {saving ? "Saving..." : "Save Changes"}
-            </Button>
+            </button>
           </div>
         </div>
+        </div>
       </div>
-    </div>
+    </Layout>
   );
 }

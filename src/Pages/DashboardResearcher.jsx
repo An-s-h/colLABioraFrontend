@@ -132,6 +132,7 @@ export default function DashboardResearcher() {
   const [orcidStats, setOrcidStats] = useState(null);
   const [loadingOrcidStats, setLoadingOrcidStats] = useState(false);
   const [orcidError, setOrcidError] = useState(null);
+  const [imageError, setImageError] = useState(false);
   const navigate = useNavigate();
   const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
   const { updateProfileSignature, markDataFetched, generateProfileSignature } =
@@ -316,6 +317,7 @@ export default function DashboardResearcher() {
     }
 
     setUser(userData);
+    setImageError(false); // Reset image error when user changes
     setLoading(true);
 
     // Listen for login events to refresh user data
@@ -1651,15 +1653,27 @@ export default function DashboardResearcher() {
             <div className="relative z-10 flex items-center justify-between gap-3 sm:gap-4 p-4 sm:p-5">
               <div className="flex items-center gap-3 sm:gap-4 flex-1 min-w-0">
                 {/* Avatar */}
-                <div
-                  className="w-10 h-10 sm:w-12 sm:h-12 backdrop-blur-sm rounded-full flex items-center justify-center text-white font-bold text-lg sm:text-xl shadow-lg ring-2 shrink-0"
-                  style={{
-                    backgroundColor: "#2F3C96",
-                    ringColor: "rgba(47, 60, 150, 0.5)",
-                  }}
-                >
-                  {user?.username?.charAt(0)?.toUpperCase() || "R"}
-                </div>
+                {user?.picture && !imageError ? (
+                  <img
+                    src={user.picture}
+                    alt={user?.username || "Researcher"}
+                    className="w-10 h-10 sm:w-12 sm:h-12 rounded-full object-cover shadow-lg ring-2 shrink-0 backdrop-blur-sm"
+                    style={{
+                      ringColor: "rgba(47, 60, 150, 0.5)",
+                    }}
+                    onError={() => setImageError(true)}
+                  />
+                ) : (
+                  <div
+                    className="w-10 h-10 sm:w-12 sm:h-12 backdrop-blur-sm rounded-full flex items-center justify-center text-white font-bold text-lg sm:text-xl shadow-lg ring-2 shrink-0"
+                    style={{
+                      backgroundColor: "#2F3C96",
+                      ringColor: "rgba(47, 60, 150, 0.5)",
+                    }}
+                  >
+                    {user?.username?.charAt(0)?.toUpperCase() || "R"}
+                  </div>
+                )}
 
                 {/* Profile Info - Simplified on Mobile */}
                 <div className="flex-1 min-w-0 sm:hidden">

@@ -140,6 +140,7 @@ export default function DashboardPatient() {
   const [sendingVerificationEmail, setSendingVerificationEmail] =
     useState(false);
   const [verifyEmailModalOpen, setVerifyEmailModalOpen] = useState(false);
+  const [imageError, setImageError] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
@@ -187,6 +188,7 @@ export default function DashboardPatient() {
     }
 
     setUser(userData);
+    setImageError(false); // Reset image error when user changes
     setLoading(true);
 
     // Listen for login events to refresh user data (same tab)
@@ -1917,15 +1919,27 @@ export default function DashboardPatient() {
             <div className="relative z-10 flex items-center justify-between gap-4 p-5 sm:p-4">
               <div className="flex items-center gap-4 flex-1 min-w-0">
                 {/* Avatar */}
-                <div
-                  className="w-12 h-12 backdrop-blur-sm rounded-full flex items-center justify-center text-white font-bold text-xl shadow-lg ring-2 shrink-0"
-                  style={{
-                    backgroundColor: "#2F3C96",
-                    ringColor: "rgba(47, 60, 150, 0.5)",
-                  }}
-                >
-                  {user?.username?.charAt(0)?.toUpperCase() || "U"}
-                </div>
+                {user?.picture && !imageError ? (
+                  <img
+                    src={user.picture}
+                    alt={user?.username || "User"}
+                    className="w-12 h-12 rounded-full object-cover shadow-lg ring-2 shrink-0 backdrop-blur-sm"
+                    style={{
+                      ringColor: "rgba(47, 60, 150, 0.5)",
+                    }}
+                    onError={() => setImageError(true)}
+                  />
+                ) : (
+                  <div
+                    className="w-12 h-12 backdrop-blur-sm rounded-full flex items-center justify-center text-white font-bold text-xl shadow-lg ring-2 shrink-0"
+                    style={{
+                      backgroundColor: "#2F3C96",
+                      ringColor: "rgba(47, 60, 150, 0.5)",
+                    }}
+                  >
+                    {user?.username?.charAt(0)?.toUpperCase() || "U"}
+                  </div>
+                )}
 
                 {/* Profile Info - Simplified on Mobile */}
                 <div className="flex-1 min-w-0 sm:hidden">
@@ -2263,7 +2277,7 @@ export default function DashboardPatient() {
                   e.currentTarget.style.borderColor =
                     "rgba(208, 196, 226, 0.3)";
                 }}
-                onClick={() => navigate("/insights?tab=upcoming-meetings")}
+                onClick={() => navigate("/notifications?tab=upcoming-meetings")}
               >
                 <Calendar className="w-4 h-4" style={{ color: "#2F3C96" }} />
                 <div className="flex flex-col">
@@ -2300,7 +2314,7 @@ export default function DashboardPatient() {
                   e.currentTarget.style.borderColor =
                     "rgba(208, 196, 226, 0.3)";
                 }}
-                onClick={() => navigate("/insights?tab=activity")}
+                onClick={() => navigate("/notifications?tab=activity")}
               >
                 <Bell className="w-4 h-4" style={{ color: "#2F3C96" }} />
                 <div className="flex flex-col">
@@ -2337,7 +2351,7 @@ export default function DashboardPatient() {
                   e.currentTarget.style.borderColor =
                     "rgba(208, 196, 226, 0.3)";
                 }}
-                onClick={() => navigate("/insights?tab=upcoming-meetings")}
+                onClick={() => navigate("/notifications?tab=upcoming-meetings")}
               >
                 <Calendar className="w-4 h-4" style={{ color: "#2F3C96" }} />
                 <div className="flex flex-col">
