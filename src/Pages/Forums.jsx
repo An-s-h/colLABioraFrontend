@@ -71,9 +71,9 @@ const getCommunityIcon = (slug, name) => {
 };
 
 // Community Icon Component with monochromatic styling
-const CommunityIcon = ({ community, size = "1.125rem" }) => {
+const CommunityIcon = ({ community, size = "1.125rem", style = {} }) => {
   const IconComponent = getCommunityIcon(community?.slug, community?.name);
-  const iconColor = community?.color || "#2F3C96";
+  const iconColor = style.color || community?.color || "#2F3C96";
 
   return (
     <IconComponent
@@ -82,6 +82,7 @@ const CommunityIcon = ({ community, size = "1.125rem" }) => {
         color: iconColor,
         width: size,
         height: size,
+        ...style,
       }}
       stroke={1.5}
     />
@@ -103,6 +104,18 @@ const dedupeCommunities = (list = []) => {
 
   return unique;
 };
+
+// Mandatory Tags/Keywords for posts
+const MANDATORY_TAGS = [
+  "Research Update",
+  "Clinical Trials",
+  "Treatment Mechanisms",
+  "Side Effects (Educational)",
+  "Biomarkers & Testing",
+  "Lifestyle & Supportive Care (Non-medical advice)",
+  "Emerging Therapies",
+  "General Understanding",
+];
 
 // Default condition tags using patient-friendly taxonomy
 const DEFAULT_CONDITION_TAGS = {
@@ -253,28 +266,15 @@ export default function Forums() {
   const [followingIds, setFollowingIds] = useState(new Set());
   const [followingLoading, setFollowingLoading] = useState(new Set());
   const [searchQuery, setSearchQuery] = useState("");
+  const [viewMode, setViewMode] = useState("posts"); // "posts" or "communities"
   const [activeTab, setActiveTab] = useState("all"); // all, following, forYou, involving
   const [sortBy, setSortBy] = useState("recent"); // recent, popular
   const [hoveredCommunity, setHoveredCommunity] = useState(null);
   const [isExploreCollapsed, setIsExploreCollapsed] = useState(true);
   const [mobileCommunityId, setMobileCommunityId] = useState("");
-  const [selectedConditionTag, setSelectedConditionTag] = useState("All");
+  const [selectedConditionTag, setSelectedConditionTag] = useState("All"); // Now used for tag filtering
 
   const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
-
-  const conditionTagOptions = useMemo(
-    () => buildConditionTags(selectedCommunity, threads),
-    [selectedCommunity, threads]
-  );
-
-  const modalConditionOptions = useMemo(
-    () =>
-      buildConditionTags(
-        modalSelectedCommunity || selectedCommunity,
-        threads
-      ).filter((tag) => tag !== "All"),
-    [modalSelectedCommunity, selectedCommunity, threads]
-  );
 
   useEffect(() => {
     const userData = JSON.parse(localStorage.getItem("user") || "{}");
@@ -312,11 +312,13 @@ export default function Forums() {
     setMobileCommunityId(selectedCommunity?._id || "");
   }, [selectedCommunity]);
 
-  const threadMatchesSelectedCondition = (thread, conditionTag) => {
-    if (!conditionTag || conditionTag === "All") return true;
-    return (thread?.conditions || []).some(
-      (condition) =>
-        condition?.toLowerCase() === conditionTag.toLowerCase()
+  const threadMatchesSelectedTag = (thread, selectedTag) => {
+    if (!selectedTag || selectedTag === "All") return true;
+    // Check both tags and conditions for backward compatibility
+    const threadTags = thread?.tags || [];
+    const threadConditions = thread?.conditions || [];
+    return [...threadTags, ...threadConditions].some(
+      (tag) => tag?.toLowerCase() === selectedTag.toLowerCase()
     );
   };
 
@@ -475,9 +477,7 @@ export default function Forums() {
     try {
       const params = new URLSearchParams();
       params.set("sort", sortBy);
-      if (selectedConditionTag && selectedConditionTag !== "All") {
-        params.set("condition", selectedConditionTag);
-      }
+      // Tag filtering is done client-side now
 
       const response = await fetch(
         `${base}/api/communities/${
@@ -490,7 +490,7 @@ export default function Forums() {
       const fetchedThreads = data.threads || [];
       setThreads(
         fetchedThreads.filter((thread) =>
-          threadMatchesSelectedCondition(thread, selectedConditionTag)
+          threadMatchesSelectedTag(thread, selectedConditionTag)
         )
       );
     } catch (error) {
@@ -508,9 +508,7 @@ export default function Forums() {
       const params = new URLSearchParams();
       params.set("sort", sortBy);
       params.set("subcategoryId", selectedSubcategory._id);
-      if (selectedConditionTag && selectedConditionTag !== "All") {
-        params.set("condition", selectedConditionTag);
-      }
+      // Tag filtering is done client-side now
 
       // Filter threads client-side by subcategory for now
       // In production, add server-side filtering
@@ -529,7 +527,7 @@ export default function Forums() {
           thread.subcategoryId === selectedSubcategory._id
       );
       const conditioned = filteredThreads.filter((thread) =>
-        threadMatchesSelectedCondition(thread, selectedConditionTag)
+        threadMatchesSelectedTag(thread, selectedConditionTag)
       );
       setThreads(conditioned);
     } catch (error) {
@@ -972,6 +970,15 @@ export default function Forums() {
       toast.error("Please fill in both title and body");
       return;
     }
+    
+    // Validate that at least one mandatory tag is selected
+    const selectedMandatoryTags = newThreadTags.filter(tag => 
+      MANDATORY_TAGS.includes(tag)
+    );
+    if (selectedMandatoryTags.length === 0) {
+      toast.error("Please select at least one tag/keyword from the mandatory list");
+      return;
+    }
 
     try {
       const response = await fetch(
@@ -986,7 +993,7 @@ export default function Forums() {
             body: newThreadBody,
             subcategoryId: newThreadSubcategory?._id || null,
             tags: newThreadTags || [],
-            conditions: newThreadConditions || [],
+            conditions: [], // No longer using conditions, only mandatory tags
           }),
         }
       );
@@ -1147,22 +1154,38 @@ export default function Forums() {
 
   const sortedDisplayedCommunities = useMemo(() => {
     const list = [...displayedCommunities];
-    // Official first, then by member count (desc), then name (asc)
+    
+    // Official communities first in both cases
     list.sort((a, b) => {
       const aOfficial = a?.isOfficial ? 1 : 0;
       const bOfficial = b?.isOfficial ? 1 : 0;
       if (aOfficial !== bOfficial) return bOfficial - aOfficial;
 
-      const aMembers = Number(a?.memberCount || 0);
-      const bMembers = Number(b?.memberCount || 0);
-      if (aMembers !== bMembers) return bMembers - aMembers;
+      // Then sort by selected option (recent or popular)
+      if (sortBy === "popular") {
+        // Popular: Sort by member count (descending)
+        const aMembers = Number(a?.memberCount || 0);
+        const bMembers = Number(b?.memberCount || 0);
+        if (aMembers !== bMembers) return bMembers - aMembers;
+      } else {
+        // Recent: Sort by creation date (newest first) if available, otherwise by member count
+        const aDate = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bDate = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
+        if (aDate !== bDate) return bDate - aDate;
+        
+        // Fallback to member count if dates are equal or not available
+        const aMembers = Number(a?.memberCount || 0);
+        const bMembers = Number(b?.memberCount || 0);
+        if (aMembers !== bMembers) return bMembers - aMembers;
+      }
 
+      // Finally, sort alphabetically by name
       return String(a?.name || "").localeCompare(String(b?.name || ""), undefined, {
         sensitivity: "base",
       });
     });
     return list;
-  }, [displayedCommunities]);
+  }, [displayedCommunities, sortBy]);
 
   const groupedMobileCommunities = useMemo(() => {
     const mine = [];
@@ -1433,366 +1456,309 @@ export default function Forums() {
               </p>
             </div>
 
-            {/* Unified Control Bar - Layer 1: Global Controls */}
+            {/* Posts/Communities Tabs - HealthUnlocked Style */}
             <div className="max-w-7xl mx-auto mb-6">
-              <div className="bg-white rounded-xl border border-slate-200 p-5 flex items-center gap-3 flex-wrap shadow-lg animate-fade-in relative overflow-hidden">
-                <BorderBeam
-                  duration={10}
-                  size={100}
-                  className="from-transparent via-[#2F3C96] to-transparent"
-                />
-                <BorderBeam
-                  duration={10}
-                  size={300}
-                  borderWidth={3}
-                  className="from-transparent via-[#D0C4E2] to-transparent"
-                />
-                {/* Search */}
-                <div className="relative flex-1 min-w-[200px]">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#787878]" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => {
-                      setSearchQuery(e.target.value);
-                      // Search will trigger automatically via useEffect with debounce
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        searchThreads();
-                      }
-                    }}
-                    placeholder="Search discussions..."
-                    className="w-full pl-12 pr-4 py-3 rounded-lg border border-[#E8E8E8] bg-[#F5F5F5] text-base text-[#484848] placeholder-[#787878] focus:outline-none focus:ring-2 focus:ring-[#2F3C96]/20 focus:border-[#2F3C96] transition-all"
-                  />
-                  {searchQuery && (
-                    <button
-                      onClick={() => {
-                        setSearchQuery("");
-                        if (selectedCommunity) loadThreads();
-                        else loadAllThreads();
-                      }}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-[#787878] hover:text-[#2F3C96] transition-colors"
-                    >
-                      <X className="w-5 h-5" />
-                    </button>
-                  )}
-                </div>
-
-                {/* Divider */}
-                <div className="w-px h-10 bg-[#E8E8E8]" />
-
-                {/* Filter Dropdown */}
-                <div className="w-40 shrink-0">
-                  <CustomSelect
-                    value={activeTab}
-                    onChange={(value) => {
-                      setActiveTab(value);
-                      setSelectedCommunity(null);
-                    }}
-                    options={[
-                      { value: "all", label: "All" },
-                      { value: "following", label: "Following" },
-                      { value: "forYou", label: "For You" },
-                      { value: "involving", label: "Your Posts" },
-                    ]}
-                    placeholder="Filter..."
-                    className="w-full"
-                  />
-                </div>
-
-                {/* Divider */}
-                <div className="w-px h-10 bg-[#E8E8E8]" />
-
-                {/* Sort Options - Segmented */}
-                <div className="flex items-center gap-0 bg-[#F5F5F5] rounded-lg p-1 shrink-0 border border-[#E8E8E8]">
-                  {["recent", "popular"].map((sort, idx) => (
-                    <button
-                      key={sort}
-                      onClick={() => setSortBy(sort)}
-                      className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                        sortBy === sort
-                          ? "bg-white text-[#2F3C96] shadow-sm"
-                          : "text-[#787878] hover:text-[#484848]"
-                      } ${idx === 0 ? "rounded-l-md" : ""} ${
-                        idx === 2 ? "rounded-r-md" : ""
-                      }`}
-                    >
-                      {sort.charAt(0).toUpperCase() + sort.slice(1)}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Mobile Community Dropdown */}
-                <div className="lg:hidden w-full sm:w-72">
-                  <CustomSelect
-                    value={mobileCommunityId}
-                    onChange={handleMobileCommunityChange}
-                    options={mobileCommunityOptions}
-                    placeholder="All communities"
-                    disabled={
-                      loadingCommunities ||
-                      sortedDisplayedCommunities.length === 0
-                    }
-                    className="w-full text-sm"
-                  />
-                </div>
+              <div className="flex items-center gap-0 border-b border-[#E8E8E8]">
+                <button
+                  onClick={() => setViewMode("posts")}
+                  className={`px-6 py-3 font-semibold text-sm transition-all relative ${
+                    viewMode === "posts"
+                      ? "text-[#2F3C96] border-b-2 border-[#2F3C96]"
+                      : "text-[#787878] hover:text-[#484848]"
+                  }`}
+                >
+                  Posts
+                </button>
+                <button
+                  onClick={() => setViewMode("communities")}
+                  className={`px-6 py-3 font-semibold text-sm transition-all relative ${
+                    viewMode === "communities"
+                      ? "text-[#2F3C96] border-b-2 border-[#2F3C96]"
+                      : "text-[#787878] hover:text-[#484848]"
+                  }`}
+                >
+                  Communities
+                </button>
               </div>
             </div>
 
-            {/* Main Content - Layer 2: Navigation, Layer 3: Content */}
-            <div className="grid lg:grid-cols-12 gap-6">
-              {/* Communities Sidebar - Desktop - Layer 2: Navigation */}
-              <div className="hidden lg:block lg:col-span-3">
-                <div className="bg-white rounded-xl border border-[#E8E8E8] overflow-hidden sticky top-24 shadow-sm">
-                  <div className="p-4 border-b border-[#E8E8E8]">
-                    <h2 className="font-semibold text-[#2F3C96] text-sm">
-                      Communities
-                    </h2>
+            {/* Unified Control Bar - HealthUnlocked Style */}
+            {viewMode === "posts" && (
+              <div className="max-w-7xl mx-auto mb-6">
+                <div className="bg-white rounded-lg border border-[#E8E8E8] p-4 flex items-center gap-4 flex-wrap shadow-sm">
+                  {/* Search */}
+                  <div className="relative flex-1 min-w-[200px]">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#787878]" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => {
+                        setSearchQuery(e.target.value);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          searchThreads();
+                        }
+                      }}
+                      placeholder="Search discussions..."
+                      className="w-full pl-10 pr-10 py-2.5 rounded-md border border-[#E8E8E8] bg-white text-sm text-[#484848] placeholder-[#787878] focus:outline-none focus:ring-2 focus:ring-[#2F3C96]/20 focus:border-[#2F3C96] transition-all"
+                    />
+                    {searchQuery && (
+                      <button
+                        onClick={() => {
+                          setSearchQuery("");
+                          if (selectedCommunity) loadThreads();
+                          else loadAllThreads();
+                        }}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[#787878] hover:text-[#484848] transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
 
-                  <div className="max-h-[60vh] overflow-y-auto hide-scrollbar">
-                    {loadingCommunities ? (
-                      <div className="flex items-center justify-center py-12">
-                        <Loader2 className="w-5 h-5 text-[#2F3C96] spinner" />
-                      </div>
-                    ) : displayedCommunities.length > 0 ? (
-                      <div>
-                        {/* My Communities Section */}
-                        {displayedCommunities.filter((c) =>
-                          followingIds.has(c._id)
-                        ).length > 0 && (
-                          <div className="p-3 border-b border-[#F5F5F5]">
-                            <div className="flex items-center gap-2 mb-2 px-2">
-                              <Star className="w-3.5 h-3.5 text-[#787878]" />
-                              <span className="text-xs font-semibold text-[#787878] uppercase tracking-wide">
-                                My Communities
-                              </span>
-                            </div>
-                            <div className="space-y-0.5">
-                              {displayedCommunities
-                                .filter((c) => followingIds.has(c._id))
-                                .map((community) => (
-                                  <button
-                                    key={community._id}
-                                    onMouseEnter={() =>
-                                      setHoveredCommunity(community._id)
-                                    }
-                                    onMouseLeave={() =>
-                                      setHoveredCommunity(null)
-                                    }
-                                    onClick={() => {
-                                      setSelectedCommunity(
-                                        selectedCommunity?._id === community._id
-                                          ? null
-                                          : community
-                                      );
-                                    }}
-                                    className={`w-full p-2.5 text-left rounded-lg transition-all group ${
-                                      selectedCommunity?._id === community._id
-                                        ? "bg-[#2F3C96]/5 border-l-2 border-[#2F3C96]"
-                                        : "hover:bg-[#F5F5F5]"
-                                    }`}
-                                  >
-                                    <div className="flex items-center gap-2.5">
-                                      <div
-                                        className="w-7 h-7 rounded-lg flex items-center justify-center text-sm shrink-0"
-                                        style={{
-                                          backgroundColor: `${community.color}15`,
-                                        }}
-                                      >
-                                        <CommunityIcon
-                                          community={community}
-                                          size="1rem"
-                                        />
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-1.5">
-                                          <h3 className="font-medium text-[#2F3C96] text-sm truncate">
-                                            {community.name}
-                                          </h3>
-                                          {community.isOfficial && (
-                                            <CheckCircle2 className="w-3 h-3 text-[#2F3C96] shrink-0" />
-                                          )}
-                                        </div>
-                                        <div className="text-xs text-[#787878] mt-0.5">
-                                          {community.memberCount?.toLocaleString() ||
-                                            0}{" "}
-                                          members
-                                        </div>
-                                      </div>
-                                      {(hoveredCommunity === community._id ||
-                                        selectedCommunity?._id ===
-                                          community._id) && (
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            toggleFollow(community._id);
-                                          }}
-                                          disabled={followingLoading.has(
-                                            community._id
-                                          )}
-                                          className={`shrink-0 p-1 rounded text-xs transition-all ${
-                                            followingIds.has(community._id)
-                                              ? "text-[#2F3C96] hover:bg-[#2F3C96]/10"
-                                              : "text-[#787878] hover:text-[#2F3C96]"
-                                          }`}
-                                        >
-                                          {followingLoading.has(
-                                            community._id
-                                          ) ? (
-                                            <Loader2 className="w-3 h-3 spinner" />
-                                          ) : followingIds.has(
-                                              community._id
-                                            ) ? (
-                                            <UserCheck className="w-3.5 h-3.5" />
-                                          ) : (
-                                            <Plus className="w-3.5 h-3.5" />
-                                          )}
-                                        </button>
-                                      )}
-                                    </div>
-                                  </button>
-                                ))}
-                            </div>
-                          </div>
-                        )}
+                  {/* Filter Dropdown */}
+                  <div className="w-36 shrink-0">
+                    <CustomSelect
+                      value={activeTab}
+                      onChange={(value) => {
+                        setActiveTab(value);
+                        setSelectedCommunity(null);
+                      }}
+                      options={[
+                        { value: "all", label: "All" },
+                        { value: "following", label: "Following" },
+                        { value: "forYou", label: "For You" },
+                        { value: "involving", label: "Your Posts" },
+                      ]}
+                      placeholder="Filter..."
+                      className="w-full"
+                    />
+                  </div>
 
-                        {/* Explore Section */}
-                        {displayedCommunities.filter(
-                          (c) => !followingIds.has(c._id)
-                        ).length > 0 && (
-                          <div className="p-3">
-                            <button
-                              onClick={() =>
-                                setIsExploreCollapsed(!isExploreCollapsed)
-                              }
-                              className="flex items-center justify-between w-full gap-2 mb-2 px-2 hover:bg-[#F5F5F5] rounded-lg py-1 transition-colors group"
-                            >
-                              <div className="flex items-center gap-2">
-                                <Compass className="w-3.5 h-3.5 text-[#787878]" />
-                                <span className="text-xs font-semibold text-[#787878] uppercase tracking-wide">
-                                  Explore
-                                </span>
-                              </div>
-                              <ChevronDown
-                                className={`w-3.5 h-3.5 text-[#787878] transition-transform ${
-                                  isExploreCollapsed ? "" : "rotate-180"
-                                }`}
-                              />
-                            </button>
-                            {!isExploreCollapsed && (
-                              <div className="space-y-0.5">
-                                {displayedCommunities
-                                  .filter((c) => !followingIds.has(c._id))
-                                  .map((community) => (
-                                    <button
-                                      key={community._id}
-                                      onMouseEnter={() =>
-                                        setHoveredCommunity(community._id)
-                                      }
-                                      onMouseLeave={() =>
-                                        setHoveredCommunity(null)
-                                      }
-                                      onClick={() => {
-                                        setSelectedCommunity(
-                                          selectedCommunity?._id ===
-                                            community._id
-                                            ? null
-                                            : community
-                                        );
-                                      }}
-                                      className={`w-full p-2.5 text-left rounded-lg transition-all group ${
-                                        selectedCommunity?._id === community._id
-                                          ? "bg-[#2F3C96]/5 border-l-2 border-[#2F3C96]"
-                                          : "hover:bg-[#F5F5F5]"
-                                      }`}
-                                    >
-                                      <div className="flex items-center gap-2.5">
-                                        <div
-                                          className="w-7 h-7 rounded-lg flex items-center justify-center text-sm shrink-0"
-                                          style={{
-                                            backgroundColor: `${community.color}15`,
-                                          }}
-                                        >
-                                          <CommunityIcon
-                                            community={community}
-                                            size="1rem"
-                                          />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                          <div className="flex items-center gap-1.5">
-                                            <h3 className="font-medium text-[#2F3C96] text-sm truncate">
-                                              {community.name}
-                                            </h3>
-                                            {community.isOfficial && (
-                                              <CheckCircle2 className="w-3 h-3 text-[#2F3C96] shrink-0" />
-                                            )}
-                                          </div>
-                                          {(hoveredCommunity ===
-                                            community._id ||
-                                            selectedCommunity?._id ===
-                                              community._id) && (
-                                            <div className="text-xs text-[#787878] mt-0.5">
-                                              {community.memberCount?.toLocaleString() ||
-                                                0}{" "}
-                                              members
-                                            </div>
-                                          )}
-                                        </div>
-                                        {(hoveredCommunity === community._id ||
-                                          selectedCommunity?._id ===
-                                            community._id) && (
-                                          <button
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              toggleFollow(community._id);
-                                            }}
-                                            disabled={followingLoading.has(
-                                              community._id
-                                            )}
-                                            className={`shrink-0 p-1 rounded text-xs transition-all ${
-                                              followingIds.has(community._id)
-                                                ? "text-[#2F3C96] hover:bg-[#2F3C96]/10"
-                                                : "text-[#787878] hover:text-[#2F3C96]"
-                                            }`}
-                                          >
-                                            {followingLoading.has(
-                                              community._id
-                                            ) ? (
-                                              <Loader2 className="w-3 h-3 spinner" />
-                                            ) : followingIds.has(
-                                                community._id
-                                              ) ? (
-                                              <UserCheck className="w-3.5 h-3.5" />
-                                            ) : (
-                                              <Plus className="w-3.5 h-3.5" />
-                                            )}
-                                          </button>
-                                        )}
-                                      </div>
-                                    </button>
-                                  ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="text-center py-8 px-4">
-                        <Users className="w-8 h-8 text-[#D0C4E2] mx-auto mb-2" />
-                        <p className="text-[#787878] text-xs">
-                          No communities found
-                        </p>
-                      </div>
-                    )}
+                  {/* Sort Options */}
+                  <div className="flex items-center gap-0 bg-[#F5F5F5] rounded-md p-0.5 shrink-0 border border-[#E8E8E8]">
+                    {["recent", "popular"].map((sort, idx) => (
+                      <button
+                        key={sort}
+                        onClick={() => setSortBy(sort)}
+                        className={`px-3 py-1.5 rounded text-xs font-medium transition-all ${
+                          sortBy === sort
+                            ? "bg-white text-[#2F3C96] shadow-sm"
+                            : "text-[#787878] hover:text-[#484848]"
+                        }`}
+                      >
+                        {sort.charAt(0).toUpperCase() + sort.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Mobile Community Dropdown */}
+                  <div className="lg:hidden w-full sm:w-72">
+                    <CustomSelect
+                      value={mobileCommunityId}
+                      onChange={handleMobileCommunityChange}
+                      options={mobileCommunityOptions}
+                      placeholder="All communities"
+                      disabled={
+                        loadingCommunities ||
+                        sortedDisplayedCommunities.length === 0
+                      }
+                      className="w-full text-sm"
+                    />
                   </div>
                 </div>
               </div>
+            )}
+            
+            {/* Communities Search Bar */}
+            {viewMode === "communities" && (
+              <div className="max-w-7xl mx-auto mb-6">
+                <div className="bg-white rounded-lg border border-[#E8E8E8] p-4 flex items-center gap-4 flex-wrap shadow-sm">
+                  {/* Search */}
+                  <div className="relative flex-1 min-w-[200px]">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#787878]" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => {
+                        setSearchQuery(e.target.value);
+                      }}
+                      placeholder="Search communities..."
+                      className="w-full pl-10 pr-10 py-2.5 rounded-md border border-[#E8E8E8] bg-white text-sm text-[#484848] placeholder-[#787878] focus:outline-none focus:ring-2 focus:ring-[#2F3C96]/20 focus:border-[#2F3C96] transition-all"
+                    />
+                    {searchQuery && (
+                      <button
+                        onClick={() => {
+                          setSearchQuery("");
+                        }}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[#787878] hover:text-[#484848] transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
 
-              {/* Threads Panel - Layer 3: Content */}
-              <div className="lg:col-span-9">
+                  {/* Sort Options */}
+                  <div className="flex items-center gap-0 bg-[#F5F5F5] rounded-md p-0.5 shrink-0 border border-[#E8E8E8]">
+                    {["recent", "popular"].map((sort, idx) => (
+                      <button
+                        key={sort}
+                        onClick={() => setSortBy(sort)}
+                        className={`px-3 py-1.5 rounded text-xs font-medium transition-all ${
+                          sortBy === sort
+                            ? "bg-white text-[#2F3C96] shadow-sm"
+                            : "text-[#787878] hover:text-[#484848]"
+                        }`}
+                      >
+                        {sort.charAt(0).toUpperCase() + sort.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Main Content - Conditional based on viewMode */}
+            {viewMode === "communities" ? (
+              /* Communities View - HealthUnlocked Card Layout */
+              <div className="max-w-7xl mx-auto">
+                <div className="mb-6">
+                  <p className="text-base text-[#484848] font-medium">
+                    {sortedDisplayedCommunities.length} public communities
+                  </p>
+                </div>
+                {loadingCommunities ? (
+                  <div className="flex items-center justify-center py-20">
+                    <Loader2 className="w-8 h-8 text-[#2F3C96] spinner" />
+                  </div>
+                ) : sortedDisplayedCommunities.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {sortedDisplayedCommunities.map((community) => (
+                      <div
+                        key={community._id}
+                        className="bg-white rounded-lg border border-[#E8E8E8] overflow-hidden hover:shadow-md transition-all cursor-pointer group"
+                        onClick={() => {
+                          setSelectedCommunity(community);
+                          setViewMode("posts");
+                        }}
+                      >
+                        {/* Community Image/Header - HealthUnlocked Style */}
+                        <div className="relative h-40 bg-gradient-to-br from-[#2F3C96]/10 to-[#D0C4E2]/10 overflow-hidden">
+                          {community.image ? (
+                            <>
+                              <img
+                                src={community.image}
+                                alt={community.name}
+                                className="w-full h-full object-cover"
+                              />
+                              {/* Overlay Icon - Bottom Left */}
+                              <div className="absolute bottom-3 left-3">
+                                <div
+                                  className="w-12 h-12 rounded-full flex items-center justify-center shadow-lg"
+                                  style={{
+                                    backgroundColor: community.color || "#2F3C96",
+                                  }}
+                                >
+                                  <CommunityIcon
+                                    community={community}
+                                    size="1.5rem"
+                                    style={{ color: "#FFFFFF" }}
+                                  />
+                                </div>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center relative">
+                              <div
+                                className="w-20 h-20 rounded-full flex items-center justify-center shadow-lg"
+                                style={{
+                                  backgroundColor: community.color || "#2F3C96",
+                                }}
+                              >
+                                <CommunityIcon
+                                  community={community}
+                                  size="2.5rem"
+                                  style={{ color: "#FFFFFF" }}
+                                />
+                              </div>
+                              {/* Icon overlay for no-image communities */}
+                              <div className="absolute bottom-3 left-3">
+                                <div
+                                  className="w-12 h-12 rounded-full flex items-center justify-center shadow-lg bg-white/90"
+                                >
+                                  <CommunityIcon
+                                    community={community}
+                                    size="1.5rem"
+                                    style={{ color: community.color || "#2F3C96" }}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                          {community.isOfficial && (
+                            <div className="absolute top-3 right-3">
+                              <div className="bg-white/90 backdrop-blur-sm rounded-full p-1.5">
+                                <CheckCircle2 className="w-4 h-4 text-[#2F3C96]" />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Community Info - HealthUnlocked Style */}
+                        <div className="p-5">
+                          <h3 className="text-lg font-bold text-[#2F3C96] mb-2 line-clamp-1 group-hover:text-[#253075] transition-colors">
+                            {community.name}
+                          </h3>
+                          <p className="text-sm text-[#787878] mb-4 line-clamp-2 leading-relaxed">
+                            {community.description || "Join this community to connect with others"}
+                          </p>
+                          <div className="flex items-center justify-between pt-3 border-t border-[#F5F5F5]">
+                            <div className="flex items-center gap-1.5 text-sm text-[#787878]">
+                              <Users className="w-4 h-4" />
+                              <span className="font-medium">{community.memberCount?.toLocaleString() || 0} members</span>
+                            </div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleFollow(community._id);
+                              }}
+                              disabled={followingLoading.has(community._id)}
+                              className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-all ${
+                                followingIds.has(community._id)
+                                  ? "bg-[#2F3C96]/10 text-[#2F3C96] hover:bg-[#2F3C96]/20"
+                                  : "bg-[#2F3C96] text-white hover:bg-[#253075]"
+                              }`}
+                            >
+                              {followingLoading.has(community._id) ? (
+                                <Loader2 className="w-4 h-4 spinner" />
+                              ) : followingIds.has(community._id) ? (
+                                "Joined"
+                              ) : (
+                                "Join"
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="bg-white rounded-lg border border-[#E8E8E8] p-12 text-center">
+                    <Users className="w-12 h-12 text-[#D0C4E2] mx-auto mb-3" />
+                    <h3 className="text-lg font-semibold text-[#2F3C96] mb-2">
+                      No Communities Found
+                    </h3>
+                    <p className="text-[#787878] text-sm">
+                      Try adjusting your search or filters
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Posts View - Full Width Layout */
+              <div className="max-w-7xl mx-auto">
                 {/* Selected Community Header - Simplified */}
                 {selectedCommunity && (
                   <div className="bg-white rounded-xl border border-[#E8E8E8] p-4 mb-6 shadow-sm">
@@ -1846,14 +1812,24 @@ export default function Forums() {
                       </div>
                     </div>
 
-                    {/* Condition Tags Section */}
+                    {/* Tags/Keywords Filter Section */}
                     <div className="border-t border-[#E8E8E8] pt-4">
                       <h3 className="text-sm font-semibold text-[#2F3C96] mb-3 flex items-center gap-2">
-                        <IconRibbonHealth className="w-4 h-4" />
-                        Condition Tags
+                        <Tag className="w-4 h-4" />
+                        Filter by Tags/Keywords
                       </h3>
                       <div className="flex flex-wrap gap-2">
-                        {conditionTagOptions.map((tag) => (
+                        <button
+                          onClick={() => setSelectedConditionTag("All")}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                            selectedConditionTag === "All"
+                              ? "bg-[#2F3C96] text-white"
+                              : "bg-[#F5F5F5] text-[#787878] hover:bg-[#E8E8E8]"
+                          }`}
+                        >
+                          All
+                        </button>
+                        {MANDATORY_TAGS.map((tag) => (
                           <button
                             key={tag}
                             onClick={() => setSelectedConditionTag(tag)}
@@ -1868,8 +1844,7 @@ export default function Forums() {
                         ))}
                       </div>
                       <p className="text-xs text-[#787878] mt-2">
-                        Narrow discussions to the condition that best matches
-                        your situation.
+                        Filter discussions by tags/keywords for better findability.
                       </p>
                     </div>
 
@@ -1928,40 +1903,33 @@ export default function Forums() {
                   </div>
                 )}
 
-                {/* Section Header - Bar Style */}
-                <div className="bg-white rounded-lg border border-[#E8E8E8] px-4 py-3 mb-6 shadow-sm flex items-center gap-3">
-                  <h3 className="text-base font-semibold text-[#2F3C96]">
+                {/* Section Header - HealthUnlocked Style */}
+                <div className="bg-white rounded-lg border border-[#E8E8E8] px-5 py-4 mb-6 shadow-sm flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-[#484848]">
                     {getTabTitle()}
                   </h3>
                   {user && (
-                    <>
-                      <span className="text-[#E8E8E8]">|</span>
-                      <button
-                        onClick={() => {
-                          setModalSelectedCommunity(selectedCommunity);
-                          setNewThreadConditions(
-                            selectedConditionTag !== "All"
-                              ? [selectedConditionTag]
-                              : []
-                          );
-                          setNewThreadConditionInput("");
-                          setConditionSuggestions(
-                            buildConditionTags(selectedCommunity, threads)
-                              .filter((tag) => tag !== "All")
-                              .slice(0, 6)
-                          );
-                          setNewThreadModal(true);
-                        }}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-[#2F3C96] text-white rounded-lg font-semibold text-sm hover:bg-[#253075] transition-all shrink-0"
-                      >
-                        <Plus className="w-4 h-4" />
-                        <span>Create Post</span>
-                      </button>
-                    </>
+                    <button
+                      onClick={() => {
+                        setModalSelectedCommunity(selectedCommunity);
+                        // Pre-select tag if one is selected in filter
+                        if (selectedConditionTag !== "All" && MANDATORY_TAGS.includes(selectedConditionTag)) {
+                          setNewThreadTags([selectedConditionTag]);
+                        } else {
+                          setNewThreadTags([]);
+                        }
+                        setNewThreadConditions([]);
+                        setNewThreadModal(true);
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 bg-[#2F3C96] text-white rounded-md font-semibold text-sm hover:bg-[#253075] transition-all shrink-0"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Create Post</span>
+                    </button>
                   )}
                 </div>
 
-                {/* Threads List - Layer 3: Content */}
+                {/* Threads List - HealthUnlocked Style */}
                 {loading ? (
                   <div className="flex items-center justify-center py-20">
                     <div className="relative">
@@ -1987,10 +1955,10 @@ export default function Forums() {
                       return (
                         <div
                           key={thread._id}
-                          className={`bg-white rounded-xl border transition-all duration-300 overflow-hidden relative ${
+                          className={`bg-white rounded-lg border transition-all duration-300 overflow-hidden relative ${
                             isExpanded
-                              ? "shadow-md border-[#2F3C96]/20"
-                              : "border-[#E8E8E8] hover:shadow-md hover:border-[#E8E8E8]"
+                              ? "shadow-md border-[#2F3C96]/30"
+                              : "border-[#E8E8E8] hover:shadow-sm hover:border-[#2F3C96]/20"
                           }`}
                         >
                           {/* Favorite Button - Top Right */}
@@ -2029,24 +1997,24 @@ export default function Forums() {
                           )}
                           <div className="p-6">
                             <div className="flex items-start gap-4">
-                              {/* Vote Controls - Simplified */}
-                              <div className="flex flex-col items-center gap-0.5 shrink-0">
+                              {/* Vote Controls - HealthUnlocked Style */}
+                              <div className="flex flex-col items-center gap-1 shrink-0">
                                 <button
                                   onClick={() =>
                                     voteOnThread(thread._id, "upvote")
                                   }
-                                  className={`p-1 rounded transition-all ${
+                                  className={`p-1.5 rounded transition-all ${
                                     isUpvoted
-                                      ? "text-[#2F3C96]"
-                                      : "text-[#787878] hover:text-[#2F3C96]"
+                                      ? "text-[#2F3C96] bg-[#2F3C96]/10"
+                                      : "text-[#787878] hover:text-[#2F3C96] hover:bg-[#2F3C96]/5"
                                   }`}
                                 >
-                                  <ArrowUp className="w-3.5 h-3.5" />
+                                  <ArrowUp className="w-4 h-4" />
                                 </button>
                                 <span
-                                  className={`text-xs font-semibold min-w-[1.5rem] text-center ${
+                                  className={`text-sm font-semibold min-w-[1.5rem] text-center ${
                                     thread.voteScore > 0
-                                      ? "text-emerald-600"
+                                      ? "text-[#2F3C96]"
                                       : thread.voteScore < 0
                                       ? "text-red-500"
                                       : "text-[#787878]"
@@ -2058,20 +2026,20 @@ export default function Forums() {
                                   onClick={() =>
                                     voteOnThread(thread._id, "downvote")
                                   }
-                                  className={`p-1 rounded transition-all ${
+                                  className={`p-1.5 rounded transition-all ${
                                     isDownvoted
-                                      ? "text-red-500"
-                                      : "text-[#787878] hover:text-red-500"
+                                      ? "text-red-500 bg-red-50"
+                                      : "text-[#787878] hover:text-red-500 hover:bg-red-50"
                                   }`}
                                 >
-                                  <ArrowDown className="w-3.5 h-3.5" />
+                                  <ArrowDown className="w-4 h-4" />
                                 </button>
                               </div>
 
                               {/* Thread Content */}
                               <div className="flex-1 min-w-0 pr-12">
                                 <h3
-                                  className="text-lg font-bold text-[#2F3C96] cursor-pointer hover:text-[#253075] transition-colors mb-2 leading-tight"
+                                  className="text-lg font-bold text-[#484848] cursor-pointer hover:text-[#2F3C96] transition-colors mb-2 leading-tight"
                                   onClick={() => toggleThread(thread._id)}
                                 >
                                   {thread.title}
@@ -2082,11 +2050,22 @@ export default function Forums() {
                                   {thread.body}
                                 </p>
 
-                                {thread.conditions?.length > 0 && (
+                                {(thread.tags?.length > 0 || thread.conditions?.length > 0) && (
                                   <div className="flex flex-wrap gap-2 mb-3">
-                                    {thread.conditions.map((condition, idx) => (
+                                    {/* Show tags first (mandatory tags) */}
+                                    {thread.tags?.map((tag, idx) => (
                                       <span
-                                        key={condition + idx}
+                                        key={`tag-${tag}-${idx}`}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#2F3C96]/10 text-[#2F3C96] rounded-full text-xs font-medium"
+                                      >
+                                        <Tag className="w-3 h-3" />
+                                        {tag}
+                                      </span>
+                                    ))}
+                                    {/* Show conditions for backward compatibility */}
+                                    {thread.conditions?.filter(c => !thread.tags?.includes(c)).map((condition, idx) => (
+                                      <span
+                                        key={`condition-${condition}-${idx}`}
                                         className="inline-flex items-center gap-1 px-2.5 py-1 bg-[#2F3C96]/10 text-[#2F3C96] rounded-full text-xs font-medium"
                                       >
                                         <IconRibbonHealth className="w-3 h-3" />
@@ -2129,7 +2108,7 @@ export default function Forums() {
                                   </span>
                                 </div>
 
-                                {/* Actions Row */}
+                                {/* Actions Row - HealthUnlocked Style */}
                                 <div className="flex items-center gap-3">
                                   {/* Expand/Collapse - With Icons */}
                                   {!isExpanded ? (
@@ -2161,8 +2140,8 @@ export default function Forums() {
                                 {isExpanded && (
                                   <div className="thread-expandable expanded border-t border-[#E8E8E8] pt-4 mt-4">
                                     <div className="flex items-center justify-between mb-4">
-                                      <h4 className="flex items-center gap-2 font-semibold text-sm text-[#2F3C96]">
-                                        <MessageCircle className="w-4 h-4" />
+                                      <h4 className="flex items-center gap-2 font-semibold text-sm text-[#484848]">
+                                        <MessageCircle className="w-4 h-4 text-[#2F3C96]" />
                                         <span>
                                           {threadDetails?.replies?.length ||
                                             thread.replyCount ||
@@ -2218,7 +2197,7 @@ export default function Forums() {
                                                 }))
                                               }
                                               placeholder="Write a reply..."
-                                              className="w-full rounded-lg border border-[#E8E8E8] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2F3C96]/20 focus:border-[#2F3C96] resize-none text-[#484848] placeholder-[#787878]"
+                                              className="w-full rounded-md border border-[#E8E8E8] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2F3C96]/20 focus:border-[#2F3C96] resize-none text-[#484848] placeholder-[#787878]"
                                               rows="3"
                                             />
                                             <div className="flex gap-2 mt-3">
@@ -2226,7 +2205,7 @@ export default function Forums() {
                                                 onClick={() =>
                                                   postReply(thread._id)
                                                 }
-                                                className="flex items-center gap-2 px-3 py-1.5 bg-[#2F3C96] text-white rounded-lg text-sm font-semibold hover:bg-[#253075] transition-all"
+                                                className="flex items-center gap-2 px-4 py-2 bg-[#2F3C96] text-white rounded-md text-sm font-semibold hover:bg-[#253075] transition-all"
                                               >
                                                 <Send className="w-3.5 h-3.5" />
                                                 Reply
@@ -2235,7 +2214,7 @@ export default function Forums() {
                                                 onClick={() =>
                                                   setReplyingTo(null)
                                                 }
-                                                className="px-3 py-1.5 bg-[#F5F5F5] text-[#787878] rounded-lg text-sm font-medium hover:bg-[#E8E8E8] transition-all"
+                                                className="px-4 py-2 bg-[#F5F5F5] text-[#787878] rounded-md text-sm font-medium hover:bg-[#E8E8E8] transition-all"
                                               >
                                                 Cancel
                                               </button>
@@ -2249,7 +2228,7 @@ export default function Forums() {
                                                 replyId: null,
                                               })
                                             }
-                                            className="flex items-center justify-center gap-2 px-4 py-2 bg-[#F5F5F5] border border-[#E8E8E8] text-[#787878] rounded-lg text-sm font-medium hover:bg-[#E8E8E8] hover:text-[#2F3C96] transition-all w-full"
+                                            className="flex items-center justify-center gap-2 px-4 py-2 bg-[#F5F5F5] border border-[#E8E8E8] text-[#787878] rounded-md text-sm font-medium hover:bg-[#E8E8E8] hover:text-[#2F3C96] transition-all w-full"
                                           >
                                             <MessageCircle className="w-4 h-4" />
                                             Add a reply
@@ -2291,17 +2270,13 @@ export default function Forums() {
                       <button
                         onClick={() => {
                           setModalSelectedCommunity(selectedCommunity);
-                          setNewThreadConditions(
-                            selectedConditionTag !== "All"
-                              ? [selectedConditionTag]
-                              : []
-                          );
-                          setNewThreadConditionInput("");
-                          setConditionSuggestions(
-                            buildConditionTags(selectedCommunity, threads)
-                              .filter((tag) => tag !== "All")
-                              .slice(0, 6)
-                          );
+                          // Pre-select tag if one is selected in filter
+                          if (selectedConditionTag !== "All" && MANDATORY_TAGS.includes(selectedConditionTag)) {
+                            setNewThreadTags([selectedConditionTag]);
+                          } else {
+                            setNewThreadTags([]);
+                          }
+                          setNewThreadConditions([]);
                           setNewThreadModal(true);
                         }}
                         className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-[#2F3C96] text-white rounded-lg font-semibold hover:bg-[#253075] transition-all"
@@ -2313,7 +2288,7 @@ export default function Forums() {
                   </div>
                 )}
               </div>
-            </div>
+            )}
 
             {/* New Subcategory Modal */}
             {newSubcategoryModal && (
@@ -2575,17 +2550,13 @@ export default function Forums() {
                             );
                             setModalSelectedCommunity(community);
                             setNewThreadSubcategory(null);
-                            setNewThreadConditions(
-                              selectedConditionTag !== "All" && community
-                                ? [selectedConditionTag]
-                                : []
-                            );
-                            setNewThreadConditionInput("");
-                            setConditionSuggestions(
-                              buildConditionTags(community, threads)
-                                .filter((tag) => tag !== "All")
-                                .slice(0, 6)
-                            );
+                            // Pre-select tag if one is selected in filter
+                            if (selectedConditionTag !== "All" && MANDATORY_TAGS.includes(selectedConditionTag)) {
+                              setNewThreadTags([selectedConditionTag]);
+                            } else {
+                              setNewThreadTags([]);
+                            }
+                            setNewThreadConditions([]);
                           }}
                           options={communities
                             .filter((c) => followingIds.has(c._id))
@@ -2633,87 +2604,6 @@ export default function Forums() {
                       )}
                     <div>
                       <label className="block text-sm font-medium text-[#2F3C96] mb-2">
-                        Condition Tags (disease/condition)
-                      </label>
-                      <p className="text-xs text-[#787878] mb-2">
-                        Add the condition this discussion is about so advice is
-                        tailored.
-                      </p>
-                      {newThreadConditions.length > 0 && (
-                        <div className="flex flex-wrap gap-2 mb-2">
-                          {newThreadConditions.map((condition, idx) => (
-                            <span
-                              key={condition + idx}
-                              className="inline-flex items-center gap-1 px-3 py-1 bg-[#2F3C96]/10 text-[#2F3C96] rounded-lg text-xs font-medium"
-                            >
-                              {condition}
-                              <button
-                                onClick={() =>
-                                  setNewThreadConditions(
-                                    newThreadConditions.filter(
-                                      (_, i) => i !== idx
-                                    )
-                                  )
-                                }
-                                className="hover:text-red-500"
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                      <div className="relative" ref={conditionSuggestionsRef}>
-                        <input
-                          type="text"
-                          value={newThreadConditionInput}
-                          onChange={(e) => updateConditionSuggestions(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (
-                              e.key === "Enter" &&
-                              newThreadConditionInput.trim()
-                            ) {
-                              e.preventDefault();
-                              addConditionTag(newThreadConditionInput);
-                            }
-                            if (e.key === "Escape") {
-                              setConditionSuggestions([]);
-                            }
-                          }}
-                          onFocus={() => {
-                            if (newThreadConditionInput.trim()) {
-                              updateConditionSuggestions(newThreadConditionInput);
-                            } else {
-                              setConditionSuggestions(
-                                modalConditionOptions.slice(0, 6)
-                              );
-                            }
-                          }}
-                          placeholder="e.g., Parkinson's, Breast Cancer, Heart Disease"
-                          className="w-full rounded-lg border border-[#E8E8E8] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2F3C96]/20 focus:border-[#2F3C96] text-[#484848] placeholder-[#787878]"
-                        />
-                        {conditionSuggestions.length > 0 && (
-                          <div className="absolute z-50 w-full bottom-full mb-1 bg-white border border-[#E8E8E8] rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                            {conditionSuggestions.map((suggestion, idx) => (
-                              <button
-                                key={suggestion + idx}
-                                type="button"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  addConditionTag(suggestion);
-                                }}
-                                className="w-full text-left px-3 py-2 text-sm text-[#484848] hover:bg-[#F5F5F5] transition-colors"
-                              >
-                                {suggestion}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-[#2F3C96] mb-2">
                         Title
                       </label>
                       <input
@@ -2738,101 +2628,68 @@ export default function Forums() {
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-[#2F3C96] mb-2">
-                        Tags
+                        Tags/Keywords <span className="text-red-500">*</span>
+                        <span className="text-xs font-normal text-[#787878] ml-2">
+                          (mandatory at least one)
+                        </span>
                       </label>
-                      <div className="relative" ref={tagSuggestionsRef}>
-                        <input
-                          type="text"
-                          value={newThreadMeshInput}
-                          onChange={(e) => {
-                            setNewThreadMeshInput(e.target.value);
-                            if (e.target.value.trim()) {
-                              fetchThreadTagSuggestions(e.target.value);
-                            } else {
-                              setNewThreadMeshSuggestions([]);
-                            }
-                          }}
-                          onKeyDown={(e) => {
-                            if (
-                              e.key === "Enter" &&
-                              newThreadMeshInput.trim()
-                            ) {
-                              e.preventDefault();
-                              if (
-                                !newThreadTags.includes(
-                                  newThreadMeshInput.trim()
-                                )
-                              ) {
-                                setNewThreadTags([
-                                  ...newThreadTags,
-                                  newThreadMeshInput.trim(),
-                                ]);
-                                setNewThreadMeshInput("");
-                                setNewThreadMeshSuggestions([]);
-                              }
-                            }
-                            if (e.key === "Escape") {
-                              setNewThreadMeshSuggestions([]);
-                            }
-                          }}
-                          onFocus={() => {
-                            if (newThreadMeshInput.trim()) {
-                              fetchThreadTagSuggestions(newThreadMeshInput);
-                            }
-                          }}
-                          placeholder="Add tags (e.g., Treatment, Therapy, Diagnosis)..."
-                          className="w-full rounded-lg border border-[#E8E8E8] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#2F3C96]/20 focus:border-[#2F3C96] text-[#484848] placeholder-[#787878]"
-                        />
-                        {newThreadMeshSuggestions.length > 0 && (
-                          <div className="absolute z-50 w-full bottom-full mb-1 bg-white border border-[#E8E8E8] rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                            {newThreadMeshSuggestions.map((suggestion, idx) => (
-                              <button
-                                key={idx}
-                                type="button"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  if (!newThreadTags.includes(suggestion)) {
-                                    setNewThreadTags([
-                                      ...newThreadTags,
-                                      suggestion,
-                                    ]);
-                                  }
-                                  setNewThreadMeshInput("");
-                                  setNewThreadMeshSuggestions([]);
-                                }}
-                                className="w-full text-left px-3 py-2 text-sm text-[#484848] hover:bg-[#F5F5F5] transition-colors"
-                              >
-                                {suggestion}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <p className="text-xs text-[#787878] mt-1">
-                        Add tags for better organization (e.g., Treatment,
-                        Therapy, Diagnosis)
-                      </p>
-                      {newThreadTags.length > 0 && (
-                        <div className="flex flex-wrap gap-2 mt-3">
-                          {newThreadTags.map((tag, idx) => (
-                            <span
-                              key={idx}
-                              className="inline-flex items-center gap-1 px-3 py-1 bg-[#2F3C96]/10 text-[#2F3C96] rounded-lg text-xs font-medium"
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        {MANDATORY_TAGS.map((tag) => {
+                          const isSelected = newThreadTags.includes(tag);
+                          return (
+                            <button
+                              key={tag}
+                              type="button"
+                              onClick={() => {
+                                if (isSelected) {
+                                  setNewThreadTags(
+                                    newThreadTags.filter((t) => t !== tag)
+                                  );
+                                } else {
+                                  setNewThreadTags([...newThreadTags, tag]);
+                                }
+                              }}
+                              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                                isSelected
+                                  ? "bg-[#2F3C96] text-white shadow-sm"
+                                  : "bg-[#F5F5F5] text-[#787878] hover:bg-[#E8E8E8] hover:text-[#2F3C96]"
+                              }`}
                             >
                               {tag}
-                              <button
-                                onClick={() =>
-                                  setNewThreadTags(
-                                    newThreadTags.filter((_, i) => i !== idx)
-                                  )
-                                }
-                                className="hover:text-red-500"
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {newThreadTags.length === 0 && (
+                        <p className="text-xs text-red-500 mt-1">
+                          Please select at least one tag/keyword
+                        </p>
+                      )}
+                      {newThreadTags.length > 0 && (
+                        <div className="mt-2">
+                          <p className="text-xs text-[#787878] mb-2">
+                            Selected tags:
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {newThreadTags.map((tag, idx) => (
+                              <span
+                                key={idx}
+                                className="inline-flex items-center gap-1 px-3 py-1 bg-[#2F3C96]/10 text-[#2F3C96] rounded-lg text-xs font-medium"
                               >
-                                <X className="w-3 h-3" />
-                              </button>
-                            </span>
-                          ))}
+                                {tag}
+                                <button
+                                  onClick={() =>
+                                    setNewThreadTags(
+                                      newThreadTags.filter((_, i) => i !== idx)
+                                    )
+                                  }
+                                  className="hover:text-red-500"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </span>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>

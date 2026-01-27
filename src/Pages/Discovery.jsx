@@ -23,11 +23,13 @@ import {
   Paperclip,
   Video,
   Upload,
+  AlertCircle,
 } from "lucide-react";
 import Layout from "../components/Layout.jsx";
 import AnimatedBackground from "../components/ui/AnimatedBackground.jsx";
 import CustomSelect from "../components/ui/CustomSelect.jsx";
 import { AuroraText } from "../components/ui/aurora-text.js";
+import { BorderBeam } from "@/components/ui/border-beam";
 import {
   IconHospital,
   IconRibbonHealth,
@@ -115,6 +117,7 @@ export default function Discovery() {
   const [submittingComment, setSubmittingComment] = useState({}); // Track submitting state per post
   const fileInputRef = useRef(null);
   const imageInputRef = useRef(null);
+  const videoInputRef = useRef(null);
   const loadingPostsRef = useRef(false); // Prevent multiple simultaneous loads
 
   const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
@@ -130,6 +133,31 @@ export default function Discovery() {
     }
     loadCommunities();
     loadPosts();
+  }, []);
+
+  // Listen for storage changes to update user profile picture
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === "user") {
+        const userData = JSON.parse(e.newValue || "null");
+        setUser(userData);
+      }
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+    
+    // Also listen for custom events (for same-tab updates)
+    const handleUserUpdate = () => {
+      const userData = JSON.parse(localStorage.getItem("user") || "null");
+      setUser(userData);
+    };
+
+    window.addEventListener("userUpdated", handleUserUpdate);
+
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("userUpdated", handleUserUpdate);
+    };
   }, []);
 
   useEffect(() => {
@@ -511,6 +539,13 @@ export default function Discovery() {
       throw new Error("Not authenticated");
     }
 
+    // Check if user is a researcher
+    const userData = JSON.parse(localStorage.getItem("user") || "{}");
+    if (userData?.role !== "researcher") {
+      toast.error("Only researchers can upload files");
+      throw new Error("Unauthorized: Only researchers can upload files");
+    }
+
     const response = await fetch(`${base}/api/upload`, {
       method: "POST",
       headers: {
@@ -539,11 +574,44 @@ export default function Discovery() {
     return data.files;
   }
 
+  // Helper function to validate video duration
+  function validateVideoDuration(file) {
+    return new Promise((resolve, reject) => {
+      const video = document.createElement("video");
+      video.preload = "metadata";
+      
+      video.onloadedmetadata = () => {
+        window.URL.revokeObjectURL(video.src);
+        const duration = video.duration; // Duration in seconds
+        const maxDuration = 2 * 60; // 2 minutes in seconds
+        
+        if (duration > maxDuration) {
+          reject(new Error(`Video duration (${Math.round(duration)}s) exceeds 2 minutes limit`));
+        } else {
+          resolve(true);
+        }
+      };
+      
+      video.onerror = () => {
+        reject(new Error("Failed to load video metadata"));
+      };
+      
+      video.src = URL.createObjectURL(file);
+    });
+  }
+
   async function handleFileUpload(event) {
     // Check if user is logged in
     if (!user) {
       toast.error("Please sign in to upload files");
       navigate("/signin");
+      if (event.target) event.target.value = "";
+      return;
+    }
+
+    // Check if user is a researcher
+    if (user.role !== "researcher") {
+      toast.error("Only researchers can upload files");
       if (event.target) event.target.value = "";
       return;
     }
@@ -578,6 +646,84 @@ export default function Discovery() {
       // Don't show error toast if it's a redirect (token expired/not authenticated)
       if (error.message !== "Token expired" && error.message !== "Not authenticated") {
         toast.error(error.message || "Failed to upload files");
+      }
+    } finally {
+      setUploading(false);
+      // Reset input
+      if (event.target) event.target.value = "";
+    }
+  }
+
+  async function handleVideoUpload(event) {
+    // Check if user is logged in
+    if (!user) {
+      toast.error("Please sign in to upload videos");
+      navigate("/signin");
+      if (event.target) event.target.value = "";
+      return;
+    }
+
+    // Check if user is a researcher
+    if (user.role !== "researcher") {
+      toast.error("Only researchers can upload videos");
+      if (event.target) event.target.value = "";
+      return;
+    }
+
+    const files = Array.from(event.target.files);
+    if (files.length === 0) return;
+
+    // Validate video files
+    const videoFiles = files.filter((file) => file.type.startsWith("video/"));
+    
+    if (videoFiles.length === 0) {
+      toast.error("Please select video files");
+      if (event.target) event.target.value = "";
+      return;
+    }
+
+    // Validate file size (10 MB limit)
+    const maxSize = 10 * 1024 * 1024; // 10 MB in bytes
+    const sizeValidFiles = videoFiles.filter((file) => {
+      if (file.size > maxSize) {
+        toast.error(`Video "${file.name}" exceeds 10 MB size limit`);
+        return false;
+      }
+      return true;
+    });
+
+    if (sizeValidFiles.length === 0) {
+      if (event.target) event.target.value = "";
+      return;
+    }
+
+    // Validate video duration (2 minutes limit)
+    setUploading(true);
+    try {
+      const validFiles = [];
+      
+      for (const file of sizeValidFiles) {
+        try {
+          await validateVideoDuration(file);
+          validFiles.push(file);
+        } catch (error) {
+          toast.error(`Video "${file.name}": ${error.message}`);
+        }
+      }
+
+      if (validFiles.length === 0) {
+        if (event.target) event.target.value = "";
+        return;
+      }
+
+      const uploadedFiles = await uploadToBackend(validFiles);
+      setComposerAttachments((prev) => [...prev, ...uploadedFiles]);
+      toast.success(`${uploadedFiles.length} video(s) uploaded successfully`);
+    } catch (error) {
+      console.error("Error uploading videos:", error);
+      // Don't show error toast if it's a redirect (token expired/not authenticated)
+      if (error.message !== "Token expired" && error.message !== "Not authenticated") {
+        toast.error(error.message || "Failed to upload videos");
       }
     } finally {
       setUploading(false);
@@ -800,10 +946,36 @@ export default function Discovery() {
             <div className="lg:col-span-9">
               {/* Post Composer - Inline */}
               {user && (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6 relative">
+                  <BorderBeam
+                    duration={10}
+                    size={100}
+                    className="from-transparent via-[#2F3C96] to-transparent"
+                  />
+                  <BorderBeam
+                    duration={10}
+                    size={300}
+                    borderWidth={3}
+                    className="from-transparent via-[#D0C4E2] to-transparent"
+                  />
                   <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-full bg-[#2F3C96] flex items-center justify-center text-white font-semibold text-sm shrink-0">
-                      {user?.username?.charAt(0)?.toUpperCase() || "U"}
+                    <div className="relative w-10 h-10 flex-shrink-0">
+                      {/* Fallback avatar with first letter - always rendered */}
+                      <div className="w-10 h-10 rounded-full bg-[#2F3C96] flex items-center justify-center text-white font-semibold text-sm absolute inset-0">
+                        {user?.username?.charAt(0)?.toUpperCase() || user?.name?.charAt(0)?.toUpperCase() || "U"}
+                      </div>
+                      {/* Profile picture - overlays the fallback if available */}
+                      {user?.picture && (
+                        <img
+                          src={user.picture}
+                          alt={user.username || user.name || "User"}
+                          className="w-10 h-10 rounded-full object-cover absolute inset-0"
+                          onError={(e) => {
+                            // Hide image on error to show fallback
+                            e.target.style.display = 'none';
+                          }}
+                        />
+                      )}
                     </div>
                     <div className="flex-1">
                       <textarea
@@ -814,50 +986,6 @@ export default function Discovery() {
                         rows={3}
                         onFocus={() => setComposerOpen(true)}
                       />
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => {
-                              setComposerOpen(true);
-                              setTimeout(() => imageInputRef.current?.click(), 100);
-                            }}
-                            className="p-2 text-gray-500 hover:text-[#2F3C96] hover:bg-gray-50 rounded-lg transition-colors"
-                            title="Add Image"
-                          >
-                            <ImageIcon className="w-5 h-5" />
-                          </button>
-                          <button
-                            onClick={() => setComposerOpen(true)}
-                            className="p-2 text-gray-500 hover:text-[#2F3C96] hover:bg-gray-50 rounded-lg transition-colors"
-                            title="Add Video"
-                          >
-                            <Video className="w-5 h-5" />
-                          </button>
-                          <button
-                            className="p-2 text-gray-500 hover:text-[#2F3C96] hover:bg-gray-50 rounded-lg transition-colors"
-                            title="Upload"
-                          >
-                            <Upload className="w-5 h-5" />
-                          </button>
-                          <button
-                            onClick={() => fileInputRef.current?.click()}
-                            className="p-2 text-gray-500 hover:text-[#2F3C96] hover:bg-gray-50 rounded-lg transition-colors"
-                            title="Attach File"
-                          >
-                            <Paperclip className="w-5 h-5" />
-                          </button>
-                          <button className="p-2 text-gray-500 hover:text-[#2F3C96] hover:bg-gray-50 rounded-lg transition-colors">
-                            <MoreHorizontal className="w-5 h-5" />
-                          </button>
-                        </div>
-                        <button
-                          onClick={handleCreatePost}
-                          disabled={!composerContent.trim() || uploading}
-                          className="px-6 py-2 bg-[#2F3C96] text-white rounded-lg font-semibold hover:bg-opacity-90 disabled:opacity-50 transition-colors"
-                        >
-                          Post
-                        </button>
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -1171,68 +1299,6 @@ export default function Discovery() {
               </div>
 
               <div className="p-6 space-y-4">
-                {/* Post Type Selector - Restricted by role */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Post Type
-                  </label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <button
-                      onClick={() => {
-                        if (user?.role === "patient") {
-                          setComposerPostType("patient");
-                        }
-                      }}
-                      disabled={user?.role !== "patient"}
-                      className={`p-3 rounded-lg border-2 ${
-                        composerPostType === "patient"
-                          ? "border-brand-royal-blue bg-brand-purple/20"
-                          : "border-gray-200"
-                      } ${
-                        user?.role !== "patient"
-                          ? "opacity-50 cursor-not-allowed"
-                          : "hover:border-brand-royal-blue/50"
-                      }`}
-                    >
-                      Patient Post
-                      {user?.role !== "patient" && (
-                        <span className="block text-xs text-gray-500 mt-1">
-                          (Patients only)
-                        </span>
-                      )}
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (user?.role === "researcher") {
-                          setComposerPostType("researcher");
-                        }
-                      }}
-                      disabled={user?.role !== "researcher"}
-                      className={`p-3 rounded-lg border-2 ${
-                        composerPostType === "researcher"
-                          ? "border-brand-royal-blue bg-brand-purple/20"
-                          : "border-gray-200"
-                      } ${
-                        user?.role !== "researcher"
-                          ? "opacity-50 cursor-not-allowed"
-                          : "hover:border-brand-royal-blue/50"
-                      }`}
-                    >
-                      Researcher Post
-                      {user?.role !== "researcher" && (
-                        <span className="block text-xs text-gray-500 mt-1">
-                          (Researchers only)
-                        </span>
-                      )}
-                    </button>
-                  </div>
-                  {user?.role && (
-                    <p className="text-xs text-gray-500 mt-2">
-                      You can only create {user.role} posts based on your role.
-                    </p>
-                  )}
-                </div>
-
                 {/* Community Selection */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -1285,19 +1351,12 @@ export default function Discovery() {
                   />
                 </div>
 
-                {/* Official Work Toggle (for researchers) */}
-                {user?.role === "researcher" && composerPostType === "researcher" && (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="isOfficial"
-                      checked={isOfficial}
-                      onChange={(e) => setIsOfficial(e.target.checked)}
-                      className="w-4 h-4 text-brand-royal-blue border-gray-300 rounded focus:ring-brand-royal-blue"
-                    />
-                    <label htmlFor="isOfficial" className="text-sm text-gray-700">
-                      Mark as Official Work
-                    </label>
+                {/* Disclaimer for Patients */}
+                {user?.role === "patient" && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                    <p className="text-sm text-amber-900">
+                      <span className="font-semibold">⚠️ Reminder:</span> Do not share personal or identifiable health information. Consult healthcare professionals for medical concerns.
+                    </p>
                   </div>
                 )}
 
@@ -1334,33 +1393,48 @@ export default function Discovery() {
                   </div>
                 )}
 
-                {/* Upload Buttons */}
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => imageInputRef.current?.click()}
-                    disabled={uploading}
-                    className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
-                  >
-                    {uploading ? (
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                    ) : (
-                      <ImageIcon className="w-5 h-5" />
-                    )}
-                    {uploading ? "Uploading..." : "Add Image"}
-                  </button>
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={uploading}
-                    className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
-                  >
-                    {uploading ? (
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                    ) : (
-                      <FileText className="w-5 h-5" />
-                    )}
-                    {uploading ? "Uploading..." : "Add PDF"}
-                  </button>
-                </div>
+                {/* Upload Buttons - Only for Researchers */}
+                {user?.role === "researcher" && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-600 font-medium">Add files:</span>
+                    <button
+                      onClick={() => imageInputRef.current?.click()}
+                      disabled={uploading}
+                      className="p-2 text-gray-500 hover:text-[#2F3C96] hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-50"
+                      title="Add Image"
+                    >
+                      {uploading ? (
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                      ) : (
+                        <ImageIcon className="w-5 h-5" />
+                      )}
+                    </button>
+                    <button
+                      onClick={() => videoInputRef.current?.click()}
+                      disabled={uploading}
+                      className="p-2 text-gray-500 hover:text-[#2F3C96] hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-50"
+                      title="Add Video"
+                    >
+                      {uploading ? (
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                      ) : (
+                        <Video className="w-5 h-5" />
+                      )}
+                    </button>
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                      className="p-2 text-gray-500 hover:text-[#2F3C96] hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-50"
+                      title="Attach File"
+                    >
+                      {uploading ? (
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                      ) : (
+                        <Paperclip className="w-5 h-5" />
+                      )}
+                    </button>
+                  </div>
+                )}
 
                 <input
                   ref={imageInputRef}
@@ -1376,6 +1450,14 @@ export default function Discovery() {
                   accept="application/pdf"
                   multiple
                   onChange={handleFileUpload}
+                  className="hidden"
+                />
+                <input
+                  ref={videoInputRef}
+                  type="file"
+                  accept="video/*"
+                  multiple
+                  onChange={handleVideoUpload}
                   className="hidden"
                 />
 
