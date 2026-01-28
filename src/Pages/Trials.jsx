@@ -98,7 +98,9 @@ import { AuroraText } from "@/components/ui/aurora-text";
 import FreeSearchesIndicator, {
   useFreeSearches,
 } from "../components/FreeSearchesIndicator.jsx";
+import { autoCorrectQuery } from "../utils/spellCorrection.js";
 import apiFetch from "../utils/api.js";
+import { parseEligibilityCriteria } from "../utils/parseEligibilityCriteria.js";
 import {
   incrementLocalSearchCount,
   syncWithBackend,
@@ -183,7 +185,6 @@ export default function Trials() {
 
   // Search keywords state (chips/tags)
   const [searchKeywords, setSearchKeywords] = useState([]); // Keywords as chips below search bar
-  const MIN_KEYWORDS_REQUIRED = 2; // Minimum keywords required before search
 
   // Advanced search state
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
@@ -230,10 +231,16 @@ export default function Trials() {
 
   // Keyword chips management functions
   const addKeyword = (keyword) => {
-    const trimmedKeyword = keyword.trim();
+    // Auto-correct the keyword before adding
+    const correctedKeyword = autoCorrectQuery(keyword.trim(), trialSuggestionTerms);
+    const trimmedKeyword = correctedKeyword.trim();
     if (trimmedKeyword && !searchKeywords.includes(trimmedKeyword)) {
       setSearchKeywords([...searchKeywords, trimmedKeyword]);
       setQ(""); // Clear the input after adding
+      // Show a toast if correction was made
+      if (correctedKeyword.toLowerCase() !== keyword.trim().toLowerCase()) {
+        toast.success(`Corrected "${keyword.trim()}" to "${correctedKeyword}"`, { duration: 2000 });
+      }
     }
   };
 
@@ -333,7 +340,7 @@ export default function Trials() {
     }
   };
 
-  // Trigger search with validation for minimum keywords
+  // Trigger search (keywords are optional)
   const handleSearch = () => {
     // Include current input value if not empty
     let currentKeywords = [...searchKeywords];
@@ -343,16 +350,9 @@ export default function Trials() {
       setQ(""); // Clear search bar after adding to keywords
     }
 
-    if (currentKeywords.length < MIN_KEYWORDS_REQUIRED) {
-      toast.error(
-        `Please add at least ${MIN_KEYWORDS_REQUIRED} keywords before searching. Currently: ${currentKeywords.length}`,
-        { duration: 3000 }
-      );
-      return;
-    }
-
     // Combine keywords for search query, but keep keywords array separate
-    const combinedQuery = currentKeywords.join(" ");
+    // If no keywords, use empty string (search will handle it)
+    const combinedQuery = currentKeywords.length > 0 ? currentKeywords.join(" ") : q.trim();
     // Ensure searchKeywords state is updated before calling search
     setSearchKeywords(currentKeywords);
     search(combinedQuery);
@@ -2025,7 +2025,7 @@ export default function Trials() {
                 {searchKeywords.length > 0 && (
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-xs font-medium text-slate-600">
-                      Keywords ({searchKeywords.length}/{MIN_KEYWORDS_REQUIRED} min):
+                      Keywords ({searchKeywords.length}):
                     </span>
                     {searchKeywords.map((keyword, index) => (
                       <span
@@ -2052,13 +2052,7 @@ export default function Trials() {
                 )}
                 {searchKeywords.length === 0 && (
                   <p className="text-xs text-slate-500 italic">
-                    Add at least {MIN_KEYWORDS_REQUIRED} keywords to search. Press Enter after each keyword.
-                  </p>
-                )}
-                {searchKeywords.length > 0 && searchKeywords.length < MIN_KEYWORDS_REQUIRED && (
-                  <p className="text-xs text-amber-600 flex items-center gap-1">
-                    <AlertCircle className="w-3 h-3" />
-                    Add {MIN_KEYWORDS_REQUIRED - searchKeywords.length} more keyword{MIN_KEYWORDS_REQUIRED - searchKeywords.length !== 1 ? 's' : ''} to enable search
+                    Add keywords to refine your search (optional). Press Enter after each keyword.
                   </p>
                 )}
               </div>
@@ -3360,36 +3354,109 @@ export default function Trials() {
                       ?.detailedCriteria ||
                       (detailsModal.trial.eligibility?.criteria &&
                         detailsModal.trial.eligibility.criteria !==
-                          "Not specified")) && (
-                      <div
-                        className="mt-4 pt-4 border-t"
-                        style={{ borderColor: "#D0C4E2" }}
-                      >
-                        <h5
-                          className="font-semibold mb-3 flex items-center gap-2 text-sm"
-                          style={{ color: "#2F3C96" }}
-                        >
-                          <Info
-                            className="w-4 h-4"
-                            style={{ color: "#2F3C96" }}
-                          />
-                          Detailed Eligibility Criteria
-                        </h5>
-                        <div
-                          className="bg-white rounded-lg p-4 border"
-                          style={{ borderColor: "rgba(232, 224, 239, 1)" }}
-                        >
-                          <p
-                            className="text-sm leading-relaxed whitespace-pre-line"
-                            style={{ color: "#787878" }}
+                          "Not specified")) && (() => {
+                        const criteriaText = detailsModal.trial.simplifiedDetails
+                          ?.eligibilityCriteria?.detailedCriteria ||
+                          detailsModal.trial.eligibility.criteria;
+                        const { inclusion, exclusion, hasBoth } = parseEligibilityCriteria(criteriaText);
+                        
+                        return (
+                          <div
+                            className="mt-4 pt-4 border-t"
+                            style={{ borderColor: "#D0C4E2" }}
                           >
-                            {detailsModal.trial.simplifiedDetails
-                              ?.eligibilityCriteria?.detailedCriteria ||
-                              detailsModal.trial.eligibility.criteria}
-                          </p>
-                        </div>
-                      </div>
-                    )}
+                            {/* Inclusion Criteria */}
+                            {hasBoth && inclusion && (
+                              <div className="mb-4">
+                                <h5
+                                  className="font-semibold mb-3 flex items-center gap-2 text-sm"
+                                  style={{ color: "#2F3C96" }}
+                                >
+                                  <Info
+                                    className="w-4 h-4"
+                                    style={{ color: "#2F3C96" }}
+                                  />
+                                  Required criteria to participate in study
+                                </h5>
+                                <div
+                                  className="bg-white rounded-lg p-4 border overflow-y-auto"
+                                  style={{ 
+                                    borderColor: "rgba(232, 224, 239, 1)",
+                                    maxHeight: "200px"
+                                  }}
+                                >
+                                  <p
+                                    className="text-sm leading-relaxed whitespace-pre-line"
+                                    style={{ color: "#787878" }}
+                                  >
+                                    {inclusion}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                            
+                            {/* Exclusion Criteria */}
+                            {hasBoth && exclusion && (
+                              <div>
+                                <h5
+                                  className="font-semibold mb-3 flex items-center gap-2 text-sm"
+                                  style={{ color: "#2F3C96" }}
+                                >
+                                  <Info
+                                    className="w-4 h-4"
+                                    style={{ color: "#2F3C96" }}
+                                  />
+                                  Criteria that might exclude you from the study
+                                </h5>
+                                <div
+                                  className="bg-white rounded-lg p-4 border overflow-y-auto"
+                                  style={{ 
+                                    borderColor: "rgba(232, 224, 239, 1)",
+                                    maxHeight: "200px"
+                                  }}
+                                >
+                                  <p
+                                    className="text-sm leading-relaxed whitespace-pre-line"
+                                    style={{ color: "#787878" }}
+                                  >
+                                    {exclusion}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                            
+                            {/* Fallback: If no split was found, show as single section */}
+                            {!hasBoth && inclusion && (
+                              <div>
+                                <h5
+                                  className="font-semibold mb-3 flex items-center gap-2 text-sm"
+                                  style={{ color: "#2F3C96" }}
+                                >
+                                  <Info
+                                    className="w-4 h-4"
+                                    style={{ color: "#2F3C96" }}
+                                  />
+                                  Required criteria to participate in study
+                                </h5>
+                                <div
+                                  className="bg-white rounded-lg p-4 border overflow-y-auto"
+                                  style={{ 
+                                    borderColor: "rgba(232, 224, 239, 1)",
+                                    maxHeight: "200px"
+                                  }}
+                                >
+                                  <p
+                                    className="text-sm leading-relaxed whitespace-pre-line"
+                                    style={{ color: "#787878" }}
+                                  >
+                                    {inclusion}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
 
                     {/* Study Population Description */}
                     {detailsModal.trial.eligibility?.population && (

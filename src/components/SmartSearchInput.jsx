@@ -5,6 +5,7 @@ import {
   DEFAULT_SUGGESTION_LIMIT,
   getSmartSuggestions,
 } from "@/utils/smartSuggestions";
+import { getSpellCorrections } from "@/utils/spellCorrection";
 
 export default function SmartSearchInput({
   value,
@@ -30,9 +31,35 @@ export default function SmartSearchInput({
   const blurTimeoutRef = useRef(null);
   const inputRef = useRef(null);
 
-  const suggestions = useMemo(() => {
-    if (!value || !value.trim()) return [];
-    return getSmartSuggestions(value, extraTerms, maxSuggestions);
+  const { suggestions, isSpellCorrection } = useMemo(() => {
+    if (!value || !value.trim()) return { suggestions: [], isSpellCorrection: new Set() };
+    
+    // Get regular suggestions
+    const regularSuggestions = getSmartSuggestions(value, extraTerms, maxSuggestions);
+    const regularSet = new Set(regularSuggestions.map(s => s.toLowerCase()));
+    
+    // Get spell corrections (only if no exact matches found)
+    const hasExactMatch = regularSet.has(value.trim().toLowerCase());
+    const spellCorrectionSet = new Set();
+    
+    if (!hasExactMatch && value.trim().length > 2) {
+      const spellCorrections = getSpellCorrections(value, extraTerms, 2, 0.7);
+      
+      // Filter out corrections that are already in regular suggestions
+      const uniqueCorrections = spellCorrections.filter(
+        correction => !regularSet.has(correction.toLowerCase())
+      );
+      
+      // Mark spell corrections
+      uniqueCorrections.forEach(c => spellCorrectionSet.add(c.toLowerCase()));
+      
+      // Combine: regular suggestions first, then spell corrections
+      // Limit total to maxSuggestions
+      const allSuggestions = [...regularSuggestions, ...uniqueCorrections].slice(0, maxSuggestions);
+      return { suggestions: allSuggestions, isSpellCorrection: spellCorrectionSet };
+    }
+    
+    return { suggestions: regularSuggestions, isSpellCorrection: spellCorrectionSet };
   }, [value, extraTerms, maxSuggestions]);
 
   const showDropdown =
@@ -270,10 +297,24 @@ export default function SmartSearchInput({
               // Keep hover state but don't clear activeIndex to preserve keyboard selection
             }}
           >
-            <span className="truncate">{suggestion}</span>
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <span className="truncate">{suggestion}</span>
+              {/* Show spell correction indicator if this is a correction */}
+              {isSpellCorrection.has(suggestion.toLowerCase()) ? (
+                <span 
+                  className="text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0"
+                  style={{ 
+                    backgroundColor: "rgba(251, 191, 36, 0.1)",
+                    color: "#D97706"
+                  }}
+                >
+                  Correction
+                </span>
+              ) : null}
+            </div>
             {index === activeIndex && (
               <span 
-                className="text-[10px] font-semibold uppercase tracking-wide"
+                className="text-[10px] font-semibold uppercase tracking-wide shrink-0"
                 style={{ color: "#2F3C96" }}
               >
                 Enter ↵

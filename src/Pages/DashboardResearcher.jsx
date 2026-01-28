@@ -49,6 +49,7 @@ import AnimatedBackgroundDiff from "../components/ui/AnimatedBackgroundDiff.jsx"
 import ScrollToTop from "../components/ui/ScrollToTop.jsx";
 import VerifyEmailModal from "../components/VerifyEmailModal.jsx";
 import { listenForMessages } from "../utils/crossTabSync.js";
+import { parseEligibilityCriteria } from "../utils/parseEligibilityCriteria.js";
 
 export default function DashboardResearcher() {
   const [data, setData] = useState({
@@ -111,6 +112,14 @@ export default function DashboardResearcher() {
     message: "",
     sent: false,
     generating: false,
+  });
+  const [contactStepsModal, setContactStepsModal] = useState({
+    open: false,
+    trial: null,
+    currentStep: 1,
+    generatedEmail: "",
+    generating: false,
+    copied: false,
   });
   const [publicationDetailsModal, setPublicationDetailsModal] = useState({
     open: false,
@@ -6309,34 +6318,117 @@ export default function DashboardResearcher() {
                   {/* Detailed Eligibility Criteria */}
                   {trialDetailsModal.trial.eligibility.criteria &&
                     trialDetailsModal.trial.eligibility.criteria !==
-                      "Not specified" && (
-                      <div
-                        className="mt-4 pt-4 border-t"
-                        style={{ borderColor: "#D0C4E2" }}
-                      >
-                        <h5
-                          className="font-semibold mb-3 flex items-center gap-2 text-sm"
-                          style={{ color: "#2F3C96" }}
-                        >
-                          <Info
-                            className="w-4 h-4"
-                            style={{ color: "#2F3C96" }}
-                          />
-                          Detailed Eligibility Criteria
-                        </h5>
+                      "Not specified" && (() => {
+                      const criteriaText = trialDetailsModal.trial.simplifiedDetails?.eligibilityCriteria?.detailedCriteria ||
+                        trialDetailsModal.trial.eligibility.criteria;
+                      const { inclusion, exclusion, hasBoth } = parseEligibilityCriteria(criteriaText);
+                      
+                      return (
                         <div
-                          className="bg-white rounded-lg p-4 border"
-                          style={{ borderColor: "rgba(232, 224, 239, 1)" }}
+                          className="mt-4 pt-4 border-t"
+                          style={{ borderColor: "#D0C4E2" }}
                         >
-                          <p
-                            className="text-sm leading-relaxed whitespace-pre-line"
-                            style={{ color: "#787878" }}
+                          {/* Detailed Eligibility Criteria Heading */}
+                          <h4
+                            className="font-bold mb-4 flex items-center gap-2 text-base"
+                            style={{ color: "#2F3C96" }}
                           >
-                            {trialDetailsModal.trial.eligibility.criteria}
-                          </p>
+                            <ListChecks className="w-5 h-5" />
+                            Detailed Eligibility Criteria
+                          </h4>
+                          
+                          {/* Inclusion Criteria */}
+                          {hasBoth && inclusion && (
+                            <div className="mb-4">
+                              <h5
+                                className="font-semibold mb-3 flex items-center gap-2 text-sm"
+                                style={{ color: "#2F3C96" }}
+                              >
+                                <Info
+                                  className="w-4 h-4"
+                                  style={{ color: "#2F3C96" }}
+                                />
+                                Required criteria to participate in study
+                              </h5>
+                              <div
+                                className="bg-white rounded-lg p-4 border overflow-y-auto"
+                                style={{ 
+                                  borderColor: "rgba(232, 224, 239, 1)",
+                                  maxHeight: "200px"
+                                }}
+                              >
+                                <p
+                                  className="text-sm leading-relaxed whitespace-pre-line"
+                                  style={{ color: "#787878" }}
+                                >
+                                  {inclusion}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Exclusion Criteria */}
+                          {hasBoth && exclusion && (
+                            <div>
+                              <h5
+                                className="font-semibold mb-3 flex items-center gap-2 text-sm"
+                                style={{ color: "#2F3C96" }}
+                              >
+                                <Info
+                                  className="w-4 h-4"
+                                  style={{ color: "#2F3C96" }}
+                                />
+                                Criteria that might exclude you from the study
+                              </h5>
+                              <div
+                                className="bg-white rounded-lg p-4 border overflow-y-auto"
+                                style={{ 
+                                  borderColor: "rgba(232, 224, 239, 1)",
+                                  maxHeight: "200px"
+                                }}
+                              >
+                                <p
+                                  className="text-sm leading-relaxed whitespace-pre-line"
+                                  style={{ color: "#787878" }}
+                                >
+                                  {exclusion}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Fallback: If no split was found, show as single section */}
+                          {!hasBoth && inclusion && (
+                            <div>
+                              <h5
+                                className="font-semibold mb-3 flex items-center gap-2 text-sm"
+                                style={{ color: "#2F3C96" }}
+                              >
+                                <Info
+                                  className="w-4 h-4"
+                                  style={{ color: "#2F3C96" }}
+                                />
+                                Required criteria to participate in study
+                              </h5>
+                              <div
+                                className="bg-white rounded-lg p-4 border overflow-y-auto"
+                                style={{ 
+                                  borderColor: "rgba(232, 224, 239, 1)",
+                                  maxHeight: "200px"
+                                }}
+                              >
+                                <p
+                                  className="text-sm leading-relaxed whitespace-pre-line"
+                                  style={{ color: "#787878" }}
+                                >
+                                  {inclusion}
+                                </p>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
 
                   {/* Study Population Description */}
                   {trialDetailsModal.trial.eligibility.population && (
@@ -6482,44 +6574,39 @@ export default function DashboardResearcher() {
                 </div>
               )}
 
-              {/* Help me write button */}
+              {/* How to Contact Trial Moderator button */}
               {trialDetailsModal.trial.contacts?.length > 0 && (
                 <div className="mt-4">
                   <button
-                    onClick={generateTrialDetailsMessage}
-                    disabled={trialDetailsModal.generating}
-                    className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed w-full"
+                    onClick={() => {
+                      setContactStepsModal({
+                        open: true,
+                        trial: trialDetailsModal.trial,
+                        currentStep: 1,
+                        generatedEmail: "",
+                        generating: false,
+                        copied: false,
+                      });
+                    }}
+                    className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-xl transition-all w-full"
                     style={{
                       color: "#2F3C96",
                       backgroundColor: "rgba(208, 196, 226, 0.2)",
                       border: "1px solid rgba(208, 196, 226, 0.3)",
                     }}
                     onMouseEnter={(e) => {
-                      if (!trialDetailsModal.generating) {
-                        e.target.style.backgroundColor =
-                          "rgba(208, 196, 226, 0.3)";
-                        e.target.style.color = "#253075";
-                      }
+                      e.target.style.backgroundColor =
+                        "rgba(208, 196, 226, 0.3)";
+                      e.target.style.color = "#253075";
                     }}
                     onMouseLeave={(e) => {
-                      if (!trialDetailsModal.generating) {
-                        e.target.style.backgroundColor =
-                          "rgba(208, 196, 226, 0.2)";
-                        e.target.style.color = "#2F3C96";
-                      }
+                      e.target.style.backgroundColor =
+                        "rgba(208, 196, 226, 0.2)";
+                      e.target.style.color = "#2F3C96";
                     }}
                   >
-                    {trialDetailsModal.generating ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="w-4 h-4" />
-                        Help me write
-                      </>
-                    )}
+                    <Info className="w-4 h-4" />
+                    How to Contact Trial Moderator
                   </button>
                 </div>
               )}
@@ -8623,6 +8710,510 @@ export default function DashboardResearcher() {
             )}
           </div>
         )}
+      </Modal>
+
+      {/* Contact Steps Modal */}
+      <Modal
+        isOpen={contactStepsModal.open}
+        onClose={closeContactStepsModal}
+        title="How to Contact Trial Moderator"
+      >
+        <div className="space-y-6">
+          {contactStepsModal.trial && (
+            <>
+              {/* Trial Info Header */}
+              <div className="pb-4 border-b border-slate-200">
+                <div className="flex items-center gap-3 mb-2">
+                  <h4 className="font-bold text-slate-900 text-base">
+                    {contactStepsModal.trial?.title || "Trial"}
+                  </h4>
+                </div>
+                <p className="text-xs text-slate-600 mb-3">
+                  Trial ID: {contactStepsModal.trial?.id || "N/A"}
+                </p>
+
+                {/* Navigation Buttons */}
+                <div className="flex gap-3">
+                  <button
+                    onClick={prevStep}
+                    disabled={contactStepsModal.currentStep === 1}
+                    className="px-3 py-1.5 text-xs border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Previous
+                  </button>
+                  {contactStepsModal.currentStep < 4 ? (
+                    <button
+                      onClick={nextStep}
+                      className="flex-1 px-4 py-1.5 text-xs rounded-lg transition-all text-white"
+                      style={{ backgroundColor: "#2F3C96" }}
+                      onMouseEnter={(e) => {
+                        e.target.style.backgroundColor = "#253075";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.backgroundColor = "#2F3C96";
+                      }}
+                    >
+                      Next Step
+                    </button>
+                  ) : (
+                    <button
+                      onClick={closeContactStepsModal}
+                      className="flex-1 px-4 py-1.5 text-xs rounded-lg transition-all text-white"
+                      style={{ backgroundColor: "#2F3C96" }}
+                      onMouseEnter={(e) => {
+                        e.target.style.backgroundColor = "#253075";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.backgroundColor = "#2F3C96";
+                      }}
+                    >
+                      Done
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Timeline Steps */}
+              <div className="relative">
+                {/* Timeline Line */}
+                <div
+                  className="absolute left-5 top-0 bottom-0 w-0.5"
+                  style={{ backgroundColor: "rgba(208, 196, 226, 0.3)" }}
+                />
+
+                {/* Step 1: Check Eligibility */}
+                <div className="relative flex gap-3 pb-6">
+                  <div
+                    className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all ${
+                      contactStepsModal.currentStep >= 1
+                        ? "bg-indigo-100 border-indigo-600"
+                        : "bg-gray-100 border-gray-300"
+                    }`}
+                  >
+                    {contactStepsModal.currentStep > 1 ? (
+                      <CheckCircle2
+                        className="w-5 h-5"
+                        style={{ color: "#2F3C96" }}
+                      />
+                    ) : (
+                      <ListChecks
+                        className="w-5 h-5"
+                        style={{
+                          color:
+                            contactStepsModal.currentStep === 1
+                              ? "#2F3C96"
+                              : "#787878",
+                        }}
+                      />
+                    )}
+                  </div>
+                  <div className="flex-1 pb-4">
+                    <h3
+                      className={`font-bold text-sm mb-1.5 ${
+                        contactStepsModal.currentStep === 1
+                          ? "text-indigo-900"
+                          : "text-slate-700"
+                      }`}
+                    >
+                      Step 1: Check Your Eligibility
+                    </h3>
+                    {contactStepsModal.currentStep === 1 && (
+                      <div className="space-y-2 mt-2">
+                        {contactStepsModal.trial.eligibility ? (
+                          <div className="bg-indigo-50 rounded-lg p-3 border border-indigo-200">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                              {contactStepsModal.trial.eligibility.gender && (
+                                <div>
+                                  <span className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">
+                                    Gender
+                                  </span>
+                                  <p className="text-xs font-semibold text-indigo-900 mt-0.5">
+                                    {contactStepsModal.trial.eligibility.gender}
+                                  </p>
+                                </div>
+                              )}
+                              {contactStepsModal.trial.eligibility.minimumAge && (
+                                <div>
+                                  <span className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">
+                                    Minimum Age
+                                  </span>
+                                  <p className="text-xs font-semibold text-indigo-900 mt-0.5">
+                                    {contactStepsModal.trial.eligibility.minimumAge}
+                                  </p>
+                                </div>
+                              )}
+                              {contactStepsModal.trial.eligibility.maximumAge && (
+                                <div>
+                                  <span className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">
+                                    Maximum Age
+                                  </span>
+                                  <p className="text-xs font-semibold text-indigo-900 mt-0.5">
+                                    {contactStepsModal.trial.eligibility.maximumAge}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                            {contactStepsModal.trial.eligibility.criteria &&
+                              contactStepsModal.trial.eligibility.criteria !==
+                                "Not specified" && (
+                                <div className="mt-2">
+                                  <span className="text-xs font-semibold text-indigo-700 uppercase tracking-wide block mb-1.5">
+                                    Detailed Criteria
+                                  </span>
+                                  <p className="text-xs text-slate-700 whitespace-pre-line bg-white rounded p-2 border border-indigo-100">
+                                    {contactStepsModal.trial.eligibility.criteria}
+                                  </p>
+                                </div>
+                              )}
+                          </div>
+                        ) : (
+                          <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                            <p className="text-xs text-gray-600">
+                              Eligibility criteria not available. Please review
+                              the trial details or contact the trial team
+                              directly.
+                            </p>
+                          </div>
+                        )}
+                        <p className="text-xs text-slate-600">
+                          Review the eligibility criteria above to ensure you
+                          meet the requirements before proceeding.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Step 2: Contact Information */}
+                <div className="relative flex gap-3 pb-6">
+                  <div
+                    className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all ${
+                      contactStepsModal.currentStep >= 2
+                        ? "bg-indigo-100 border-indigo-600"
+                        : "bg-gray-100 border-gray-300"
+                    }`}
+                  >
+                    {contactStepsModal.currentStep > 2 ? (
+                      <CheckCircle2
+                        className="w-5 h-5"
+                        style={{ color: "#2F3C96" }}
+                      />
+                    ) : (
+                      <Mail
+                        className="w-5 h-5"
+                        style={{
+                          color:
+                            contactStepsModal.currentStep === 2
+                              ? "#2F3C96"
+                              : "#787878",
+                        }}
+                      />
+                    )}
+                  </div>
+                  <div className="flex-1 pb-4">
+                    <h3
+                      className={`font-bold text-sm mb-1.5 ${
+                        contactStepsModal.currentStep === 2
+                          ? "text-indigo-900"
+                          : "text-slate-700"
+                      }`}
+                    >
+                      Step 2: Get Contact Information
+                    </h3>
+                    {contactStepsModal.currentStep === 2 && (
+                      <div className="space-y-2 mt-2">
+                        {contactStepsModal.trial.contacts &&
+                        contactStepsModal.trial.contacts.length > 0 ? (
+                          <div className="space-y-2">
+                            {contactStepsModal.trial.contacts.map(
+                              (contact, i) => (
+                                <div
+                                  key={i}
+                                  className="bg-indigo-50 rounded-lg p-3 border border-indigo-200"
+                                >
+                                  {contact.name && (
+                                    <div className="font-bold mb-2 text-sm flex items-center gap-2 text-indigo-900">
+                                      <User className="w-3.5 h-3.5" />
+                                      {contact.name}
+                                    </div>
+                                  )}
+                                  <div className="space-y-1.5">
+                                    {contact.email && (
+                                      <a
+                                        href={`mailto:${contact.email}`}
+                                        className="flex items-center gap-2 text-xs font-medium transition-colors text-indigo-700 hover:text-indigo-900"
+                                      >
+                                        <Mail className="w-3.5 h-3.5" />
+                                        {contact.email}
+                                      </a>
+                                    )}
+                                    {contact.phone && (
+                                      <div className="flex items-center gap-2 text-xs text-slate-700">
+                                        <Phone
+                                          className="w-3.5 h-3.5"
+                                          style={{ color: "#2F3C96" }}
+                                        />
+                                        <a
+                                          href={`tel:${contact.phone}`}
+                                          className="transition-colors hover:text-indigo-700"
+                                        >
+                                          {contact.phone}
+                                        </a>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              )
+                            )}
+                          </div>
+                        ) : (
+                          <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                            <p className="text-xs text-gray-600">
+                              Contact information not available for this trial.
+                              Please visit the trial's official page for contact
+                              details.
+                            </p>
+                          </div>
+                        )}
+                        <p className="text-xs text-slate-600">
+                          Save this contact information. You'll need it to send
+                          your inquiry email.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Step 3: Generate Email */}
+                <div className="relative flex gap-3 pb-6">
+                  <div
+                    className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all ${
+                      contactStepsModal.currentStep >= 3
+                        ? "bg-indigo-100 border-indigo-600"
+                        : "bg-gray-100 border-gray-300"
+                    }`}
+                  >
+                    {contactStepsModal.currentStep > 3 ? (
+                      <CheckCircle2
+                        className="w-5 h-5"
+                        style={{ color: "#2F3C96" }}
+                      />
+                    ) : (
+                      <Sparkles
+                        className="w-5 h-5"
+                        style={{
+                          color:
+                            contactStepsModal.currentStep === 3
+                              ? "#2F3C96"
+                              : "#787878",
+                        }}
+                      />
+                    )}
+                  </div>
+                  <div className="flex-1 pb-4">
+                    <h3
+                      className={`font-bold text-sm mb-1.5 ${
+                        contactStepsModal.currentStep === 3
+                          ? "text-indigo-900"
+                          : "text-slate-700"
+                      }`}
+                    >
+                      Step 3: Draft Your Email
+                    </h3>
+                    {contactStepsModal.currentStep === 3 && (
+                      <div className="space-y-2 mt-2">
+                        {!contactStepsModal.generatedEmail ? (
+                          <div className="bg-indigo-50 rounded-lg p-3 border border-indigo-200">
+                            <p className="text-xs text-slate-700 mb-3">
+                              Click the button below to generate a professional
+                              email draft for contacting the trial moderator.
+                            </p>
+                            <button
+                              onClick={generateContactEmail}
+                              disabled={contactStepsModal.generating}
+                              className="flex items-center justify-center gap-2 px-3 py-2 text-xs font-medium rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed w-full"
+                              style={{
+                                color: "#2F3C96",
+                                backgroundColor: "rgba(208, 196, 226, 0.2)",
+                                border: "1px solid rgba(208, 196, 226, 0.3)",
+                              }}
+                              onMouseEnter={(e) => {
+                                if (!contactStepsModal.generating) {
+                                  e.target.style.backgroundColor =
+                                    "rgba(208, 196, 226, 0.3)";
+                                  e.target.style.color = "#253075";
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                if (!contactStepsModal.generating) {
+                                  e.target.style.backgroundColor =
+                                    "rgba(208, 196, 226, 0.2)";
+                                  e.target.style.color = "#2F3C96";
+                                }
+                              }}
+                            >
+                              {contactStepsModal.generating ? (
+                                <>
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  Generating Email...
+                                </>
+                              ) : (
+                                <>
+                                  <Sparkles className="w-3.5 h-3.5" />
+                                  Generate Email Draft
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            <div className="bg-indigo-50 rounded-lg p-3 border border-indigo-200">
+                              <div className="flex items-center justify-between mb-1.5">
+                                <label className="text-xs font-semibold text-indigo-900">
+                                  Generated Email Draft
+                                </label>
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={copyGeneratedEmail}
+                                    className="flex items-center gap-1 px-2 py-1 text-xs font-medium bg-white hover:bg-indigo-100 text-indigo-700 rounded border border-indigo-200 transition-all"
+                                  >
+                                    {contactStepsModal.copied ? (
+                                      <>
+                                        <CheckCircle2 className="w-3 h-3" />
+                                        Copied!
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Copy className="w-3 h-3" />
+                                        Copy
+                                      </>
+                                    )}
+                                  </button>
+                                </div>
+                              </div>
+                              <div className="bg-white rounded-lg p-2 border border-indigo-100">
+                                <p className="text-xs text-slate-700 whitespace-pre-wrap">
+                                  {contactStepsModal.generatedEmail}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Step 4: Follow Up */}
+                <div className="relative flex gap-3">
+                  <div
+                    className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all ${
+                      contactStepsModal.currentStep >= 4
+                        ? "bg-indigo-100 border-indigo-600"
+                        : "bg-gray-100 border-gray-300"
+                    }`}
+                  >
+                    {contactStepsModal.currentStep === 4 ? (
+                      <CheckCircle2
+                        className="w-5 h-5"
+                        style={{ color: "#2F3C96" }}
+                      />
+                    ) : (
+                      <CheckCircle
+                        className="w-5 h-5"
+                        style={{
+                          color:
+                            contactStepsModal.currentStep === 4
+                              ? "#2F3C96"
+                              : "#787878",
+                        }}
+                      />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <h3
+                      className={`font-bold text-sm mb-1.5 ${
+                        contactStepsModal.currentStep === 4
+                          ? "text-indigo-900"
+                          : "text-slate-700"
+                      }`}
+                    >
+                      Step 4: Follow Up
+                    </h3>
+                    {contactStepsModal.currentStep === 4 && (
+                      <div className="space-y-2 mt-2">
+                        <div className="bg-indigo-50 rounded-lg p-3 border border-indigo-200">
+                          <h4 className="font-semibold text-xs text-indigo-900 mb-2">
+                            Important Follow-Up Tips:
+                          </h4>
+                          <ul className="space-y-1.5 text-xs text-slate-700">
+                            <li className="flex items-start gap-2">
+                              <CheckCircle2
+                                className="w-3.5 h-3.5 mt-0.5 shrink-0"
+                                style={{ color: "#2F3C96" }}
+                              />
+                              <span>
+                                <strong>Wait 1-2 weeks</strong> before following
+                                up if you don't receive a response
+                              </span>
+                            </li>
+                            <li className="flex items-start gap-2">
+                              <CheckCircle2
+                                className="w-3.5 h-3.5 mt-0.5 shrink-0"
+                                style={{ color: "#2F3C96" }}
+                              />
+                              <span>
+                                <strong>Keep your follow-up brief</strong> -
+                                reference your original inquiry and express
+                                continued interest
+                              </span>
+                            </li>
+                            <li className="flex items-start gap-2">
+                              <CheckCircle2
+                                className="w-3.5 h-3.5 mt-0.5 shrink-0"
+                                style={{ color: "#2F3C96" }}
+                              />
+                              <span>
+                                <strong>Be patient</strong> - trial coordinators
+                                receive many inquiries and may take time to
+                                respond
+                              </span>
+                            </li>
+                            <li className="flex items-start gap-2">
+                              <CheckCircle2
+                                className="w-3.5 h-3.5 mt-0.5 shrink-0"
+                                style={{ color: "#2F3C96" }}
+                              />
+                              <span>
+                                <strong>Consider calling</strong> if you have
+                                the phone number and haven't received a response
+                                after 2 weeks
+                              </span>
+                            </li>
+                            <li className="flex items-start gap-2">
+                              <CheckCircle2
+                                className="w-3.5 h-3.5 mt-0.5 shrink-0"
+                                style={{ color: "#2F3C96" }}
+                              />
+                              <span>
+                                <strong>Keep records</strong> of all
+                                communications for your reference
+                              </span>
+                            </li>
+                          </ul>
+                        </div>
+                        <p className="text-xs text-slate-600">
+                          Following up shows your continued interest and can
+                          help ensure your inquiry doesn't get overlooked.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
       </Modal>
 
       {/* Verify Email Modal */}

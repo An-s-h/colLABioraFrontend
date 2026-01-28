@@ -12,6 +12,7 @@ import ResearchInterestInput from "../components/ResearchInterestInput.jsx";
 import EmailVerificationStep from "../components/EmailVerificationStep.jsx";
 import { useAuth0Social } from "../hooks/useAuth0Social.js";
 import { generateUniqueUsernames } from "../utils/usernameSuggestions.js";
+import { capitalizeText } from "../utils/textCorrection.js";
 import {
   User,
   Microscope,
@@ -169,18 +170,10 @@ export default function OnboardResearcher() {
     "Academic Research",
   ];
 
-  function capitalizeText(text) {
-    if (!text || typeof text !== "string") return text;
-    return text
-      .split(/\s+/)
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-      .join(" ");
-  }
-
   function handleResearchInterestSubmit(value) {
-    const capitalized = capitalizeText(value);
-    if (capitalized && !researchInterests.includes(capitalized)) {
-      setResearchInterests((prev) => [...prev, capitalized]);
+    const corrected = capitalizeText(value);
+    if (corrected && !researchInterests.includes(corrected)) {
+      setResearchInterests((prev) => [...prev, corrected]);
       setResearchInterestInput("");
     }
   }
@@ -194,9 +187,9 @@ export default function OnboardResearcher() {
   }
 
   function handleSkillSubmit(value) {
-    const capitalized = capitalizeText(value);
-    if (capitalized && !skills.includes(capitalized)) {
-      setSkills((prev) => [...prev, capitalized]);
+    const corrected = capitalizeText(value);
+    if (corrected && !skills.includes(corrected)) {
+      setSkills((prev) => [...prev, corrected]);
       setSkillsInput("");
     }
   }
@@ -940,6 +933,12 @@ export default function OnboardResearcher() {
                       <SpecialtyInput
                         value={specialty}
                         onChange={setSpecialty}
+                        onBlur={(e) => {
+                          if (specialty && specialty.trim()) {
+                            const corrected = capitalizeText(specialty);
+                            setSpecialty(corrected);
+                          }
+                        }}
                         placeholder="e.g. Oncology, Cardiology"
                         maxSuggestions={8}
                         inputClassName="w-full py-1.5 px-3 text-sm border rounded-lg transition-all focus:outline-none focus:ring-2"
@@ -1107,6 +1106,12 @@ export default function OnboardResearcher() {
                       <LocationInput
                         value={location}
                         onChange={setLocation}
+                        onBlur={(e) => {
+                          if (location && location.trim()) {
+                            const corrected = capitalizeText(location);
+                            setLocation(corrected);
+                          }
+                        }}
                         placeholder="e.g. New York, USA or City, Country"
                         inputClassName="w-full py-1.5 px-2.5 text-xs border rounded-lg transition-all focus:outline-none focus:ring-2"
                       />
@@ -1126,6 +1131,12 @@ export default function OnboardResearcher() {
                         onChange={(e) =>
                           setInstitutionAffiliation(e.target.value)
                         }
+                        onBlur={(e) => {
+                          if (institutionAffiliation && institutionAffiliation.trim()) {
+                            const corrected = capitalizeText(institutionAffiliation);
+                            setInstitutionAffiliation(corrected);
+                          }
+                        }}
                         className="w-full py-1.5 px-2.5 text-sm border rounded-lg transition-all focus:outline-none focus:ring-2"
                         style={{
                           borderColor: "#E8E8E8",

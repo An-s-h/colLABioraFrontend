@@ -11,6 +11,7 @@ import icd11Dataset from "../data/icd11Dataset.json";
 import { Sparkles, Info, X, RefreshCw } from "lucide-react";
 import { motion } from "framer-motion";
 import { generateUniqueUsernames } from "../utils/usernameSuggestions.js";
+import { capitalizeCommaSeparated, capitalizeText } from "../utils/textCorrection.js";
 
 export default function EditProfile() {
   const navigate = useNavigate();
@@ -848,6 +849,10 @@ export default function EditProfile() {
                 type="text"
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
+                onBlur={(e) => {
+                  const corrected = capitalizeText(e.target.value);
+                  setCity(corrected);
+                }}
                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="Enter city"
               />
@@ -863,6 +868,10 @@ export default function EditProfile() {
                 type="text"
                 value={country}
                 onChange={(e) => setCountry(e.target.value)}
+                onBlur={(e) => {
+                  const corrected = capitalizeText(e.target.value);
+                  setCountry(corrected);
+                }}
                 className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="Enter country"
               />
@@ -981,6 +990,10 @@ export default function EditProfile() {
                   type="text"
                   value={specialties}
                   onChange={(e) => setSpecialties(e.target.value)}
+                  onBlur={(e) => {
+                    const corrected = capitalizeCommaSeparated(e.target.value);
+                    setSpecialties(corrected);
+                  }}
                   className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="e.g., Cardiology, Neurology"
                   required
@@ -997,6 +1010,10 @@ export default function EditProfile() {
                   type="text"
                   value={interests}
                   onChange={(e) => setInterests(e.target.value)}
+                  onBlur={(e) => {
+                    const corrected = capitalizeCommaSeparated(e.target.value);
+                    setInterests(corrected);
+                  }}
                   className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="e.g., Clinical Trials, Drug Development"
                   required

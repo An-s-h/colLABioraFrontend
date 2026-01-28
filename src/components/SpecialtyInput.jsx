@@ -6,6 +6,7 @@ import specialtyDataset from "../data/specialtyDataset.json";
 export default function SpecialtyInput({
   value,
   onChange,
+  onBlur,
   placeholder = "e.g. Oncology, Cardiology",
   className = "",
   inputClassName = "",
@@ -161,6 +162,11 @@ export default function SpecialtyInput({
     }
     
     closeDropdown(150);
+    
+    // Call parent's onBlur handler if provided
+    if (onBlur) {
+      onBlur(event);
+    }
   };
 
   const handleSelectSuggestion = (suggestion) => {

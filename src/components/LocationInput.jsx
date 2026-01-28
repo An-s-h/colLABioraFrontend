@@ -54,6 +54,7 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 export default function LocationInput({
   value,
   onChange,
+  onBlur,
   placeholder = "e.g. New York, USA or City, Country",
   className = "",
   inputClassName = "",
@@ -408,6 +409,11 @@ export default function LocationInput({
 
     // Close dropdown but preserve selected location state
     closeDropdown(150);
+    
+    // Call parent's onBlur handler if provided
+    if (onBlur) {
+      onBlur(event);
+    }
     
     // If we have a selected location and the value matches it, keep it selected
     // Otherwise, if user cleared/changed the value, clear selected location

@@ -62,6 +62,10 @@ export default function ExpertProfile() {
   });
   const [contactModal, setContactModal] = useState(false);
   const [user, setUser] = useState(null);
+  const [hasInvited, setHasInvited] = useState(false);
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [checkingInvite, setCheckingInvite] = useState(false);
+  const [showAllPublications, setShowAllPublications] = useState(false);
 
   // Get expert data from URL params
   const expertName = searchParams.get("name");
@@ -131,6 +135,9 @@ export default function ExpertProfile() {
         } catch (error) {
           console.error("Error fetching favorites:", error);
         }
+
+        // Check invite status
+        checkInviteStatus(userData);
       }
     };
 
@@ -384,6 +391,75 @@ export default function ExpertProfile() {
     }
   }
 
+  // Check if user has already invited this expert
+  async function checkInviteStatus(userData) {
+    if (!userData?._id && !userData?.id) return;
+    if (!expertName) return;
+
+    setCheckingInvite(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("inviterId", userData._id || userData.id);
+      params.set("expertName", expertName);
+      if (expertOrcid) params.set("expertOrcid", expertOrcid);
+
+      const response = await fetch(
+        `${base}/api/expert-invites/check?${params.toString()}`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setHasInvited(data.hasInvited || false);
+      }
+    } catch (error) {
+      console.error("Error checking invite status:", error);
+    } finally {
+      setCheckingInvite(false);
+    }
+  }
+
+  // Send invite to expert
+  async function sendInvite() {
+    if (!user?._id && !user?.id) {
+      toast.error("Please sign in to invite experts");
+      return;
+    }
+
+    if (hasInvited) {
+      toast.info("You have already invited this expert");
+      return;
+    }
+
+    setInviteLoading(true);
+    try {
+      const response = await fetch(`${base}/api/expert-invites`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          inviterId: user._id || user.id,
+          expertName: expertName,
+          expertOrcid: expertOrcid || null,
+          expertAffiliation: expertAffiliation || null,
+          expertLocation: expertLocation || null,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setHasInvited(true);
+        toast.success("Invite sent successfully!");
+        setContactModal(false);
+      } else {
+        toast.error(data.error || "Failed to send invite");
+      }
+    } catch (error) {
+      console.error("Error sending invite:", error);
+      toast.error("Failed to send invite. Please try again.");
+    } finally {
+      setInviteLoading(false);
+    }
+  }
+
   async function generateSummary(item, type) {
     let text = "";
     let title = "";
@@ -449,10 +525,10 @@ export default function ExpertProfile() {
   if (loading) {
     return (
       <Layout>
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/30 to-slate-100 flex items-center justify-center">
+        <div className="min-h-screen bg-gradient-to-br from-[#F5F5F5] via-[rgba(232,233,242,0.3)] to-[#F5F5F5] flex items-center justify-center">
           <div className="text-center">
-            <Loader2 className="w-12 h-12 text-indigo-600 animate-spin mx-auto mb-4" />
-            <p className="text-indigo-700 font-medium">
+            <Loader2 className="w-12 h-12 text-[#2F3C96] animate-spin mx-auto mb-4" />
+            <p className="text-[#2F3C96] font-medium">
               Loading expert profile...
             </p>
           </div>
@@ -464,12 +540,12 @@ export default function ExpertProfile() {
   if (!profile) {
     return (
       <Layout>
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/30 to-slate-100 flex items-center justify-center  ">
+        <div className="min-h-screen bg-gradient-to-br from-[#F5F5F5] via-[rgba(232,233,242,0.3)] to-[#F5F5F5] flex items-center justify-center  ">
           <div className="text-center">
-            <p className="text-slate-700 mb-4">Expert profile not found</p>
+            <p className="text-[#787878] mb-4">Expert profile not found</p>
             <button
               onClick={() => navigate("/experts")}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors z-50"
+              className="px-4 py-2 bg-[#2F3C96] text-white rounded-lg hover:bg-[#253075] transition-colors z-50"
             >
               Back to Experts
             </button>
@@ -498,7 +574,7 @@ export default function ExpertProfile() {
 
   return (
     <Layout>
-      <div className="min-h-screen bg-gradient-to-b from-indigo-50 via-white to-indigo-100  overflow-hidden relative  ">
+      <div className="min-h-screen bg-gradient-to-b from-[rgba(232,233,242,1)] via-white to-[rgba(209,211,229,1)]  overflow-hidden relative  ">
         <AnimatedBackground />
         <div className="px-4 sm:px-6 md:px-8 lg:px-12 mx-auto max-w-7xl pt-15 pb-12 lg:mt-5 mt-17 relative ">
           {/* Back Button */}
@@ -514,7 +590,7 @@ export default function ExpertProfile() {
                 navigate("/experts");
               }
             }}
-            className="mb-6 flex items-center gap-2 text-indigo-600 hover:text-indigo-700 font-medium transition-colors relative z-50 cursor-pointer"
+            className="mb-6 flex items-center gap-2 text-[#2F3C96] hover:text-[#253075] font-medium transition-colors relative z-50 cursor-pointer"
             type="button"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -522,7 +598,7 @@ export default function ExpertProfile() {
           </button>
 
           {/* Header Section */}
-          <div className="bg-gradient-to-br from-indigo-600 via-indigo-700 to-blue-700 rounded-xl shadow-xl border border-indigo-500/50 relative overflow-hidden p-4 sm:p-5 mb-6">
+          <div className="bg-gradient-to-br from-[#2F3C96] via-[#253075] to-[#1C2454] rounded-xl shadow-xl border border-[#2F3C96]/50 relative overflow-hidden p-4 sm:p-5 mb-6">
             <div className="absolute top-0 right-0 w-48 h-48 bg-white/5 rounded-full -mr-24 -mt-24"></div>
             <div className="absolute bottom-0 left-0 w-36 h-36 bg-white/5 rounded-full -ml-20 -mb-20"></div>
 
@@ -554,7 +630,7 @@ export default function ExpertProfile() {
                   </div>
 
                   {/* Location & Affiliation */}
-                  <div className="flex flex-wrap items-center gap-3 text-indigo-100 text-sm mb-2">
+                  <div className="flex flex-wrap items-center gap-3 text-white/90 text-sm mb-2">
                     {profile.affiliation && (
                       <div className="flex items-center gap-1.5">
                         <Building2 className="w-3.5 h-3.5" />
@@ -587,11 +663,32 @@ export default function ExpertProfile() {
                   {/* Action Buttons */}
                   <div className="flex flex-wrap gap-2 mb-3">
                     <button
-                      onClick={() => setContactModal(true)}
-                      className="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-xs font-semibold transition-all border border-white/30 shadow-md hover:shadow-lg hover:scale-105 flex items-center gap-1.5"
+                      onClick={() => {
+                        if (!user?._id && !user?.id) {
+                          toast.error("Please sign in to invite experts");
+                          return;
+                        }
+                        if (hasInvited) {
+                          toast.info("You have already invited this expert");
+                          return;
+                        }
+                        setContactModal(true);
+                      }}
+                      disabled={hasInvited || inviteLoading || checkingInvite}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border shadow-md hover:shadow-lg hover:scale-105 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed ${
+                        hasInvited
+                          ? "bg-green-50 border-green-200 text-green-700 hover:bg-green-100"
+                          : "bg-white/20 hover:bg-white/30 text-white border-white/30"
+                      }`}
                     >
-                      <Mail className="w-3.5 h-3.5" />
-                      Contact via Admin
+                      {inviteLoading || checkingInvite ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : hasInvited ? (
+                        <Check className="w-3.5 h-3.5" />
+                      ) : (
+                        <UserPlus className="w-3.5 h-3.5" />
+                      )}
+                      {hasInvited ? "Invited" : "Invite to Platform"}
                     </button>
                     <button
                       onClick={() => {
@@ -642,7 +739,7 @@ export default function ExpertProfile() {
                       : [];
                     return expertise.length > 0 ? (
                       <div>
-                        <h3 className="text-xs font-semibold text-indigo-100 mb-1.5 flex items-center gap-1.5">
+                        <h3 className="text-xs font-semibold text-white/90 mb-1.5 flex items-center gap-1.5">
                           <Award className="w-3.5 h-3.5" />
                           Areas of Expertise
                         </h3>
@@ -672,12 +769,12 @@ export default function ExpertProfile() {
 
           {/* Summary / About Section */}
           {profile.bioSummary && (
-            <div className="bg-white rounded-xl shadow-md border border-slate-200 p-6 mb-8">
-              <h2 className="text-xl font-bold text-slate-900 mb-3 flex items-center gap-2">
-                <Info className="w-5 h-5 text-indigo-600" />
+            <div className="bg-white rounded-xl shadow-md border border-[rgba(232,232,232,1)] p-6 mb-8">
+              <h2 className="text-xl font-bold text-[#2F3C96] mb-3 flex items-center gap-2">
+                <Info className="w-5 h-5 text-[#2F3C96]" />
                 About
               </h2>
-              <p className="text-slate-700 leading-relaxed">
+              <p className="text-[#787878] leading-relaxed">
                 {typeof profile.bioSummary === "string"
                   ? profile.bioSummary
                       .replace(/^Ai[:\s]*/i, "")
@@ -691,32 +788,32 @@ export default function ExpertProfile() {
           {/* Impact Metrics */}
           {profile.impactMetrics && (
             <div className="grid grid-cols-2 gap-3 mb-8">
-              <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-3 text-center">
-                <TrendingUp className="w-6 h-6 text-blue-600 mx-auto mb-1.5" />
-                <div className="text-xl font-bold text-slate-900">
+              <div className="bg-white rounded-lg shadow-sm border border-[rgba(232,232,232,1)] p-3 text-center">
+                <TrendingUp className="w-6 h-6 text-[#D0C4E2] mx-auto mb-1.5" />
+                <div className="text-xl font-bold text-[#2F3C96]">
                   {profile.impactMetrics.totalCitations || 0}
                 </div>
-                <div className="text-xs text-slate-600">Total Citations</div>
+                <div className="text-xs text-[#787878]">Total Citations</div>
               </div>
-              <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-3 text-center">
+              <div className="bg-white rounded-lg shadow-sm border border-[rgba(232,232,232,1)] p-3 text-center">
                 <Star className="w-6 h-6 text-amber-600 mx-auto mb-1.5" />
-                <div className="text-xl font-bold text-slate-900">
+                <div className="text-xl font-bold text-[#2F3C96]">
                   {profile.impactMetrics.maxCitations || 0}
                 </div>
-                <div className="text-xs text-slate-600">Max Citations</div>
+                <div className="text-xs text-[#787878]">Max Citations</div>
               </div>
             </div>
           )}
 
           {/* Top Publications */}
           {profile.publications && profile.publications.length > 0 && (
-            <div className="bg-white rounded-xl shadow-md border border-slate-200 p-4 mb-8">
+            <div className="bg-white rounded-xl shadow-md border border-[rgba(232,232,232,1)] p-4 mb-8">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-indigo-600" />
+                <h2 className="text-lg font-bold text-[#2F3C96] flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-[#2F3C96]" />
                   Top Publications
                 </h2>
-                <span className="text-xs text-slate-600">
+                <span className="text-xs text-[#787878]">
                   {profile.publications.length > 0
                     ? `${profile.publications.length} ${
                         profile.publications.length === 1
@@ -727,35 +824,38 @@ export default function ExpertProfile() {
                 </span>
               </div>
               <div className="space-y-3">
-                {profile.publications.slice(0, 10).map((pub, idx) => {
+                {(showAllPublications
+                  ? profile.publications
+                  : profile.publications.slice(0, 5)
+                ).map((pub, idx) => {
                   return (
                     <div
                       key={idx}
-                      className="border border-slate-200 rounded-xl p-4 hover:border-indigo-300 hover:shadow-lg transition-all bg-white"
+                      className="border border-[rgba(232,232,232,1)] rounded-xl p-4 hover:border-[rgba(163,167,203,1)] hover:shadow-lg transition-all bg-white"
                     >
                       {/* Header with Title, Citations, and Favorite */}
                       <div className="flex items-start justify-between gap-3 mb-3">
                         <div className="flex-1 min-w-0">
-                          <h3 className="font-bold text-slate-900 text-sm mb-2 leading-snug line-clamp-2">
+                          <h3 className="font-bold text-[#2F3C96] text-sm mb-2 leading-snug line-clamp-2">
                             {pub.title || "Untitled Publication"}
                           </h3>
                           <div className="flex items-center gap-2 flex-wrap">
                             {(pub.pmid || pub.id) && (
-                              <span className="inline-flex items-center px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-medium rounded">
+                              <span className="inline-flex items-center px-2 py-0.5 bg-[rgba(209,211,229,1)] text-[#2F3C96] text-[10px] font-medium rounded">
                                 {pub.pmid
                                   ? `PMID: ${pub.pmid}`
                                   : `ID: ${pub.id}`}
                               </span>
                             )}
                             {pub.journal && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border bg-slate-50 text-slate-700 border-slate-200">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border bg-[#F5F5F5] text-[#787878] border-[rgba(232,232,232,1)]">
                                 {pub.journal.length > 25
                                   ? `${pub.journal.substring(0, 25)}...`
                                   : pub.journal}
                               </span>
                             )}
                             {(pub.year || pub.month) && (
-                              <span className="text-xs text-slate-600">
+                              <span className="text-xs text-[#787878]">
                                 {pub.month && `${pub.month} `}
                                 {pub.year || ""}
                               </span>
@@ -765,9 +865,9 @@ export default function ExpertProfile() {
                         <div className="flex items-center gap-2 shrink-0">
                           {/* Citations - More Prominent */}
                           {(pub.citations || pub.citations === 0) && (
-                            <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-50 rounded-lg border border-indigo-200">
-                              <TrendingUp className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                              <span className="text-xs font-bold text-indigo-700">
+                            <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[rgba(232,233,242,1)] rounded-lg border border-[rgba(209,211,229,1)]">
+                              <TrendingUp className="w-3.5 h-3.5 text-[#2F3C96] shrink-0" />
+                              <span className="text-xs font-bold text-[#2F3C96]">
                                 {pub.citations || 0}
                               </span>
                             </div>
@@ -776,12 +876,12 @@ export default function ExpertProfile() {
                       </div>
 
                       {/* Compact Metadata */}
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-slate-600 mb-2">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-[#787878] mb-2">
                         {pub.authors &&
                           Array.isArray(pub.authors) &&
                           pub.authors.length > 0 && (
                             <div className="flex items-center gap-1">
-                              <User className="w-3 h-3 text-indigo-600 shrink-0" />
+                              <User className="w-3 h-3 text-[#2F3C96] shrink-0" />
                               <span className="line-clamp-1">
                                 {pub.authors
                                   .slice(0, 3)
@@ -795,7 +895,7 @@ export default function ExpertProfile() {
                           )}
                         {pub.publication && (
                           <div className="flex items-center gap-1">
-                            <BookOpen className="w-3 h-3 text-blue-600 shrink-0" />
+                            <BookOpen className="w-3 h-3 text-[#D0C4E2] shrink-0" />
                             <span className="line-clamp-1">
                               {typeof pub.publication === "string"
                                 ? pub.publication
@@ -805,7 +905,7 @@ export default function ExpertProfile() {
                           </div>
                         )}
                         {(pub.volume || pub.issue || pub.pages) && (
-                          <span className="text-slate-500">
+                          <span className="text-[#787878]">
                             {pub.volume && `Vol. ${pub.volume}`}
                             {pub.issue && ` (${pub.issue})`}
                             {pub.pages && `, pp. ${pub.pages}`}
@@ -816,7 +916,7 @@ export default function ExpertProfile() {
                             href={`https://doi.org/${pub.doi}`}
                             target="_blank"
                             rel="noreferrer"
-                            className="text-indigo-600 hover:text-indigo-700 hover:underline line-clamp-1"
+                            className="text-[#2F3C96] hover:text-[#253075] hover:underline line-clamp-1"
                           >
                             DOI:{" "}
                             {pub.doi.length > 20
@@ -829,8 +929,8 @@ export default function ExpertProfile() {
                       {/* Compact Abstract Preview */}
                       {(pub.abstract || pub.snippet) && (
                         <div className="mb-3">
-                          <div className="bg-indigo-50 rounded-lg p-3 border border-indigo-100 ">
-                            <p className="text-xs text-slate-700 line-clamp-3 leading-relaxed">
+                          <div className="bg-[rgba(232,233,242,1)] rounded-lg p-3 border border-[rgba(209,211,229,1)] ">
+                            <p className="text-xs text-[#787878] line-clamp-3 leading-relaxed">
                               {pub.abstract || pub.snippet}
                             </p>
                           </div>
@@ -838,20 +938,20 @@ export default function ExpertProfile() {
                       )}
 
                       {/* Compact Action Buttons */}
-                      <div className="flex items-center gap-2 pt-3 border-t border-slate-100">
+                      <div className="flex items-center gap-2 pt-3 border-t border-[#F5F5F5]">
                         <button
                           onClick={() => generateSummary(pub, "publication")}
-                          className="flex-1 px-4 py-2 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-lg text-xs font-semibold hover:from-indigo-700 hover:to-indigo-800 transition-all flex items-center justify-center gap-2 shadow-sm hover:shadow-md"
+                          className="flex-1 px-4 py-2 bg-gradient-to-r from-[#2F3C96] to-[#253075] text-white rounded-lg text-xs font-semibold hover:from-[#253075] hover:to-[#1C2454] transition-all flex items-center justify-center gap-2 shadow-sm hover:shadow-md"
                         >
                           <Sparkles className="w-3.5 h-3.5" />
-                          AI Summary
+                          Understand this Paper
                         </button>
                         {pub.link && (
                           <a
                             href={pub.link}
                             target="_blank"
                             rel="noreferrer"
-                            className="flex-1 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold hover:bg-slate-200 transition-colors flex items-center justify-center gap-2 border border-slate-200 shadow-sm hover:shadow-md"
+                            className="flex-1 px-4 py-2 bg-[#F5F5F5] text-[#787878] rounded-lg text-xs font-semibold hover:bg-[rgba(232,232,232,1)] transition-colors flex items-center justify-center gap-2 border border-[rgba(232,232,232,1)] shadow-sm hover:shadow-md"
                           >
                             <ExternalLink className="w-3.5 h-3.5" />
                             View Paper
@@ -862,14 +962,32 @@ export default function ExpertProfile() {
                   );
                 })}
               </div>
+              {profile.publications.length > 5 && (
+                <div className="mt-4 flex justify-center">
+                  <button
+                    onClick={() => setShowAllPublications(!showAllPublications)}
+                    className="px-6 py-2 bg-[#2F3C96] text-white rounded-lg text-sm font-semibold hover:bg-[#253075] transition-colors flex items-center gap-2"
+                  >
+                    {showAllPublications ? (
+                      <>
+                        Show Less
+                      </>
+                    ) : (
+                      <>
+                        Show More ({profile.publications.length - 5} more)
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
           {/* Associated Clinical Trials */}
           {profile.associatedTrials && profile.associatedTrials.length > 0 && (
-            <div className="bg-white rounded-xl shadow-md border border-slate-200 p-6 mb-8">
-              <h2 className="text-xl font-bold text-slate-900 mb-6 flex items-center gap-2">
-                <Beaker className="w-5 h-5 text-indigo-600" />
+            <div className="bg-white rounded-xl shadow-md border border-[rgba(232,232,232,1)] p-6 mb-8">
+              <h2 className="text-xl font-bold text-[#2F3C96] mb-6 flex items-center gap-2">
+                <Beaker className="w-5 h-5 text-[#2F3C96]" />
                 Associated Clinical Trials
               </h2>
               <div className="grid md:grid-cols-2 gap-4">
@@ -882,10 +1000,10 @@ export default function ExpertProfile() {
                   return (
                     <div
                       key={idx}
-                      className="border border-slate-200 rounded-lg p-4 hover:border-indigo-300 hover:shadow-md transition-all"
+                      className="border border-[rgba(232,232,232,1)] rounded-lg p-4 hover:border-[rgba(163,167,203,1)] hover:shadow-md transition-all"
                     >
                       <div className="flex items-start justify-between gap-2 mb-2">
-                        <h3 className="font-semibold text-slate-900 flex-1 line-clamp-2">
+                        <h3 className="font-semibold text-[#2F3C96] flex-1 line-clamp-2">
                           {trial.title}
                         </h3>
                         <button
@@ -903,7 +1021,7 @@ export default function ExpertProfile() {
                           className={`p-1.5 rounded-md border transition-all shrink-0 disabled:opacity-50 disabled:cursor-not-allowed ${
                             isFavorited
                               ? "bg-red-50 border-red-200 text-red-500"
-                              : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-red-500"
+                              : "bg-[#F5F5F5] border-[rgba(232,232,232,1)] text-[#787878] hover:bg-[rgba(232,232,232,1)] hover:text-red-500"
                           }`}
                         >
                           {favoritingItems.has(
@@ -926,7 +1044,7 @@ export default function ExpertProfile() {
                           </span>
                         )}
                         {trial.phase && (
-                          <span className="px-2 py-1 bg-indigo-50 text-indigo-700 text-xs font-medium rounded-full border border-indigo-200">
+                          <span className="px-2 py-1 bg-[rgba(232,233,242,1)] text-[#2F3C96] text-xs font-medium rounded-full border border-[rgba(209,211,229,1)]">
                             Phase {trial.phase}
                           </span>
                         )}
@@ -935,7 +1053,7 @@ export default function ExpertProfile() {
                         onClick={() => {
                           setTrialDetailsModal({ open: true, trial });
                         }}
-                        className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+                        className="text-sm text-[#2F3C96] hover:text-[#253075] font-medium"
                       >
                         View Details →
                       </button>
@@ -948,33 +1066,33 @@ export default function ExpertProfile() {
 
           {/* Activity Timeline */}
           {profile.activityTimeline && profile.activityTimeline.length > 0 && (
-            <div className="bg-white rounded-xl shadow-md border border-slate-200 p-6 mb-8">
-              <h2 className="text-xl font-bold text-slate-900 mb-6 flex items-center gap-2">
-                <Activity className="w-5 h-5 text-indigo-600" />
+            <div className="bg-white rounded-xl shadow-md border border-[rgba(232,232,232,1)] p-6 mb-8">
+              <h2 className="text-xl font-bold text-[#2F3C96] mb-6 flex items-center gap-2">
+                <Activity className="w-5 h-5 text-[#2F3C96]" />
                 Recent Activity
               </h2>
               <div className="space-y-4">
                 {profile.activityTimeline.map((activity, idx) => (
                   <div key={idx} className="flex gap-4">
                     <div className="flex flex-col items-center">
-                      <div className="w-3 h-3 bg-indigo-600 rounded-full"></div>
+                      <div className="w-3 h-3 bg-[#2F3C96] rounded-full"></div>
                       {idx < profile.activityTimeline.length - 1 && (
-                        <div className="w-0.5 h-full bg-slate-200 mt-2"></div>
+                        <div className="w-0.5 h-full bg-[rgba(232,232,232,1)] mt-2"></div>
                       )}
                     </div>
                     <div className="flex-1 pb-4">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm font-semibold text-slate-900">
+                        <span className="text-sm font-semibold text-[#2F3C96]">
                           {activity.title}
                         </span>
                         {activity.year && (
-                          <span className="text-xs text-slate-500">
+                          <span className="text-xs text-[#787878]">
                             ({activity.year})
                           </span>
                         )}
                       </div>
                       {activity.description && (
-                        <p className="text-sm text-slate-600">
+                        <p className="text-sm text-[#787878]">
                           {activity.description}
                         </p>
                       )}
@@ -986,9 +1104,9 @@ export default function ExpertProfile() {
           )}
 
           {/* External Links */}
-          <div className="bg-white rounded-xl shadow-md border border-slate-200 p-6 mb-8">
-            <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
-              <Globe className="w-5 h-5 text-indigo-600" />
+          <div className="bg-white rounded-xl shadow-md border border-[rgba(232,232,232,1)] p-6 mb-8">
+            <h2 className="text-xl font-bold text-[#2F3C96] mb-4 flex items-center gap-2">
+              <Globe className="w-5 h-5 text-[#2F3C96]" />
               External Links
             </h2>
             <div className="flex flex-wrap gap-3">
@@ -997,7 +1115,7 @@ export default function ExpertProfile() {
                   href={profile.externalLinks.googleScholar}
                   target="_blank"
                   rel="noreferrer"
-                  className="px-4 py-2 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-semibold hover:bg-indigo-100 transition-colors flex items-center gap-2 border border-indigo-200 hover:shadow-md"
+                  className="px-4 py-2 bg-[rgba(232,233,242,1)] text-[#2F3C96] rounded-lg text-sm font-semibold hover:bg-[rgba(209,211,229,1)] transition-colors flex items-center gap-2 border border-[rgba(209,211,229,1)] hover:shadow-md"
                 >
                   <Database className="w-4 h-4" />
                   Google Scholar
@@ -1008,7 +1126,7 @@ export default function ExpertProfile() {
                   href={profile.externalLinks.pubmed}
                   target="_blank"
                   rel="noreferrer"
-                  className="px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-semibold hover:bg-blue-100 transition-colors flex items-center gap-2 border border-blue-200 hover:shadow-md"
+                  className="px-4 py-2 bg-[rgba(245,242,248,1)] text-[#D0C4E2] rounded-lg text-sm font-semibold hover:bg-[rgba(232,224,239,1)] transition-colors flex items-center gap-2 border border-[#D0C4E2] hover:shadow-md"
                 >
                   <BookOpen className="w-4 h-4" />
                   PubMed
@@ -1030,7 +1148,7 @@ export default function ExpertProfile() {
                   href={profile.externalLinks.orcid}
                   target="_blank"
                   rel="noreferrer"
-                  className="px-4 py-2 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-semibold hover:bg-indigo-100 transition-colors flex items-center gap-2 border border-indigo-200 hover:shadow-md"
+                  className="px-4 py-2 bg-[rgba(232,233,242,1)] text-[#2F3C96] rounded-lg text-sm font-semibold hover:bg-[rgba(209,211,229,1)] transition-colors flex items-center gap-2 border border-[rgba(209,211,229,1)] hover:shadow-md"
                 >
                   <LinkIcon className="w-4 h-4" />
                   ORCID
@@ -1041,7 +1159,7 @@ export default function ExpertProfile() {
                   href={profile.externalLinks.institutional}
                   target="_blank"
                   rel="noreferrer"
-                  className="px-4 py-2 bg-slate-50 text-slate-700 rounded-lg text-sm font-semibold hover:bg-slate-100 transition-colors flex items-center gap-2 border border-slate-200 hover:shadow-md"
+                  className="px-4 py-2 bg-[#F5F5F5] text-[#787878] rounded-lg text-sm font-semibold hover:bg-[rgba(232,232,232,1)] transition-colors flex items-center gap-2 border border-[rgba(232,232,232,1)] hover:shadow-md"
                 >
                   <Building2 className="w-4 h-4" />
                   Institutional Page
@@ -1051,25 +1169,46 @@ export default function ExpertProfile() {
           </div>
 
           {/* Collaboration CTAs */}
-          <div className="bg-gradient-to-br from-indigo-50 to-blue-50 rounded-xl shadow-md border border-indigo-200 p-6">
-            <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
-              <MessageCircle className="w-5 h-5 text-indigo-600" />
+          <div className="bg-gradient-to-br from-[rgba(232,233,242,1)] to-[rgba(245,242,248,1)] rounded-xl shadow-md border border-[rgba(209,211,229,1)] p-6">
+            <h2 className="text-xl font-bold text-[#2F3C96] mb-4 flex items-center gap-2">
+              <MessageCircle className="w-5 h-5 text-[#2F3C96]" />
               Collaboration
             </h2>
             <div className="space-y-3">
-              <div className="flex items-center gap-2 text-slate-700">
-                <Info className="w-4 h-4 text-indigo-600" />
+              <div className="flex items-center gap-2 text-[#787878]">
+                <Info className="w-4 h-4 text-[#2F3C96]" />
                 <span className="text-sm">
                   Messaging unavailable — this expert is not yet on Collabiora.
                 </span>
               </div>
               <div className="flex flex-wrap gap-3">
                 <button
-                  onClick={() => setContactModal(true)}
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors flex items-center gap-2"
+                  onClick={() => {
+                    if (!user?._id && !user?.id) {
+                      toast.error("Please sign in to invite experts");
+                      return;
+                    }
+                    if (hasInvited) {
+                      toast.info("You have already invited this expert");
+                      return;
+                    }
+                    setContactModal(true);
+                  }}
+                  disabled={hasInvited || inviteLoading || checkingInvite}
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${
+                    hasInvited
+                      ? "bg-green-50 border-green-200 text-green-700 hover:bg-green-100 border"
+                      : "bg-[#2F3C96] text-white hover:bg-[#253075]"
+                  }`}
                 >
-                  <Mail className="w-4 h-4" />
-                  Contact via Admin
+                  {inviteLoading || checkingInvite ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : hasInvited ? (
+                    <Check className="w-4 h-4" />
+                  ) : (
+                    <UserPlus className="w-4 h-4" />
+                  )}
+                  {hasInvited ? "Invited" : "Invite to Platform"}
                 </button>
                 <button
                   onClick={() =>
@@ -1121,18 +1260,18 @@ export default function ExpertProfile() {
         title="AI Summary"
       >
         <div className="space-y-4">
-          <div className="pb-4 border-b border-indigo-200">
-            <h4 className="font-bold text-indigo-900 text-lg">
+          <div className="pb-4 border-b border-[rgba(209,211,229,1)]">
+            <h4 className="font-bold text-[#2F3C96] text-lg">
               {summaryModal.title}
             </h4>
           </div>
           {summaryModal.loading ? (
-            <div className="flex items-center gap-2 text-indigo-600">
+            <div className="flex items-center gap-2 text-[#2F3C96]">
               <Loader2 className="w-4 h-4 animate-spin" />
               <span className="text-sm font-medium">Generating summary...</span>
             </div>
           ) : (
-            <p className="text-indigo-800 text-sm leading-relaxed whitespace-pre-wrap">
+            <p className="text-[#2F3C96] text-sm leading-relaxed whitespace-pre-wrap">
               {summaryModal.summary}
             </p>
           )}
@@ -1152,19 +1291,19 @@ export default function ExpertProfile() {
             {/* Scrollable Content */}
             <div className="flex-1 overflow-y-auto space-y-6 px-6 pt-6 pb-24">
               {/* Header */}
-              <div className="pb-4 border-b border-slate-200/60">
-                <h3 className="text-xl font-bold text-slate-900 mb-3 leading-tight">
+              <div className="pb-4 border-b border-[rgba(232,232,232,0.6)]">
+                <h3 className="text-xl font-bold text-[#2F3C96] mb-3 leading-tight">
                   {publicationDetailsModal.publication.title}
                 </h3>
                 <div className="flex flex-wrap gap-2">
                   {publicationDetailsModal.publication.pmid && (
-                    <span className="inline-flex items-center px-3 py-1 bg-indigo-50 text-indigo-700 text-xs font-medium rounded-md border border-indigo-100">
+                    <span className="inline-flex items-center px-3 py-1 bg-[rgba(232,233,242,1)] text-[#2F3C96] text-xs font-medium rounded-md border border-[rgba(209,211,229,1)]">
                       <FileText className="w-3 h-3 mr-1.5" />
                       PMID: {publicationDetailsModal.publication.pmid}
                     </span>
                   )}
                   {publicationDetailsModal.publication.journal && (
-                    <span className="inline-flex items-center px-3 py-1 bg-slate-50 text-slate-700 text-xs font-medium rounded-md border border-slate-200">
+                    <span className="inline-flex items-center px-3 py-1 bg-[#F5F5F5] text-[#787878] text-xs font-medium rounded-md border border-[rgba(232,232,232,1)]">
                       <BookOpen className="w-3 h-3 mr-1.5" />
                       {publicationDetailsModal.publication.journal}
                     </span>
@@ -1176,12 +1315,12 @@ export default function ExpertProfile() {
               {(publicationDetailsModal.publication.abstract ||
                 publicationDetailsModal.publication.snippet) && (
                 <div>
-                  <div className="bg-gradient-to-br from-indigo-50/50 to-blue-50/50 rounded-xl p-5 border border-indigo-100/50">
-                    <h4 className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide text-indigo-700">
+                  <div className="bg-gradient-to-br from-[rgba(232,233,242,0.5)] to-[rgba(245,242,248,0.5)] rounded-xl p-5 border border-[rgba(209,211,229,0.5)]">
+                    <h4 className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide text-[#2F3C96]">
                       <Info className="w-4 h-4" />
                       Abstract
                     </h4>
-                    <div className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap max-h-none overflow-visible">
+                    <div className="text-sm text-[#787878] leading-relaxed whitespace-pre-wrap max-h-none overflow-visible">
                       {publicationDetailsModal.publication.abstract ||
                         publicationDetailsModal.publication.snippet}
                     </div>
@@ -1194,19 +1333,19 @@ export default function ExpertProfile() {
                 Array.isArray(publicationDetailsModal.publication.authors) &&
                 publicationDetailsModal.publication.authors.length > 0 && (
                   <div>
-                    <div className="bg-white rounded-xl p-5 border border-slate-200/60 shadow-sm">
-                      <h4 className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide text-slate-600">
+                    <div className="bg-white rounded-xl p-5 border border-[rgba(232,232,232,0.6)] shadow-sm">
+                      <h4 className="font-semibold mb-3 flex items-center gap-2 text-sm uppercase tracking-wide text-[#787878]">
                         <User className="w-4 h-4" />
                         Authors
                       </h4>
-                      <p className="text-sm text-slate-700 leading-relaxed">
+                      <p className="text-sm text-[#787878] leading-relaxed">
                         {publicationDetailsModal.publication.authors
                           .map((a) => (typeof a === "string" ? a : a.name || a))
                           .join(", ")}
                       </p>
                       {publicationDetailsModal.publication.authors.length >
                         1 && (
-                        <p className="text-xs text-slate-500 mt-2">
+                        <p className="text-xs text-[#787878] mt-2">
                           {publicationDetailsModal.publication.authors.length}{" "}
                           authors
                         </p>
@@ -1217,8 +1356,8 @@ export default function ExpertProfile() {
 
               {/* Publication Metadata Cards */}
               <div>
-                <div className="bg-white rounded-xl p-5 border border-slate-200/60 shadow-sm">
-                  <h4 className="font-semibold mb-4 flex items-center gap-2 text-sm uppercase tracking-wide text-slate-600">
+                <div className="bg-white rounded-xl p-5 border border-[rgba(232,232,232,0.6)] shadow-sm">
+                  <h4 className="font-semibold mb-4 flex items-center gap-2 text-sm uppercase tracking-wide text-[#787878]">
                     <Calendar className="w-4 h-4" />
                     Publication Information
                   </h4>
@@ -1226,14 +1365,14 @@ export default function ExpertProfile() {
                     {/* Publication Date */}
                     {(publicationDetailsModal.publication.year ||
                       publicationDetailsModal.publication.month) && (
-                      <div className="bg-slate-50/50 rounded-lg p-3 border border-slate-200/50">
+                      <div className="bg-[rgba(245,245,245,0.5)] rounded-lg p-3 border border-[rgba(232,232,232,0.5)]">
                         <div className="flex items-center gap-2 mb-1.5">
-                          <Calendar className="w-3.5 h-3.5 text-slate-500" />
-                          <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                          <Calendar className="w-3.5 h-3.5 text-[#787878]" />
+                          <span className="text-xs font-medium text-[#787878] uppercase tracking-wide">
                             Published
                           </span>
                         </div>
-                        <p className="text-sm font-semibold text-slate-900">
+                        <p className="text-sm font-semibold text-[#2F3C96]">
                           {publicationDetailsModal.publication.month
                             ? `${publicationDetailsModal.publication.month} `
                             : ""}
@@ -1248,14 +1387,14 @@ export default function ExpertProfile() {
                     {/* Volume & Issue */}
                     {(publicationDetailsModal.publication.volume ||
                       publicationDetailsModal.publication.issue) && (
-                      <div className="bg-slate-50/50 rounded-lg p-3 border border-slate-200/50">
+                      <div className="bg-[rgba(245,245,245,0.5)] rounded-lg p-3 border border-[rgba(232,232,232,0.5)]">
                         <div className="flex items-center gap-2 mb-1.5">
-                          <BookOpen className="w-3.5 h-3.5 text-slate-500" />
-                          <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                          <BookOpen className="w-3.5 h-3.5 text-[#787878]" />
+                          <span className="text-xs font-medium text-[#787878] uppercase tracking-wide">
                             Volume / Issue
                           </span>
                         </div>
-                        <p className="text-sm font-semibold text-slate-900">
+                        <p className="text-sm font-semibold text-[#2F3C96]">
                           {publicationDetailsModal.publication.volume || "N/A"}
                           {publicationDetailsModal.publication.issue
                             ? ` (Issue ${publicationDetailsModal.publication.issue})`
@@ -1266,14 +1405,14 @@ export default function ExpertProfile() {
 
                     {/* Pages */}
                     {publicationDetailsModal.publication.pages && (
-                      <div className="bg-slate-50/50 rounded-lg p-3 border border-slate-200/50">
+                      <div className="bg-[rgba(245,245,245,0.5)] rounded-lg p-3 border border-[rgba(232,232,232,0.5)]">
                         <div className="flex items-center gap-2 mb-1.5">
-                          <FileText className="w-3.5 h-3.5 text-slate-500" />
-                          <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                          <FileText className="w-3.5 h-3.5 text-[#787878]" />
+                          <span className="text-xs font-medium text-[#787878] uppercase tracking-wide">
                             Pages
                           </span>
                         </div>
-                        <p className="text-sm font-semibold text-slate-900">
+                        <p className="text-sm font-semibold text-[#2F3C96]">
                           {publicationDetailsModal.publication.pages}
                         </p>
                       </div>
@@ -1282,14 +1421,14 @@ export default function ExpertProfile() {
                     {/* Citations */}
                     {(publicationDetailsModal.publication.citations ||
                       publicationDetailsModal.publication.citations === 0) && (
-                      <div className="bg-slate-50/50 rounded-lg p-3 border border-slate-200/50">
+                      <div className="bg-[rgba(245,245,245,0.5)] rounded-lg p-3 border border-[rgba(232,232,232,0.5)]">
                         <div className="flex items-center gap-2 mb-1.5">
-                          <TrendingUp className="w-3.5 h-3.5 text-slate-500" />
-                          <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                          <TrendingUp className="w-3.5 h-3.5 text-[#787878]" />
+                          <span className="text-xs font-medium text-[#787878] uppercase tracking-wide">
                             Citations
                           </span>
                         </div>
-                        <p className="text-sm font-semibold text-indigo-700">
+                        <p className="text-sm font-semibold text-[#2F3C96]">
                           {publicationDetailsModal.publication.citations || 0}
                         </p>
                       </div>
@@ -1297,10 +1436,10 @@ export default function ExpertProfile() {
 
                     {/* DOI */}
                     {publicationDetailsModal.publication.doi && (
-                      <div className="bg-slate-50/50 rounded-lg p-3 border border-slate-200/50">
+                      <div className="bg-[rgba(245,245,245,0.5)] rounded-lg p-3 border border-[rgba(232,232,232,0.5)]">
                         <div className="flex items-center gap-2 mb-1.5">
-                          <LinkIcon className="w-3.5 h-3.5 text-slate-500" />
-                          <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                          <LinkIcon className="w-3.5 h-3.5 text-[#787878]" />
+                          <span className="text-xs font-medium text-[#787878] uppercase tracking-wide">
                             DOI
                           </span>
                         </div>
@@ -1308,7 +1447,7 @@ export default function ExpertProfile() {
                           href={`https://doi.org/${publicationDetailsModal.publication.doi}`}
                           target="_blank"
                           rel="noreferrer"
-                          className="text-sm font-semibold text-indigo-600 hover:text-indigo-700 hover:underline break-all"
+                          className="text-sm font-semibold text-[#2F3C96] hover:text-[#253075] hover:underline break-all"
                         >
                           {publicationDetailsModal.publication.doi}
                         </a>
@@ -1320,14 +1459,14 @@ export default function ExpertProfile() {
             </div>
 
             {/* Sticky Actions Footer */}
-            <div className="sticky bottom-0 px-6 py-4 border-t border-slate-200/60 bg-white/95 backdrop-blur-sm shadow-lg">
+            <div className="sticky bottom-0 px-6 py-4 border-t border-[rgba(232,232,232,0.6)] bg-white/95 backdrop-blur-sm shadow-lg">
               <div className="flex flex-wrap gap-3">
                 {publicationDetailsModal.publication.link && (
                   <a
                     href={publicationDetailsModal.publication.link}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex-1 px-4 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 shadow-sm hover:shadow-md"
+                    className="flex-1 px-4 py-2.5 bg-[#2F3C96] text-white rounded-lg text-sm font-semibold hover:bg-[#253075] transition-all flex items-center justify-center gap-2 shadow-sm hover:shadow-md"
                   >
                     <ExternalLink className="w-4 h-4" />
                     View on{" "}
@@ -1426,11 +1565,11 @@ export default function ExpertProfile() {
       >
         {trialDetailsModal.trial && (
           <div className="space-y-4">
-            <h4 className="font-bold text-indigo-900">
+            <h4 className="font-bold text-[#2F3C96]">
               {trialDetailsModal.trial.title}
             </h4>
             {trialDetailsModal.trial.description && (
-              <p className="text-slate-700 text-sm leading-relaxed">
+              <p className="text-[#787878] text-sm leading-relaxed">
                 {trialDetailsModal.trial.description}
               </p>
             )}
@@ -1438,33 +1577,40 @@ export default function ExpertProfile() {
         )}
       </Modal>
 
-      {/* Contact via Admin Modal */}
+      {/* Invite to Platform Modal */}
       <Modal
         isOpen={contactModal}
         onClose={() => setContactModal(false)}
-        title="Contact via Admin"
+        title="Invite to Platform"
       >
         <div className="space-y-4">
-          <p className="text-slate-700">
-            Would you like to contact {profile.name} through Collabiora admin? Our
-            admin team will facilitate the connection and help coordinate
-            communication between you and this expert.
+          <p className="text-[#787878]">
+            Would you like to invite {profile.name} to join Collabiora? We'll send
+            them an invitation to create an account on our platform, enabling direct
+            communication and collaboration opportunities.
           </p>
           <div className="flex gap-3">
             <button
-              onClick={() => {
-                toast.success(
-                  "Contact request submitted! Our admin team will reach out soon."
-                );
-                setContactModal(false);
-              }}
-              className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-colors"
+              onClick={sendInvite}
+              disabled={inviteLoading || hasInvited}
+              className="flex-1 px-4 py-2 bg-[#2F3C96] text-white rounded-lg font-semibold hover:bg-[#253075] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              Submit Request
+              {inviteLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Sending...
+                </>
+              ) : (
+                <>
+                  <UserPlus className="w-4 h-4" />
+                  Send Invite
+                </>
+              )}
             </button>
             <button
               onClick={() => setContactModal(false)}
-              className="flex-1 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg font-semibold hover:bg-slate-200 transition-colors"
+              disabled={inviteLoading}
+              className="flex-1 px-4 py-2 bg-[#F5F5F5] text-[#787878] rounded-lg font-semibold hover:bg-[rgba(232,232,232,1)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Cancel
             </button>

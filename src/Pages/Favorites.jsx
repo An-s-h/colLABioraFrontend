@@ -49,6 +49,7 @@ import {
 } from "../components/ui/alert-dialog";
 import { pdf } from "@react-pdf/renderer";
 import PDFReportDocument from "../components/PDFReportDocument.jsx";
+import { parseEligibilityCriteria } from "../utils/parseEligibilityCriteria.js";
 import {
   FileText as FileTextIcon,
   CheckSquare,
@@ -2224,36 +2225,109 @@ export default function Favorites() {
                         ?.detailedCriteria ||
                         (detailsModal.item.eligibility?.criteria &&
                           detailsModal.item.eligibility.criteria !==
-                            "Not specified")) && (
-                        <div
-                          className="mt-4 pt-4 border-t"
-                          style={{ borderColor: "#D0C4E2" }}
-                        >
-                          <h5
-                            className="font-semibold mb-3 flex items-center gap-2 text-sm"
-                            style={{ color: "#2F3C96" }}
-                          >
-                            <Info
-                              className="w-4 h-4"
-                              style={{ color: "#2F3C96" }}
-                            />
-                            Detailed Eligibility Criteria
-                          </h5>
-                          <div
-                            className="bg-white rounded-lg p-4 border"
-                            style={{ borderColor: "rgba(232, 224, 239, 1)" }}
-                          >
-                            <p
-                              className="text-sm leading-relaxed whitespace-pre-line"
-                              style={{ color: "#787878" }}
+                            "Not specified")) && (() => {
+                          const criteriaText = detailsModal.item.simplifiedDetails
+                            ?.eligibilityCriteria?.detailedCriteria ||
+                            detailsModal.item.eligibility.criteria;
+                          const { inclusion, exclusion, hasBoth } = parseEligibilityCriteria(criteriaText);
+                          
+                          return (
+                            <div
+                              className="mt-4 pt-4 border-t"
+                              style={{ borderColor: "#D0C4E2" }}
                             >
-                              {detailsModal.item.simplifiedDetails
-                                ?.eligibilityCriteria?.detailedCriteria ||
-                                detailsModal.item.eligibility.criteria}
-                            </p>
-                          </div>
-                        </div>
-                      )}
+                              {/* Inclusion Criteria */}
+                              {hasBoth && inclusion && (
+                                <div className="mb-4">
+                                  <h5
+                                    className="font-semibold mb-3 flex items-center gap-2 text-sm"
+                                    style={{ color: "#2F3C96" }}
+                                  >
+                                    <Info
+                                      className="w-4 h-4"
+                                      style={{ color: "#2F3C96" }}
+                                    />
+                                    Required criteria to participate in study
+                                  </h5>
+                                  <div
+                                    className="bg-white rounded-lg p-4 border overflow-y-auto"
+                                    style={{ 
+                                      borderColor: "rgba(232, 224, 239, 1)",
+                                      maxHeight: "200px"
+                                    }}
+                                  >
+                                    <p
+                                      className="text-sm leading-relaxed whitespace-pre-line"
+                                      style={{ color: "#787878" }}
+                                    >
+                                      {inclusion}
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {/* Exclusion Criteria */}
+                              {hasBoth && exclusion && (
+                                <div>
+                                  <h5
+                                    className="font-semibold mb-3 flex items-center gap-2 text-sm"
+                                    style={{ color: "#2F3C96" }}
+                                  >
+                                    <Info
+                                      className="w-4 h-4"
+                                      style={{ color: "#2F3C96" }}
+                                    />
+                                    Criteria that might exclude you from the study
+                                  </h5>
+                                  <div
+                                    className="bg-white rounded-lg p-4 border overflow-y-auto"
+                                    style={{ 
+                                      borderColor: "rgba(232, 224, 239, 1)",
+                                      maxHeight: "200px"
+                                    }}
+                                  >
+                                    <p
+                                      className="text-sm leading-relaxed whitespace-pre-line"
+                                      style={{ color: "#787878" }}
+                                    >
+                                      {exclusion}
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {/* Fallback: If no split was found, show as single section */}
+                              {!hasBoth && inclusion && (
+                                <div>
+                                  <h5
+                                    className="font-semibold mb-3 flex items-center gap-2 text-sm"
+                                    style={{ color: "#2F3C96" }}
+                                  >
+                                    <Info
+                                      className="w-4 h-4"
+                                      style={{ color: "#2F3C96" }}
+                                    />
+                                    Required criteria to participate in study
+                                  </h5>
+                                  <div
+                                    className="bg-white rounded-lg p-4 border overflow-y-auto"
+                                    style={{ 
+                                      borderColor: "rgba(232, 224, 239, 1)",
+                                      maxHeight: "200px"
+                                    }}
+                                  >
+                                    <p
+                                      className="text-sm leading-relaxed whitespace-pre-line"
+                                      style={{ color: "#787878" }}
+                                    >
+                                      {inclusion}
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
                     </div>
                   )}
 

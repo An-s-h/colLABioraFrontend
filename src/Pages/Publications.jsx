@@ -35,6 +35,7 @@ import FreeSearchesIndicator, {
   useFreeSearches,
 } from "../components/FreeSearchesIndicator.jsx";
 import apiFetch from "../utils/api.js";
+import { autoCorrectQuery } from "../utils/spellCorrection.js";
 import {
   incrementLocalSearchCount,
   syncWithBackend,
@@ -85,7 +86,6 @@ export default function Publications() {
 
   // Search keywords state (chips/tags)
   const [searchKeywords, setSearchKeywords] = useState([]); // Keywords as chips below search bar
-  const MIN_KEYWORDS_REQUIRED = 2; // Minimum keywords required before search
 
   // Advanced search state
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
@@ -337,10 +337,16 @@ export default function Publications() {
 
   // Keyword chips management functions
   const addKeyword = (keyword) => {
-    const trimmedKeyword = keyword.trim();
+    // Auto-correct the keyword before adding
+    const correctedKeyword = autoCorrectQuery(keyword.trim(), publicationSuggestionTerms);
+    const trimmedKeyword = correctedKeyword.trim();
     if (trimmedKeyword && !searchKeywords.includes(trimmedKeyword)) {
       setSearchKeywords([...searchKeywords, trimmedKeyword]);
       setQ(""); // Clear the input after adding
+      // Show a toast if correction was made
+      if (correctedKeyword.toLowerCase() !== keyword.trim().toLowerCase()) {
+        toast.success(`Corrected "${keyword.trim()}" to "${correctedKeyword}"`, { duration: 2000 });
+      }
     }
   };
 
@@ -430,7 +436,7 @@ export default function Publications() {
     }
   };
 
-  // Trigger search with validation for minimum keywords
+  // Trigger search (keywords are optional)
   const handleSearch = () => {
     // Include current input value if not empty
     let currentKeywords = [...searchKeywords];
@@ -440,16 +446,9 @@ export default function Publications() {
       setQ("");
     }
 
-    if (currentKeywords.length < MIN_KEYWORDS_REQUIRED) {
-      toast.error(
-        `Please add at least ${MIN_KEYWORDS_REQUIRED} keywords before searching. Currently: ${currentKeywords.length}`,
-        { duration: 3000 }
-      );
-      return;
-    }
-
     // Combine keywords for search
-    const combinedQuery = currentKeywords.join(" ");
+    // If no keywords, use empty string (search will handle it)
+    const combinedQuery = currentKeywords.length > 0 ? currentKeywords.join(" ") : q.trim();
     search(combinedQuery);
   };
 
@@ -1611,7 +1610,7 @@ export default function Publications() {
                 {searchKeywords.length > 0 && (
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-xs font-medium text-slate-600">
-                      Keywords ({searchKeywords.length}/{MIN_KEYWORDS_REQUIRED} min):
+                      Keywords ({searchKeywords.length}):
                     </span>
                     {searchKeywords.map((keyword, index) => (
                       <span
@@ -1638,13 +1637,7 @@ export default function Publications() {
                 )}
                 {searchKeywords.length === 0 && (
                   <p className="text-xs text-slate-500 italic">
-                    Add at least {MIN_KEYWORDS_REQUIRED} keywords to search. Press Enter after each keyword.
-                  </p>
-                )}
-                {searchKeywords.length > 0 && searchKeywords.length < MIN_KEYWORDS_REQUIRED && (
-                  <p className="text-xs text-amber-600 flex items-center gap-1">
-                    <AlertCircle className="w-3 h-3" />
-                    Add {MIN_KEYWORDS_REQUIRED - searchKeywords.length} more keyword{MIN_KEYWORDS_REQUIRED - searchKeywords.length !== 1 ? 's' : ''} to enable search
+                    Add keywords to refine your search (optional). Press Enter after each keyword.
                   </p>
                 )}
               </div>
